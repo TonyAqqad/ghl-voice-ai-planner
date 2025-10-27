@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: ghl-oauth-api
+    runtime: node
+    buildCommand: cd server && npm install
+    startCommand: cd server && node ghl-express-api.js
+    envVars:
+      - key: GHL_CLIENT_ID
+        value: 68fd461dc407410f0f0c0cb1-mh6umpou
+      - key: GHL_CLIENT_SECRET
+        value: a7a79a21-828d-4744-b1a3-c13158773c92
+      - key: GHL_SHARED_SECRET
+        value: 0e06d8f4-6eed-4ab7-903e-ff93e5fdd42a
+      - key: GHL_REDIRECT_URI
+        value: https://ghlvoiceai.captureclient.com/auth/callback
+      - key: PORT
+        value: 10000
+      - key: NODE_ENV
+        value: production
+
