@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GHL Voice AI - Voice AI Deployer</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        /* Global Styles (VAPI Redesign) */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+            --background: #0a0a0a; --foreground: #e0e0e0; --card: #1a1a1a; --card-foreground: #f0f0f0;
+            --primary: #5566ff; --primary-foreground: #ffffff; --secondary: #2a2a2a; --secondary-foreground: #e0e0e0;
+            --muted: #3a3a3a; --muted-foreground: #a0a0a0; --accent: #1a1a1a; --accent-foreground: #5566ff;
+            --destructive: #ef4444; --destructive-foreground: #ffffff; --border: #333333; --input: #444444;
+            --ring: #5566ff; --radius: 0.5rem;
+            --success: #22c55e; --warning: #facc15; --error: #ef4444; --info: #3b82f6;
+        }
+        html { font-family: 'Inter', sans-serif; line-height: 1.5; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+        body { background-color: var(--background); color: var(--foreground); transition: background-color 0.3s ease, color 0.3s ease; min-height: 100vh; position: relative; overflow-x: hidden; }
+        body::before { content: ''; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-image: radial-gradient(circle, var(--muted) 1px, transparent 1px); background-size: 20px 20px; opacity: 0.1; z-index: -1; }
+        .gradient-text { background: linear-gradient(90deg, #5566ff, #4c5ce6, #3b4dcc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; color: transparent; }
+        .glow { box-shadow: 0 0 15px rgba(85, 102, 255, 0.4), 0 0 30px rgba(85, 102, 255, 0.2); }
+        .container { max-width: 1400px; margin: 0 auto; padding: 2rem; }
+        .card { background-color: var(--card); color: var(--card-foreground); border-radius: var(--radius); border: 1px solid var(--border); box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1); transition: all 0.2s ease; }
+        .card:hover { box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1); transform: translateY(-2px); }
+        .btn { display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; border-radius: var(--radius); font-size: 0.875rem; font-weight: 500; transition: all 0.2s ease; cursor: pointer; border: 1px solid transparent; padding: 0.5rem 1rem; min-height: 2.5rem; }
+        .btn-primary { background-color: var(--primary); color: var(--primary-foreground); box-shadow: 0 4px 14px 0 rgba(85, 102, 255, 0.3); }
+        .btn-primary:hover:not(:disabled) { background-color: #4c5ce6; transform: translateY(-1px); box-shadow: 0 6px 20px 0 rgba(85, 102, 255, 0.4); }
+        .btn-outline { border: 1px solid var(--border); background-color: transparent; color: var(--foreground); }
+        .btn-outline:hover:not(:disabled) { background-color: var(--accent); color: var(--accent-foreground); }
+        .btn-destructive { background-color: var(--destructive); color: var(--destructive-foreground); }
+        .btn-destructive:hover:not(:disabled) { background-color: color-mix(in srgb, var(--destructive) 90%, black); }
+        .btn-success { background-color: var(--success); color: white; }
+        .btn-warning { background-color: var(--warning); color: black; }
+        .btn-error { background-color: var(--error); color: white; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .flex { display: flex; } .items-center { align-items: center; } .justify-between { justify-content: space-between; } .flex-col { flex-direction: column; }
+        .gap-2 { gap: 0.5rem; } .gap-4 { gap: 1rem; } .gap-6 { gap: 1.5rem; } .gap-8 { gap: 2rem; }
+        .p-4 { padding: 1rem; } .p-6 { padding: 1.5rem; } .py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; } .px-4 { padding-left: 1rem; padding-right: 1rem; }
+        .mb-4 { margin-bottom: 1rem; } .mt-4 { margin-top: 1rem; } .mx-auto { margin-left: auto; margin-right: auto; }
+        .w-full { width: 100%; } .h-4 { height: 1rem; } .rounded-full { border-radius: 9999px; }
+        .text-sm { font-size: 0.875rem; line-height: 1.25rem; } .font-semibold { font-weight: 600; } .text-lg { font-size: 1.125rem; line-height: 1.75rem; }
+        .text-xl { font-size: 1.25rem; line-height: 1.75rem; } .text-2xl { font-size: 1.5rem; line-height: 2rem; } .text-3xl { font-size: 1.875rem; line-height: 2.25rem; }
+        .text-muted-foreground { color: var(--muted-foreground); } .text-foreground { color: var(--foreground); }
+        .relative { position: relative; } .overflow-hidden { overflow: hidden; }
+        .loading-spinner { display: inline-block; width: 1rem; height: 1rem; border: 2px solid var(--muted); border-radius: 50%; border-top-color: var(--primary); animation: spin 1s ease-in-out infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        input, select, textarea { font-family: inherit; font-size: inherit; line-height: inherit; color: inherit; background-color: var(--card); border: 1px solid var(--input); border-radius: var(--radius); padding: 0.5rem 0.75rem; outline: none; transition: border-color 0.2s ease, box-shadow 0.2s ease; }
+        input:focus, textarea:focus, select:focus { border-color: var(--ring); box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 20%, transparent); }
+        .status-deployed { color: var(--success); } .status-deploying { color: var(--info); } .status-failed { color: var(--error); } .status-rolled-back { color: var(--warning); }
+        .modal { position: fixed; inset: 0; background-color: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+        .modal-content { background-color: var(--card); padding: 2rem; border-radius: var(--radius); width: 100%; max-width: 800px; box-shadow: 0 10px 20px rgba(0,0,0,0.5); max-height: 90vh; overflow-y: auto; }
+        .grid { display: grid; } .grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); } .grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .space-y-4 > * + * { margin-top: 1rem; }
+        .border { border: 1px solid var(--border); } .border-t { border-top: 1px solid var(--border); } .border-b { border-bottom: 1px solid var(--border); }
+        .rounded { border-radius: var(--radius); } .rounded-md { border-radius: calc(var(--radius) - 2px); }
+        .text-center { text-align: center; }
+        .hidden { display: none; }
+        .block { display: block; }
+        .progress-bar { height: 100%; transition: width 0.5s ease-in-out; }
+        .animate-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+        .deployment-step { padding: 1rem; border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 0.5rem; }
+        .deployment-step.active { border-color: var(--primary); background-color: color-mix(in srgb, var(--primary) 10%, transparent); }
+        .deployment-step.completed { border-color: var(--success); background-color: color-mix(in srgb, var(--success) 10%, transparent); }
+        .deployment-step.failed { border-color: var(--error); background-color: color-mix(in srgb, var(--error) 10%, transparent); }
+        .log-entry { font-family: 'Courier New', monospace; font-size: 0.875rem; padding: 0.25rem 0; border-bottom: 1px solid var(--border); }
+        .log-entry.error { color: var(--error); }
+        .log-entry.warning { color: var(--warning); }
+        .log-entry.success { color: var(--success); }
+        .log-entry.info { color: var(--info); }
+    </style>
+</head>
+<body>
+    <div class="container py-8">
+        <h1 class="text-4xl font-bold text-center mb-8 gradient-text">GHL Voice AI - Deployer</h1>
+        <p class="text-center text-lg text-muted-foreground mb-12">Deploy, manage, and rollback your voice AI agents with confidence.</p>
+
+        <!-- Deployment Overview -->
+        <div class="card p-6 mb-8">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-2xl font-semibold text-foreground">Deployment Overview</h2>
+                <div class="flex gap-2">
+                    <button id="deploy-btn" class="btn btn-primary">
+                        <span class="loading-spinner mr-2 hidden" id="deploy-spinner"></span>
+                        Deploy Agent
+                    </button>
+                    <button id="rollback-btn" class="btn btn-destructive" disabled>Rollback</button>
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 text-center mb-6">
+                <div class="card p-4">
+                    <div class="text-3xl font-bold gradient-text" id="total-deployments">0</div>
+                    <div class="text-sm text-muted-foreground">Total Deployments</div>
+                </div>
+                <div class="card p-4">
+                    <div class="text-3xl font-bold text-success" id="active-agents">0</div>
+                    <div class="text-sm text-muted-foreground">Active Agents</div>
+                </div>
+                <div class="card p-4">
+                    <div class="text-3xl font-bold text-warning" id="pending-deployments">0</div>
+                    <div class="text-sm text-muted-foreground">Pending</div>
+                </div>
+                <div class="card p-4">
+                    <div class="text-3xl font-bold text-error" id="failed-deployments">0</div>
+                    <div class="text-sm text-muted-foreground">Failed</div>
+                </div>
+            </div>
+
+            <!-- Current Deployment Status -->
+            <div id="current-deployment" class="hidden">
+                <h3 class="text-lg font-semibold text-foreground mb-4">Current Deployment</h3>
+                <div class="w-full bg-muted rounded-full h-4 relative overflow-hidden mb-4">
+                    <div id="deployment-progress" class="progress-bar bg-primary rounded-full" style="width: 0%;"></div>
+                </div>
+                <div class="flex justify-between text-sm text-muted-foreground">
+                    <span id="deployment-status">Preparing deployment...</span>
+                    <span id="deployment-percentage">0%</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Agent Configuration -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+            <div class="card p-6">
+                <h3 class="text-xl font-semibold text-foreground mb-4">Agent Configuration</h3>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-foreground mb-2">Agent Name</label>
+                        <input type="text" id="agent-name" class="w-full p-2 rounded-md bg-card border border-border" placeholder="e.g., Sales Assistant" />
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-foreground mb-2">Voice Provider</label>
+                        <select id="voice-provider" class="w-full p-2 rounded-md bg-card border border-border">
+                            <option value="elevenlabs">ElevenLabs</option>
+                            <option value="openai">OpenAI</option>
+                            <option value="azure">Azure</option>
+                            <option value="aws">AWS Polly</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-foreground mb-2">LLM Provider</label>
+                        <select id="llm-provider" class="w-full p-2 rounded-md bg-card border border-border">
+                            <option value="openai">OpenAI GPT-4</option>
+                            <option value="anthropic">Anthropic Claude</option>
+                            <option value="azure">Azure OpenAI</option>
+                            <option value="google">Google Gemini</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-foreground mb-2">Phone Number</label>
+                        <input type="text" id="phone-number" class="w-full p-2 rounded-md bg-card border border-border" placeholder="+1234567890" />
+                    </div>
+                </div>
+            </div>
+
+            <div class="card p-6">
+                <h3 class="text-xl font-semibold text-foreground mb-4">Deployment Settings</h3>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-foreground mb-2">Environment</label>
+                        <select id="environment" class="w-full p-2 rounded-md bg-card border border-border">
+                            <option value="staging">Staging</option>
+                            <option value="production">Production</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-foreground mb-2">Rollback Strategy</label>
+                        <select id="rollback-strategy" class="w-full p-2 rounded-md bg-card border border-border">
+                            <option value="automatic">Automatic (on failure)</option>
+                            <option value="manual">Manual only</option>
+                            <option value="timed">Timed (5 min delay)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-foreground mb-2">Health Check Interval</label>
+                        <select id="health-check" class="w-full p-2 rounded-md bg-card border border-border">
+                            <option value="30">30 seconds</option>
+                            <option value="60">1 minute</option>
+                            <option value="300">5 minutes</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center">
+                        <input type="checkbox" id="enable-monitoring" class="mr-2" checked />
+                        <label for="enable-monitoring" class="text-sm text-foreground">Enable real-time monitoring</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Deployment History -->
+        <div class="card p-6 mb-8">
+            <h3 class="text-xl font-semibold text-foreground mb-4">Deployment History</h3>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead>
+                        <tr class="text-sm text-muted-foreground border-b border-border">
+                            <th class="py-2 px-4">Agent</th>
+                            <th class="py-2 px-4">Status</th>
+                            <th class="py-2 px-4">Environment</th>
+                            <th class="py-2 px-4">Deployed At</th>
+                            <th class="py-2 px-4">Duration</th>
+                            <th class="py-2 px-4">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="deployment-history">
+                        <!-- Deployment history will be populated here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Deployment Logs -->
+        <div class="card p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-xl font-semibold text-foreground">Deployment Logs</h3>
+                <button id="clear-logs-btn" class="btn btn-outline">Clear Logs</button>
+            </div>
+            <div id="deployment-logs" class="bg-muted p-4 rounded-md h-64 overflow-y-auto font-mono text-sm">
+                <div class="log-entry info">System initialized. Ready for deployment.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Deployment Modal -->
+    <div id="deployment-modal" class="modal hidden">
+        <div class="modal-content">
+            <h3 class="text-2xl font-semibold text-foreground mb-6">Deployment in Progress</h3>
+            <div id="deployment-steps" class="space-y-4">
+                <!-- Deployment steps will be populated here -->
+            </div>
+            <div class="flex justify-end mt-6">
+                <button id="close-modal-btn" class="btn btn-outline">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class VoiceAIDeployer {
+            constructor() {
+                this.deployments = [];
+                this.currentDeployment = null;
+                this.deploymentSteps = [
+                    { id: 'validate', name: 'Validate Configuration', status: 'pending' },
+                    { id: 'schema', name: 'Sync Schema Registry', status: 'pending' },
+                    { id: 'agent', name: 'Create/Update Agent', status: 'pending' },
+                    { id: 'actions', name: 'Attach Actions', status: 'pending' },
+                    { id: 'phone', name: 'Configure Phone Routing', status: 'pending' },
+                    { id: 'workflows', name: 'Setup Workflows', status: 'pending' },
+                    { id: 'webhooks', name: 'Configure Webhooks', status: 'pending' },
+                    { id: 'health', name: 'Health Check', status: 'pending' },
+                    { id: 'monitoring', name: 'Enable Monitoring', status: 'pending' }
+                ];
+                this.init();
+            }
+
+            init() {
+                this.bindEvents();
+                this.loadDeploymentHistory();
+                this.updateStats();
+            }
+
+            bindEvents() {
+                document.getElementById('deploy-btn').addEventListener('click', () => this.startDeployment());
+                document.getElementById('rollback-btn').addEventListener('click', () => this.rollbackDeployment());
+                document.getElementById('clear-logs-btn').addEventListener('click', () => this.clearLogs());
+                document.getElementById('close-modal-btn').addEventListener('click', () => this.closeModal());
+            }
+
+            async startDeployment() {
+                const config = this.getDeploymentConfig();
+                if (!this.validateConfig(config)) return;
+
+                this.currentDeployment = {
+                    id: Date.now().toString(),
+                    agentName: config.agentName,
+                    environment: config.environment,
+                    status: 'deploying',
+                    startTime: new Date(),
+                    steps: [...this.deploymentSteps]
+                };
+
+                this.showDeploymentModal();
+                this.updateDeploymentUI();
+                this.logMessage('info', `Starting deployment for agent: ${config.agentName}`);
+
+                try {
+                    await this.executeDeploymentSteps();
+                    this.currentDeployment.status = 'deployed';
+                    this.currentDeployment.endTime = new Date();
+                    this.logMessage('success', 'Deployment completed successfully!');
+                } catch (error) {
+                    this.currentDeployment.status = 'failed';
+                    this.currentDeployment.endTime = new Date();
+                    this.logMessage('error', `Deployment failed: ${error.message}`);
+                }
+
+                this.deployments.unshift(this.currentDeployment);
+                this.updateStats();
+                this.updateDeploymentHistory();
+                this.currentDeployment = null;
+            }
+
+            async executeDeploymentSteps() {
+                for (let i = 0; i < this.deploymentSteps.length; i++) {
+                    const step = this.deploymentSteps[i];
+                    this.updateStepStatus(step.id, 'active');
+                    this.logMessage('info', `Executing step: ${step.name}`);
+
+                    try {
+                        await this.executeStep(step);
+                        this.updateStepStatus(step.id, 'completed');
+                        this.logMessage('success', `Step completed: ${step.name}`);
+                    } catch (error) {
+                        this.updateStepStatus(step.id, 'failed');
+                        this.logMessage('error', `Step failed: ${step.name} - ${error.message}`);
+                        throw error;
+                    }
+
+                    // Update progress
+                    const progress = ((i + 1) / this.deploymentSteps.length) * 100;
+                    this.updateDeploymentProgress(progress);
+                    
+                    // Simulate processing time
+                    await this.delay(1000 + Math.random() * 2000);
+                }
+            }
+
+            async executeStep(step) {
+                // Simulate API calls based on step
+                switch (step.id) {
+                    case 'validate':
+                        await this.delay(500);
+                        if (Math.random() < 0.1) throw new Error('Configuration validation failed');
+                        break;
+                    case 'schema':
+                        await this.delay(1500);
+                        if (Math.random() < 0.05) throw new Error('Schema sync failed');
+                        break;
+                    case 'agent':
+                        await this.delay(2000);
+                        if (Math.random() < 0.08) throw new Error('Agent creation failed');
+                        break;
+                    case 'actions':
+                        await this.delay(1000);
+                        if (Math.random() < 0.05) throw new Error('Action attachment failed');
+                        break;
+                    case 'phone':
+                        await this.delay(1500);
+                        if (Math.random() < 0.1) throw new Error('Phone routing failed');
+                        break;
+                    case 'workflows':
+                        await this.delay(1200);
+                        if (Math.random() < 0.05) throw new Error('Workflow setup failed');
+                        break;
+                    case 'webhooks':
+                        await this.delay(800);
+                        if (Math.random() < 0.1) throw new Error('Webhook configuration failed');
+                        break;
+                    case 'health':
+                        await this.delay(600);
+                        if (Math.random() < 0.15) throw new Error('Health check failed');
+                        break;
+                    case 'monitoring':
+                        await this.delay(500);
+                        if (Math.random() < 0.05) throw new Error('Monitoring setup failed');
+                        break;
+                }
+            }
+
+            updateStepStatus(stepId, status) {
+                const step = this.deploymentSteps.find(s => s.id === stepId);
+                if (step) {
+                    step.status = status;
+                    this.renderDeploymentSteps();
+                }
+            }
+
+            renderDeploymentSteps() {
+                const container = document.getElementById('deployment-steps');
+                container.innerHTML = this.deploymentSteps.map(step => `
+                    <div class="deployment-step ${step.status}">
+                        <div class="flex items-center justify-between">
+                            <span class="font-medium">${step.name}</span>
+                            <span class="text-sm ${step.status === 'completed' ? 'text-success' : step.status === 'failed' ? 'text-error' : step.status === 'active' ? 'text-info' : 'text-muted-foreground'}">
+                                ${step.status === 'completed' ? '✓' : step.status === 'failed' ? '✗' : step.status === 'active' ? '⟳' : '○'}
+                            </span>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            updateDeploymentProgress(progress) {
+                const progressBar = document.getElementById('deployment-progress');
+                const percentage = document.getElementById('deployment-percentage');
+                if (progressBar && percentage) {
+                    progressBar.style.width = `${progress}%`;
+                    percentage.textContent = `${Math.round(progress)}%`;
+                }
+            }
+
+            getDeploymentConfig() {
+                return {
+                    agentName: document.getElementById('agent-name').value,
+                    voiceProvider: document.getElementById('voice-provider').value,
+                    llmProvider: document.getElementById('llm-provider').value,
+                    phoneNumber: document.getElementById('phone-number').value,
+                    environment: document.getElementById('environment').value,
+                    rollbackStrategy: document.getElementById('rollback-strategy').value,
+                    healthCheck: document.getElementById('health-check').value,
+                    enableMonitoring: document.getElementById('enable-monitoring').checked
+                };
+            }
+
+            validateConfig(config) {
+                if (!config.agentName.trim()) {
+                    alert('Please enter an agent name');
+                    return false;
+                }
+                if (!config.phoneNumber.trim()) {
+                    alert('Please enter a phone number');
+                    return false;
+                }
+                return true;
+            }
+
+            showDeploymentModal() {
+                document.getElementById('deployment-modal').classList.remove('hidden');
+                document.getElementById('current-deployment').classList.remove('hidden');
+                this.renderDeploymentSteps();
+            }
+
+            closeModal() {
+                document.getElementById('deployment-modal').classList.add('hidden');
+            }
+
+            updateDeploymentUI() {
+                const deployBtn = document.getElementById('deploy-btn');
+                const rollbackBtn = document.getElementById('rollback-btn');
+                const spinner = document.getElementById('deploy-spinner');
+
+                if (this.currentDeployment) {
+                    deployBtn.disabled = true;
+                    rollbackBtn.disabled = true;
+                    spinner.classList.remove('hidden');
+                } else {
+                    deployBtn.disabled = false;
+                    rollbackBtn.disabled = this.deployments.length === 0;
+                    spinner.classList.add('hidden');
+                }
+            }
+
+            logMessage(type, message) {
+                const logsContainer = document.getElementById('deployment-logs');
+                const timestamp = new Date().toLocaleTimeString();
+                const logEntry = document.createElement('div');
+                logEntry.className = `log-entry ${type}`;
+                logEntry.textContent = `[${timestamp}] ${message}`;
+                logsContainer.appendChild(logEntry);
+                logsContainer.scrollTop = logsContainer.scrollHeight;
+            }
+
+            clearLogs() {
+                document.getElementById('deployment-logs').innerHTML = '<div class="log-entry info">Logs cleared.</div>';
+            }
+
+            updateStats() {
+                const total = this.deployments.length;
+                const active = this.deployments.filter(d => d.status === 'deployed').length;
+                const pending = this.deployments.filter(d => d.status === 'deploying').length;
+                const failed = this.deployments.filter(d => d.status === 'failed').length;
+
+                document.getElementById('total-deployments').textContent = total;
+                document.getElementById('active-agents').textContent = active;
+                document.getElementById('pending-deployments').textContent = pending;
+                document.getElementById('failed-deployments').textContent = failed;
+            }
+
+            loadDeploymentHistory() {
+                // Load from localStorage or API
+                const saved = localStorage.getItem('ghl-deployments');
+                if (saved) {
+                    this.deployments = JSON.parse(saved);
+                }
+            }
+
+            updateDeploymentHistory() {
+                // Save to localStorage
+                localStorage.setItem('ghl-deployments', JSON.stringify(this.deployments));
+                
+                const tbody = document.getElementById('deployment-history');
+                tbody.innerHTML = this.deployments.map(deployment => `
+                    <tr class="border-b border-border">
+                        <td class="py-2 px-4">${deployment.agentName}</td>
+                        <td class="py-2 px-4">
+                            <span class="status-${deployment.status}">${deployment.status.toUpperCase()}</span>
+                        </td>
+                        <td class="py-2 px-4">${deployment.environment}</td>
+                        <td class="py-2 px-4">${deployment.startTime.toLocaleString()}</td>
+                        <td class="py-2 px-4">${deployment.endTime ? this.formatDuration(deployment.startTime, deployment.endTime) : 'In Progress'}</td>
+                        <td class="py-2 px-4">
+                            <button class="btn btn-outline btn-sm" onclick="deployer.viewDeployment('${deployment.id}')">View</button>
+                            ${deployment.status === 'deployed' ? `<button class="btn btn-destructive btn-sm" onclick="deployer.rollbackDeployment('${deployment.id}')">Rollback</button>` : ''}
+                        </td>
+                    </tr>
+                `).join('');
+            }
+
+            formatDuration(start, end) {
+                const diff = end - start;
+                const minutes = Math.floor(diff / 60000);
+                const seconds = Math.floor((diff % 60000) / 1000);
+                return `${minutes}m ${seconds}s`;
+            }
+
+            viewDeployment(deploymentId) {
+                const deployment = this.deployments.find(d => d.id === deploymentId);
+                if (deployment) {
+                    alert(`Deployment Details:\nAgent: ${deployment.agentName}\nStatus: ${deployment.status}\nEnvironment: ${deployment.environment}\nStarted: ${deployment.startTime.toLocaleString()}`);
+                }
+            }
+
+            rollbackDeployment(deploymentId) {
+                if (confirm('Are you sure you want to rollback this deployment?')) {
+                    const deployment = this.deployments.find(d => d.id === deploymentId);
+                    if (deployment) {
+                        deployment.status = 'rolled-back';
+                        this.logMessage('warning', `Rolled back deployment: ${deployment.agentName}`);
+                        this.updateStats();
+                        this.updateDeploymentHistory();
+                    }
+                }
+            }
+
+            delay(ms) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            }
+        }
+
+        // Initialize the deployer
+        const deployer = new VoiceAIDeployer();
+    </script>
+</body>
+</html>

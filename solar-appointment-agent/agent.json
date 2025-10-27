@@ -1,0 +1,364 @@
+{
+  "agent": {
+    "name": "Solar Lead Appointment Booker",
+    "description": "AI agent for booking solar consultation appointments with qualified leads",
+    "model": {
+      "provider": "openai",
+      "model": "gpt-4o",
+      "temperature": 0.7,
+      "maxTokens": 150
+    },
+    "voice": {
+      "provider": "elevenlabs",
+      "voiceId": "21m00Tcm4TlvDq8ikWAM",
+      "stability": 0.5,
+      "similarityBoost": 0.8,
+      "style": 0.2,
+      "useSpeakerBoost": true
+    },
+    "firstMessage": "Hi {{contact.firstName}}, this is Sarah from {{company.name}}. I'm calling about your interest in solar energy. Do you have a few minutes to discuss how solar could help you save money on your electric bill?",
+    "systemPrompt": "You are Sarah, a professional solar energy consultant calling to book appointments for solar consultations. You're friendly, knowledgeable, and focused on helping homeowners understand their solar options. Your goal is to qualify leads and schedule appointments for virtual or in-person consultations. Always be respectful of the customer's time and preferences. If they're not interested, politely thank them and end the call. If they ask to be removed from calling lists, immediately comply and update their record.",
+    "endCallMessage": "Thank you for your time today, {{contact.firstName}}. Have a great day!",
+    "endCallPhrases": [
+      "thank you for your time",
+      "have a great day",
+      "goodbye",
+      "talk to you later",
+      "bye"
+    ],
+    "maxDurationSeconds": 300,
+    "recordingEnabled": true,
+    "recordingTranscriptionEnabled": true,
+    "backgroundSound": "office",
+    "silenceTimeoutSeconds": 5,
+    "responseDelaySeconds": 1,
+    "interruptions": {
+      "enabled": true,
+      "threshold": 0.5
+    }
+  },
+  "intents": [
+    {
+      "name": "appointment_booking",
+      "description": "Customer wants to schedule an appointment",
+      "phrases": [
+        "I'd like to schedule an appointment",
+        "When can we meet?",
+        "I want to book a consultation",
+        "What times are available?",
+        "I'm interested in scheduling",
+        "Can we set up a time?",
+        "I'd like to meet with someone",
+        "What's your availability?",
+        "I want to talk to someone in person",
+        "Can we schedule something?"
+      ],
+      "actions": [
+        {
+          "type": "webhook",
+          "url": "{{webhook.base_url}}/appointment-booking",
+          "method": "POST",
+          "headers": {
+            "Authorization": "Bearer {{webhook.api_key}}",
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "contactId": "{{contact.id}}",
+            "locationId": "{{location.id}}",
+            "appointmentType": "{{intent.appointment_type}}",
+            "preferredTime": "{{intent.preferred_time}}",
+            "notes": "{{conversation.summary}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "qualification_questions",
+      "description": "Customer answers qualification questions",
+      "phrases": [
+        "My electric bill is about $200",
+        "I have a shingle roof",
+        "I own my home",
+        "I'm interested in financing",
+        "I want to save money",
+        "My roof is about 10 years old",
+        "I live in a single family home",
+        "I'm looking to install solar soon",
+        "I want to reduce my carbon footprint",
+        "I'm concerned about rising energy costs"
+      ],
+      "actions": [
+        {
+          "type": "webhook",
+          "url": "{{webhook.base_url}}/update-qualification",
+          "method": "POST",
+          "headers": {
+            "Authorization": "Bearer {{webhook.api_key}}",
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "contactId": "{{contact.id}}",
+            "locationId": "{{location.id}}",
+            "qualificationData": "{{intent.qualification_data}}",
+            "leadScore": "{{intent.lead_score}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "callback_request",
+      "description": "Customer requests a callback",
+      "phrases": [
+        "Can you call me back later?",
+        "I'm busy right now",
+        "Call me back in an hour",
+        "I can't talk right now",
+        "Can we reschedule this call?",
+        "I need to call you back",
+        "Let me call you later",
+        "I'm in a meeting",
+        "Can you call me tomorrow?",
+        "I'm driving right now"
+      ],
+      "actions": [
+        {
+          "type": "webhook",
+          "url": "{{webhook.base_url}}/callback-request",
+          "method": "POST",
+          "headers": {
+            "Authorization": "Bearer {{webhook.api_key}}",
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "contactId": "{{contact.id}}",
+            "locationId": "{{location.id}}",
+            "callbackTime": "{{intent.callback_time}}",
+            "reason": "{{intent.callback_reason}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "not_interested",
+      "description": "Customer is not interested in solar",
+      "phrases": [
+        "I'm not interested",
+        "I don't want solar",
+        "I'm not looking for solar right now",
+        "I'm not interested in solar energy",
+        "I don't need solar",
+        "I'm not ready for solar",
+        "I'm not interested in this",
+        "I don't want to be called",
+        "Please remove me from your list",
+        "I'm not a good fit for solar"
+      ],
+      "actions": [
+        {
+          "type": "webhook",
+          "url": "{{webhook.base_url}}/not-interested",
+          "method": "POST",
+          "headers": {
+            "Authorization": "Bearer {{webhook.api_key}}",
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "contactId": "{{contact.id}}",
+            "locationId": "{{location.id}}",
+            "reason": "{{intent.not_interested_reason}}",
+            "doNotCall": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "wrong_number",
+      "description": "Customer says it's a wrong number",
+      "phrases": [
+        "Wrong number",
+        "You have the wrong number",
+        "I don't know who that is",
+        "That's not me",
+        "You called the wrong person",
+        "I'm not the person you're looking for",
+        "This is the wrong number",
+        "I don't know anyone by that name"
+      ],
+      "actions": [
+        {
+          "type": "webhook",
+          "url": "{{webhook.base_url}}/wrong-number",
+          "method": "POST",
+          "headers": {
+            "Authorization": "Bearer {{webhook.api_key}}",
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "contactId": "{{contact.id}}",
+            "locationId": "{{location.id}}",
+            "phoneNumber": "{{contact.phone}}",
+            "action": "mark_wrong_number"
+          }
+        }
+      ]
+    }
+  ],
+  "scripts": [
+    {
+      "name": "greeting",
+      "content": "Hi {{contact.firstName}}, this is Sarah from {{company.name}}. I'm calling about your interest in solar energy. Do you have a few minutes to discuss how solar could help you save money on your electric bill?",
+      "conditions": {
+        "callAttempt": 1
+      }
+    },
+    {
+      "name": "follow_up_greeting",
+      "content": "Hi {{contact.firstName}}, this is Sarah from {{company.name}} calling back about solar energy. I tried reaching you earlier but wanted to follow up. Do you have a moment to talk about your solar options?",
+      "conditions": {
+        "callAttempt": ">1"
+      }
+    },
+    {
+      "name": "qualification_questions",
+      "content": "Great! I'd like to ask you a few quick questions to see if solar makes sense for your home. First, what's your average monthly electric bill?",
+      "conditions": {
+        "intent": "interested"
+      }
+    },
+    {
+      "name": "roof_question",
+      "content": "What type of roof do you have? Is it shingle, metal, tile, or something else?",
+      "conditions": {
+        "previousAnswer": "electric_bill"
+      }
+    },
+    {
+      "name": "homeownership_question",
+      "content": "Do you own your home, or are you renting?",
+      "conditions": {
+        "previousAnswer": "roof_type"
+      }
+    },
+    {
+      "name": "timeline_question",
+      "content": "When are you looking to install solar? Are you thinking this year, next year, or just exploring your options?",
+      "conditions": {
+        "previousAnswer": "homeownership"
+      }
+    },
+    {
+      "name": "appointment_booking",
+      "content": "Based on what you've told me, I think solar could be a great fit for your home. I'd love to schedule a free consultation to show you exactly how much you could save. We can do this virtually or I can come to your home. What works better for you?",
+      "conditions": {
+        "qualificationScore": ">70"
+      }
+    },
+    {
+      "name": "appointment_scheduling",
+      "content": "Perfect! What day and time works best for you? I have availability this week and next week. Are you more of a morning person or afternoon person?",
+      "conditions": {
+        "intent": "appointment_booking"
+      }
+    },
+    {
+      "name": "appointment_confirmation",
+      "content": "Excellent! I have you scheduled for {{appointment.date}} at {{appointment.time}} for a {{appointment.type}} consultation. I'll send you a confirmation email with all the details and a calendar invite. Is there anything specific you'd like me to prepare for our meeting?",
+      "conditions": {
+        "appointmentScheduled": true
+      }
+    },
+    {
+      "name": "callback_request",
+      "content": "No problem at all! What would be a better time for me to call you back? I can call you this afternoon, tomorrow, or whatever works best for your schedule.",
+      "conditions": {
+        "intent": "callback_request"
+      }
+    },
+    {
+      "name": "not_interested_polite",
+      "content": "I completely understand. Solar isn't for everyone right now. I'll make sure to remove you from our calling list. Is there anything else I can help you with today?",
+      "conditions": {
+        "intent": "not_interested"
+      }
+    },
+    {
+      "name": "wrong_number_apology",
+      "content": "I'm so sorry for the confusion! I must have the wrong number. I'll make sure to update our records. Have a great day!",
+      "conditions": {
+        "intent": "wrong_number"
+      }
+    },
+    {
+      "name": "voicemail_script",
+      "content": "Hi {{contact.firstName}}, this is Sarah from {{company.name}}. I'm calling about your interest in solar energy and how it could help you save money on your electric bill. I'd love to schedule a free consultation to show you your potential savings. Please call me back at {{company.phone}} or visit our website at {{company.website}}. I look forward to hearing from you soon!",
+      "conditions": {
+        "callResult": "voicemail"
+      }
+    }
+  ],
+  "transferRules": [
+    {
+      "condition": "intent == 'complaint' || intent == 'angry_customer'",
+      "action": "transfer_to_human",
+      "phoneNumber": "{{company.phone}}",
+      "message": "I'm going to transfer you to one of our team members who can better assist you with this matter."
+    },
+    {
+      "condition": "intent == 'technical_question'",
+      "action": "transfer_to_technical",
+      "phoneNumber": "{{company.technical_phone}}",
+      "message": "That's a great technical question. Let me transfer you to our technical specialist who can give you a detailed answer."
+    },
+    {
+      "condition": "callDuration > 300",
+      "action": "end_call",
+      "message": "I want to respect your time. Let me send you some information via email and we can schedule a follow-up call if you're interested."
+    }
+  ],
+  "fallbackResponses": [
+    "I'm sorry, I didn't quite catch that. Could you repeat that for me?",
+    "I want to make sure I understand you correctly. Could you clarify that?",
+    "I'm having trouble hearing you. Could you speak a bit louder?",
+    "I'm not sure I understood that. Could you explain that differently?",
+    "I want to make sure I give you the right information. Could you rephrase that?"
+  ],
+  "webhooks": {
+    "base_url": "{{env.WEBHOOK_BASE_URL}}",
+    "api_key": "{{env.WEBHOOK_API_KEY}}",
+    "timeout": 1500,
+    "retry_attempts": 3,
+    "retry_delay": 1000
+  },
+  "environment": {
+    "company": {
+      "name": "{{env.COMPANY_NAME}}",
+      "phone": "{{env.COMPANY_PHONE}}",
+      "website": "{{env.COMPANY_WEBSITE}}",
+      "email": "{{env.COMPANY_EMAIL}}"
+    },
+    "location": {
+      "id": "{{env.LOCATION_ID}}",
+      "name": "{{env.LOCATION_NAME}}",
+      "timezone": "{{env.LOCATION_TIMEZONE}}"
+    }
+  },
+  "compliance": {
+    "tcpa_compliant": true,
+    "dnc_check": true,
+    "call_time_restrictions": {
+      "start_hour": 8,
+      "end_hour": 21,
+      "timezone": "{{env.LOCATION_TIMEZONE}}"
+    },
+    "recording_disclosure": "This call may be recorded for quality and training purposes.",
+    "opt_out_instructions": "If you'd like to be removed from our calling list, just let me know and I'll take care of that immediately."
+  },
+  "analytics": {
+    "track_intents": true,
+    "track_call_outcomes": true,
+    "track_appointment_bookings": true,
+    "track_qualification_scores": true,
+    "track_call_duration": true,
+    "track_transfer_reasons": true
+  }
+}

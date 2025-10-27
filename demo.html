@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GHL Voice AI Agent Planner - Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --background: #ffffff;
+            --foreground: #0f172a;
+            --card: #ffffff;
+            --card-foreground: #0f172a;
+            --primary: #3b82f6;
+            --primary-foreground: #ffffff;
+            --secondary: #f1f5f9;
+            --secondary-foreground: #0f172a;
+            --muted: #f8fafc;
+            --muted-foreground: #64748b;
+            --accent: #f1f5f9;
+            --accent-foreground: #0f172a;
+            --destructive: #ef4444;
+            --destructive-foreground: #ffffff;
+            --border: #e2e8f0;
+            --input: #e2e8f0;
+            --ring: #3b82f6;
+            --radius: 0.5rem;
+        }
+
+        .dark {
+            --background: #0f172a;
+            --foreground: #f8fafc;
+            --card: #1e293b;
+            --card-foreground: #f8fafc;
+            --primary: #3b82f6;
+            --primary-foreground: #ffffff;
+            --secondary: #334155;
+            --secondary-foreground: #f8fafc;
+            --muted: #1e293b;
+            --muted-foreground: #94a3b8;
+            --accent: #334155;
+            --accent-foreground: #f8fafc;
+            --destructive: #ef4444;
+            --destructive-foreground: #ffffff;
+            --border: #334155;
+            --input: #334155;
+            --ring: #3b82f6;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background-color: var(--background);
+            color: var(--foreground);
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 1rem;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 4rem 0;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            font-weight: 300;
+        }
+
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        .main-content {
+            padding: 4rem 0;
+        }
+
+        .modules-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+
+        .module-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 2rem;
+            box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .module-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 25px 0 rgb(0 0 0 / 0.1);
+        }
+
+        .module-icon {
+            width: 3rem;
+            height: 3rem;
+            background: var(--primary);
+            border-radius: var(--radius);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 1rem;
+            color: var(--primary-foreground);
+            font-size: 1.5rem;
+        }
+
+        .module-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: var(--foreground);
+        }
+
+        .module-description {
+            color: var(--muted-foreground);
+            margin-bottom: 1.5rem;
+        }
+
+        .module-features {
+            list-style: none;
+            margin-bottom: 1.5rem;
+        }
+
+        .module-features li {
+            padding: 0.25rem 0;
+            color: var(--muted-foreground);
+            font-size: 0.875rem;
+        }
+
+        .module-features li:before {
+            content: "✓";
+            color: var(--primary);
+            font-weight: bold;
+            margin-right: 0.5rem;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.75rem 1.5rem;
+            border-radius: var(--radius);
+            font-weight: 500;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            border: 1px solid transparent;
+            cursor: pointer;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: var(--primary-foreground);
+        }
+
+        .btn-primary:hover {
+            background: color-mix(in srgb, var(--primary) 90%, black);
+        }
+
+        .btn-outline {
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--foreground);
+        }
+
+        .btn-outline:hover {
+            background: var(--accent);
+            color: var(--accent-foreground);
+        }
+
+        .features-section {
+            background: var(--muted);
+            padding: 4rem 0;
+            margin: 4rem 0;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+
+        .feature-item {
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .feature-icon {
+            width: 4rem;
+            height: 4rem;
+            background: var(--primary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1rem;
+            color: var(--primary-foreground);
+            font-size: 2rem;
+        }
+
+        .cta-section {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            padding: 4rem 0;
+            text-align: center;
+        }
+
+        .cta-section h2 {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .cta-section p {
+            font-size: 1.2rem;
+            margin-bottom: 2rem;
+            opacity: 0.9;
+        }
+
+        .cta-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn-white {
+            background: white;
+            color: var(--primary);
+        }
+
+        .btn-white:hover {
+            background: color-mix(in srgb, white 90%, black);
+        }
+
+        .footer {
+            background: var(--card);
+            border-top: 1px solid var(--border);
+            padding: 2rem 0;
+            text-align: center;
+            color: var(--muted-foreground);
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .modules-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .cta-buttons {
+                flex-direction: column;
+                align-items: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="container">
+            <h1>🤖 GHL Voice AI Agent Planner</h1>
+            <p>Build, configure, and deploy intelligent voice agents for GoHighLevel</p>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="container">
+            <h2 style="text-align: center; font-size: 2rem; margin-bottom: 1rem;">Complete Voice AI Development Platform</h2>
+            <p style="text-align: center; font-size: 1.1rem; color: var(--muted-foreground); max-width: 600px; margin: 0 auto;">
+                A comprehensive tool for planning, configuring, and deploying GoHighLevel Voice AI agents with advanced workflow automation, compliance checking, and analytics.
+            </p>
+
+            <div class="modules-grid">
+                <div class="module-card">
+                    <div class="module-icon">🤖</div>
+                    <h3 class="module-title">Voice AI Configuration</h3>
+                    <p class="module-description">Configure AI agents with personas, scripts, and behavior settings</p>
+                    <ul class="module-features">
+                        <li>Persona configuration (tone, style, language)</li>
+                        <li>Voice provider integration (ElevenLabs, Azure, AWS)</li>
+                        <li>LLM provider setup (OpenAI, Anthropic, Cohere)</li>
+                        <li>Script management and customization</li>
+                        <li>Intent recognition and response handling</li>
+                    </ul>
+                    <button class="btn btn-primary">Configure Agent</button>
+                </div>
+
+                <div class="module-card">
+                    <div class="module-icon">⚡</div>
+                    <h3 class="module-title">Workflow Designer</h3>
+                    <p class="module-description">Drag-and-drop workflow builder for automated call flows</p>
+                    <ul class="module-features">
+                        <li>Visual workflow designer</li>
+                        <li>Node-based call flow creation</li>
+                        <li>Conditional logic and branching</li>
+                        <li>Transfer rules and routing</li>
+                        <li>Real-time testing and validation</li>
+                    </ul>
+                    <button class="btn btn-primary">Design Workflow</button>
+                </div>
+
+                <div class="module-card">
+                    <div class="module-icon">📞</div>
+                    <h3 class="module-title">Phone System Manager</h3>
+                    <p class="module-description">Manage phone numbers, IVR menus, and call routing</p>
+                    <ul class="module-features">
+                        <li>Phone number configuration</li>
+                        <li>IVR menu setup and management</li>
+                        <li>Call routing rules</li>
+                        <li>Business hours configuration</li>
+                        <li>Holiday and exception handling</li>
+                    </ul>
+                    <button class="btn btn-primary">Manage Phones</button>
+                </div>
+
+                <div class="module-card">
+                    <div class="module-icon">🗃️</div>
+                    <h3 class="module-title">Custom Fields Manager</h3>
+                    <p class="module-description">Define custom fields and manage custom values</p>
+                    <ul class="module-features">
+                        <li>Custom field creation</li>
+                        <li>Data type configuration</li>
+                        <li>Validation rules setup</li>
+                        <li>Custom values management</li>
+                        <li>GHL merge tag integration</li>
+                    </ul>
+                    <button class="btn btn-primary">Manage Fields</button>
+                </div>
+
+                <div class="module-card">
+                    <div class="module-icon">🔌</div>
+                    <h3 class="module-title">Integration Setup</h3>
+                    <p class="module-description">Connect external services and configure APIs</p>
+                    <ul class="module-features">
+                        <li>OpenAI integration</li>
+                        <li>ElevenLabs voice setup</li>
+                        <li>Twilio phone integration</li>
+                        <li>Webhook configuration</li>
+                        <li>Zapier automation</li>
+                    </ul>
+                    <button class="btn btn-primary">Setup Integrations</button>
+                </div>
+
+                <div class="module-card">
+                    <div class="module-icon">🛡️</div>
+                    <h3 class="module-title">Compliance Checker</h3>
+                    <p class="module-description">Ensure regulatory compliance and risk management</p>
+                    <ul class="module-features">
+                        <li>TCPA compliance checking</li>
+                        <li>GDPR compliance validation</li>
+                        <li>DNC list management</li>
+                        <li>Consent script configuration</li>
+                        <li>Risk assessment tools</li>
+                    </ul>
+                    <button class="btn btn-primary">Check Compliance</button>
+                </div>
+
+                <div class="module-card">
+                    <div class="module-icon">🧪</div>
+                    <h3 class="module-title">Testing Simulator</h3>
+                    <p class="module-description">Test voice agents and workflows before deployment</p>
+                    <ul class="module-features">
+                        <li>Call simulation testing</li>
+                        <li>Real-time transcript generation</li>
+                        <li>Performance metrics tracking</li>
+                        <li>Error detection and reporting</li>
+                        <li>Quality assurance tools</li>
+                    </ul>
+                    <button class="btn btn-primary">Start Testing</button>
+                </div>
+
+                <div class="module-card">
+                    <div class="module-icon">📚</div>
+                    <h3 class="module-title">Template Library</h3>
+                    <p class="module-description">Pre-built templates for different industries</p>
+                    <ul class="module-features">
+                        <li>Real estate templates</li>
+                        <li>Healthcare configurations</li>
+                        <li>E-commerce setups</li>
+                        <li>Service business templates</li>
+                        <li>Custom template creation</li>
+                    </ul>
+                    <button class="btn btn-primary">Browse Templates</button>
+                </div>
+
+                <div class="module-card">
+                    <div class="module-icon">📊</div>
+                    <h3 class="module-title">Analytics Dashboard</h3>
+                    <p class="module-description">Track performance and calculate costs</p>
+                    <ul class="module-features">
+                        <li>Call volume tracking</li>
+                        <li>Success rate monitoring</li>
+                        <li>Cost calculation tools</li>
+                        <li>ROI analysis</li>
+                        <li>Performance reporting</li>
+                    </ul>
+                    <button class="btn btn-primary">View Analytics</button>
+                </div>
+
+                <div class="module-card">
+                    <div class="module-icon">📤</div>
+                    <h3 class="module-title">Export Center</h3>
+                    <p class="module-description">Export configurations in various formats</p>
+                    <ul class="module-features">
+                        <li>JSON configuration export</li>
+                        <li>Markdown implementation guides</li>
+                        <li>Project sharing tools</li>
+                        <li>Backup and restore</li>
+                        <li>Version control integration</li>
+                    </ul>
+                    <button class="btn btn-primary">Export Data</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="features-section">
+        <div class="container">
+            <h2 style="text-align: center; font-size: 2rem; margin-bottom: 1rem;">Key Features</h2>
+            <div class="features-grid">
+                <div class="feature-item">
+                    <div class="feature-icon">⚡</div>
+                    <h3>Rapid Development</h3>
+                    <p>Build and deploy voice agents in minutes, not hours</p>
+                </div>
+                <div class="feature-item">
+                    <div class="feature-icon">🎯</div>
+                    <h3>Industry Templates</h3>
+                    <p>Pre-built configurations for real estate, healthcare, and more</p>
+                </div>
+                <div class="feature-item">
+                    <div class="feature-icon">🔒</div>
+                    <h3>Compliance Ready</h3>
+                    <p>Built-in TCPA, GDPR, and DNC compliance checking</p>
+                </div>
+                <div class="feature-item">
+                    <div class="feature-icon">📈</div>
+                    <h3>Analytics & ROI</h3>
+                    <p>Track performance and calculate return on investment</p>
+                </div>
+                <div class="feature-item">
+                    <div class="feature-icon">🔧</div>
+                    <h3>Easy Integration</h3>
+                    <p>Seamless integration with GoHighLevel and external services</p>
+                </div>
+                <div class="feature-item">
+                    <div class="feature-icon">🚀</div>
+                    <h3>Production Ready</h3>
+                    <p>Deploy with confidence using our testing and validation tools</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="cta-section">
+        <div class="container">
+            <h2>Ready to Build Your Voice AI Agent?</h2>
+            <p>Start planning and configuring your GoHighLevel Voice AI agent today</p>
+            <div class="cta-buttons">
+                <button class="btn btn-white">Get Started</button>
+                <button class="btn btn-outline" style="color: white; border-color: white;">View Demo</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <div class="container">
+            <p>&copy; 2024 GHL Voice AI Agent Planner. Built for GoHighLevel Voice AI development.</p>
+        </div>
+    </div>
+
+    <script>
+        // Simple demo functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add click handlers for demo buttons
+            const buttons = document.querySelectorAll('.btn');
+            buttons.forEach(button => {
+                button.addEventListener('click', function() {
+                    const module = this.closest('.module-card');
+                    if (module) {
+                        const title = module.querySelector('.module-title').textContent;
+                        alert(`Demo: ${title} module would open here.\n\nThis is a demonstration of the GHL Voice AI Agent Planner interface.`);
+                    }
+                });
+            });
+
+            // Add some interactive effects
+            const cards = document.querySelectorAll('.module-card');
+            cards.forEach(card => {
+                card.addEventListener('mouseenter', function() {
+                    this.style.transform = 'translateY(-8px)';
+                });
+                
+                card.addEventListener('mouseleave', function() {
+                    this.style.transform = 'translateY(0)';
+                });
+            });
+        });
+    </script>
+</body>
+</html>

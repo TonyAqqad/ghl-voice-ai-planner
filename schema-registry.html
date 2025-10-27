@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GHL Voice AI - Schema Registry</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --background: #0a0a0a;
+            --foreground: #ffffff;
+            --card: #111111;
+            --card-foreground: #ffffff;
+            --primary: #5566ff;
+            --primary-foreground: #ffffff;
+            --secondary: #1a1a1a;
+            --secondary-foreground: #ffffff;
+            --muted: #1a1a1a;
+            --muted-foreground: #a3a3a3;
+            --accent: #1a1a1a;
+            --accent-foreground: #ffffff;
+            --destructive: #ff4444;
+            --destructive-foreground: #ffffff;
+            --warning: #f59e0b;
+            --warning-foreground: #0a0a0a;
+            --success: #10b981;
+            --success-foreground: #0a0a0a;
+            --border: #262626;
+            --input: #262626;
+            --ring: #5566ff;
+            --radius: 0.75rem;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+            background-color: var(--background);
+            color: var(--foreground);
+            background-image: radial-gradient(circle at 1px 1px, rgba(85,102,255,0.1) 1px, transparent 0);
+            background-size: 20px 20px;
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        .header h1 {
+            font-size: 3rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, var(--primary), #4c5ce6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header p {
+            font-size: 1.25rem;
+            color: var(--muted-foreground);
+        }
+
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .search-box {
+            display: flex;
+            align-items: center;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 0.5rem 1rem;
+            min-width: 300px;
+        }
+
+        .search-box input {
+            background: transparent;
+            border: none;
+            color: var(--foreground);
+            outline: none;
+            flex: 1;
+            padding: 0.5rem;
+        }
+
+        .search-box input::placeholder {
+            color: var(--muted-foreground);
+        }
+
+        .filter-tabs {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .filter-tab {
+            padding: 0.5rem 1rem;
+            background: var(--muted);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--muted-foreground);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .filter-tab.active {
+            background: var(--primary);
+            color: var(--primary-foreground);
+            border-color: var(--primary);
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            white-space: nowrap;
+            border-radius: var(--radius);
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            cursor: pointer;
+            border: 1px solid transparent;
+            padding: 0.75rem 1.5rem;
+            min-height: 2.75rem;
+            text-decoration: none;
+        }
+
+        .btn-primary {
+            background-color: var(--primary);
+            color: var(--primary-foreground);
+            font-weight: 600;
+            box-shadow: 0 4px 14px 0 rgba(0, 255, 163, 0.3);
+        }
+
+        .btn-primary:hover {
+            background-color: #00e694;
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px 0 rgba(0, 255, 163, 0.4);
+        }
+
+        .btn-secondary {
+            background-color: var(--secondary);
+            color: var(--secondary-foreground);
+            border-color: var(--border);
+        }
+
+        .btn-secondary:hover {
+            background-color: var(--accent);
+            color: var(--accent-foreground);
+        }
+
+        .btn-outline {
+            border: 1px solid var(--border);
+            background-color: transparent;
+            color: var(--foreground);
+        }
+
+        .btn-outline:hover {
+            background-color: var(--accent);
+            color: var(--accent-foreground);
+            border-color: var(--primary);
+        }
+
+        .btn-sm {
+            padding: 0.5rem 1rem;
+            font-size: 0.75rem;
+            min-height: 2rem;
+        }
+
+        .schema-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .schema-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 1.5rem;
+            transition: all 0.3s ease;
+        }
+
+        .schema-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3);
+            border-color: var(--primary);
+        }
+
+        .schema-header {
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .schema-title {
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: var(--foreground);
+        }
+
+        .schema-type {
+            padding: 0.25rem 0.75rem;
+            background: var(--muted);
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--muted-foreground);
+        }
+
+        .schema-description {
+            color: var(--muted-foreground);
+            margin-bottom: 1rem;
+            font-size: 0.875rem;
+        }
+
+        .schema-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .detail-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .detail-label {
+            font-size: 0.75rem;
+            color: var(--muted-foreground);
+            margin-bottom: 0.25rem;
+        }
+
+        .detail-value {
+            font-size: 0.875rem;
+            color: var(--foreground);
+            font-weight: 500;
+        }
+
+        .schema-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .status-synced {
+            color: var(--success);
+        }
+
+        .status-pending {
+            color: var(--warning);
+        }
+
+        .status-error {
+            color: var(--destructive);
+        }
+
+        .status-draft {
+            color: var(--muted-foreground);
+        }
+
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .modal.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .modal-content {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 2rem;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .modal-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--foreground);
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            color: var(--muted-foreground);
+            cursor: pointer;
+            font-size: 1.5rem;
+            padding: 0.5rem;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: var(--foreground);
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 0.75rem;
+            background: var(--input);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--foreground);
+            font-size: 0.875rem;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(0, 255, 163, 0.1);
+        }
+
+        .form-select {
+            width: 100%;
+            padding: 0.75rem;
+            background: var(--input);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--foreground);
+            font-size: 0.875rem;
+        }
+
+        .form-textarea {
+            width: 100%;
+            padding: 0.75rem;
+            background: var(--input);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--foreground);
+            font-size: 0.875rem;
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 1.5rem;
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-label {
+            font-size: 0.875rem;
+            color: var(--muted-foreground);
+        }
+
+        .loading {
+            display: inline-block;
+            width: 1rem;
+            height: 1rem;
+            border: 2px solid var(--muted);
+            border-radius: 50%;
+            border-top-color: var(--primary);
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @media (max-width: 768px) {
+            .schema-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .search-box {
+                min-width: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Schema Registry</h1>
+            <p>Manage custom fields, validate schemas, and detect drift across locations</p>
+        </div>
+
+        <!-- Stats -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-number" id="totalFields">0</div>
+                <div class="stat-label">Total Fields</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="syncedFields">0</div>
+                <div class="stat-label">Synced</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="pendingFields">0</div>
+                <div class="stat-label">Pending</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="errorFields">0</div>
+                <div class="stat-label">Errors</div>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="controls">
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="Search fields...">
+            </div>
+            <div class="filter-tabs">
+                <div class="filter-tab active" data-filter="all">All</div>
+                <div class="filter-tab" data-filter="contact">Contact</div>
+                <div class="filter-tab" data-filter="opportunity">Opportunity</div>
+                <div class="filter-tab" data-filter="company">Company</div>
+                <div class="filter-tab" data-filter="location">Location</div>
+            </div>
+            <button class="btn btn-primary" onclick="openCreateModal()">+ Add Field</button>
+        </div>
+
+        <!-- Schema Grid -->
+        <div class="schema-grid" id="schemaGrid">
+            <!-- Schema cards will be populated here -->
+        </div>
+    </div>
+
+    <!-- Create/Edit Modal -->
+    <div class="modal" id="fieldModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="modalTitle">Create Custom Field</h3>
+                <button class="close-btn" onclick="closeModal()">&times;</button>
+            </div>
+            <form id="fieldForm">
+                <div class="form-group">
+                    <label class="form-label" for="fieldName">Field Name</label>
+                    <input type="text" id="fieldName" class="form-input" placeholder="e.g., lead_source" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="fieldLabel">Display Label</label>
+                    <input type="text" id="fieldLabel" class="form-input" placeholder="e.g., Lead Source" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="fieldType">Field Type</label>
+                    <select id="fieldType" class="form-select" required>
+                        <option value="text">Text</option>
+                        <option value="number">Number</option>
+                        <option value="date">Date</option>
+                        <option value="datetime">DateTime</option>
+                        <option value="boolean">Boolean</option>
+                        <option value="select">Select</option>
+                        <option value="multiselect">Multi-Select</option>
+                        <option value="textarea">Textarea</option>
+                        <option value="url">URL</option>
+                        <option value="email">Email</option>
+                        <option value="phone">Phone</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="objectType">Object Type</label>
+                    <select id="objectType" class="form-select" required>
+                        <option value="contact">Contact</option>
+                        <option value="opportunity">Opportunity</option>
+                        <option value="company">Company</option>
+                        <option value="location">Location</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="fieldDescription">Description</label>
+                    <textarea id="fieldDescription" class="form-textarea" placeholder="Field description..."></textarea>
+                </div>
+                <div class="form-group" id="optionsGroup" style="display: none;">
+                    <label class="form-label" for="fieldOptions">Options (one per line)</label>
+                    <textarea id="fieldOptions" class="form-textarea" placeholder="Option 1&#10;Option 2&#10;Option 3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="isRequired">Required Field</label>
+                    <input type="checkbox" id="isRequired" style="margin-right: 0.5rem;">
+                    <span>This field is required</span>
+                </div>
+                <div style="display: flex; gap: 1rem; margin-top: 2rem;">
+                    <button type="submit" class="btn btn-primary">Save Field</button>
+                    <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        let fields = [];
+        let currentFilter = 'all';
+        let editingField = null;
+
+        // Sample data
+        const sampleFields = [
+            {
+                id: 1,
+                name: 'lead_source',
+                label: 'Lead Source',
+                type: 'select',
+                objectType: 'contact',
+                description: 'Source of the lead',
+                options: ['Website', 'Referral', 'Cold Call', 'Social Media'],
+                required: true,
+                status: 'synced',
+                createdAt: '2024-01-15',
+                updatedAt: '2024-01-15'
+            },
+            {
+                id: 2,
+                name: 'appointment_type',
+                label: 'Appointment Type',
+                type: 'select',
+                objectType: 'opportunity',
+                description: 'Type of appointment scheduled',
+                options: ['Consultation', 'Demo', 'Follow-up', 'Closing'],
+                required: false,
+                status: 'synced',
+                createdAt: '2024-01-14',
+                updatedAt: '2024-01-14'
+            },
+            {
+                id: 3,
+                name: 'company_size',
+                label: 'Company Size',
+                type: 'select',
+                objectType: 'company',
+                description: 'Number of employees',
+                options: ['1-10', '11-50', '51-200', '201-500', '500+'],
+                required: false,
+                status: 'pending',
+                createdAt: '2024-01-13',
+                updatedAt: '2024-01-13'
+            },
+            {
+                id: 4,
+                name: 'budget_range',
+                label: 'Budget Range',
+                type: 'select',
+                objectType: 'opportunity',
+                description: 'Expected budget range',
+                options: ['Under $1K', '$1K-$5K', '$5K-$10K', '$10K+'],
+                required: true,
+                status: 'error',
+                createdAt: '2024-01-12',
+                updatedAt: '2024-01-12'
+            },
+            {
+                id: 5,
+                name: 'timezone',
+                label: 'Timezone',
+                type: 'select',
+                objectType: 'location',
+                description: 'Business timezone',
+                options: ['EST', 'CST', 'MST', 'PST', 'UTC'],
+                required: true,
+                status: 'synced',
+                createdAt: '2024-01-11',
+                updatedAt: '2024-01-11'
+            },
+            {
+                id: 6,
+                name: 'notes',
+                label: 'Internal Notes',
+                type: 'textarea',
+                objectType: 'contact',
+                description: 'Internal notes about the contact',
+                options: [],
+                required: false,
+                status: 'draft',
+                createdAt: '2024-01-10',
+                updatedAt: '2024-01-10'
+            }
+        ];
+
+        function init() {
+            fields = [...sampleFields];
+            renderFields();
+            updateStats();
+            setupEventListeners();
+        }
+
+        function setupEventListeners() {
+            // Search
+            document.getElementById('searchInput').addEventListener('input', filterFields);
+            
+            // Filter tabs
+            document.querySelectorAll('.filter-tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+                    currentFilter = tab.dataset.filter;
+                    filterFields();
+                });
+            });
+
+            // Field type change
+            document.getElementById('fieldType').addEventListener('change', toggleOptionsField);
+            
+            // Form submit
+            document.getElementById('fieldForm').addEventListener('submit', handleFormSubmit);
+        }
+
+        function renderFields() {
+            const grid = document.getElementById('schemaGrid');
+            const filteredFields = getFilteredFields();
+            
+            grid.innerHTML = filteredFields.map(field => `
+                <div class="schema-card fade-in">
+                    <div class="schema-header">
+                        <div class="schema-title">${field.label}</div>
+                        <div class="schema-type">${field.objectType}</div>
+                    </div>
+                    <div class="schema-description">${field.description}</div>
+                    <div class="schema-details">
+                        <div class="detail-item">
+                            <div class="detail-label">Field Name</div>
+                            <div class="detail-value">${field.name}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Type</div>
+                            <div class="detail-value">${field.type}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Status</div>
+                            <div class="detail-value">
+                                <span class="status-indicator status-${field.status}">
+                                    ${getStatusIcon(field.status)} ${field.status.toUpperCase()}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Required</div>
+                            <div class="detail-value">${field.required ? 'Yes' : 'No'}</div>
+                        </div>
+                    </div>
+                    <div class="schema-actions">
+                        <button class="btn btn-sm btn-outline" onclick="editField(${field.id})">Edit</button>
+                        <button class="btn btn-sm btn-secondary" onclick="syncField(${field.id})">Sync</button>
+                        <button class="btn btn-sm btn-outline" onclick="deleteField(${field.id})">Delete</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function getFilteredFields() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            return fields.filter(field => {
+                const matchesFilter = currentFilter === 'all' || field.objectType === currentFilter;
+                const matchesSearch = field.name.toLowerCase().includes(searchTerm) || 
+                                   field.label.toLowerCase().includes(searchTerm) ||
+                                   field.description.toLowerCase().includes(searchTerm);
+                return matchesFilter && matchesSearch;
+            });
+        }
+
+        function filterFields() {
+            renderFields();
+        }
+
+        function getStatusIcon(status) {
+            const icons = {
+                synced: '✅',
+                pending: '⏳',
+                error: '❌',
+                draft: '📝'
+            };
+            return icons[status] || '❓';
+        }
+
+        function updateStats() {
+            const total = fields.length;
+            const synced = fields.filter(f => f.status === 'synced').length;
+            const pending = fields.filter(f => f.status === 'pending').length;
+            const error = fields.filter(f => f.status === 'error').length;
+
+            document.getElementById('totalFields').textContent = total;
+            document.getElementById('syncedFields').textContent = synced;
+            document.getElementById('pendingFields').textContent = pending;
+            document.getElementById('errorFields').textContent = error;
+        }
+
+        function openCreateModal() {
+            editingField = null;
+            document.getElementById('modalTitle').textContent = 'Create Custom Field';
+            document.getElementById('fieldForm').reset();
+            document.getElementById('optionsGroup').style.display = 'none';
+            document.getElementById('fieldModal').classList.add('active');
+        }
+
+        function editField(id) {
+            const field = fields.find(f => f.id === id);
+            if (!field) return;
+
+            editingField = field;
+            document.getElementById('modalTitle').textContent = 'Edit Custom Field';
+            document.getElementById('fieldName').value = field.name;
+            document.getElementById('fieldLabel').value = field.label;
+            document.getElementById('fieldType').value = field.type;
+            document.getElementById('objectType').value = field.objectType;
+            document.getElementById('fieldDescription').value = field.description;
+            document.getElementById('fieldOptions').value = field.options.join('\n');
+            document.getElementById('isRequired').checked = field.required;
+            
+            toggleOptionsField();
+            document.getElementById('fieldModal').classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('fieldModal').classList.remove('active');
+            editingField = null;
+        }
+
+        function toggleOptionsField() {
+            const fieldType = document.getElementById('fieldType').value;
+            const optionsGroup = document.getElementById('optionsGroup');
+            
+            if (['select', 'multiselect'].includes(fieldType)) {
+                optionsGroup.style.display = 'block';
+            } else {
+                optionsGroup.style.display = 'none';
+            }
+        }
+
+        function handleFormSubmit(e) {
+            e.preventDefault();
+            
+            const formData = {
+                name: document.getElementById('fieldName').value,
+                label: document.getElementById('fieldLabel').value,
+                type: document.getElementById('fieldType').value,
+                objectType: document.getElementById('objectType').value,
+                description: document.getElementById('fieldDescription').value,
+                options: document.getElementById('fieldOptions').value.split('\n').filter(o => o.trim()),
+                required: document.getElementById('isRequired').checked
+            };
+
+            if (editingField) {
+                // Update existing field
+                const index = fields.findIndex(f => f.id === editingField.id);
+                fields[index] = {
+                    ...editingField,
+                    ...formData,
+                    updatedAt: new Date().toISOString().split('T')[0]
+                };
+            } else {
+                // Create new field
+                const newField = {
+                    id: Date.now(),
+                    ...formData,
+                    status: 'draft',
+                    createdAt: new Date().toISOString().split('T')[0],
+                    updatedAt: new Date().toISOString().split('T')[0]
+                };
+                fields.unshift(newField);
+            }
+
+            renderFields();
+            updateStats();
+            closeModal();
+        }
+
+        function syncField(id) {
+            const field = fields.find(f => f.id === id);
+            if (!field) return;
+
+            // Simulate sync process
+            field.status = 'pending';
+            renderFields();
+            updateStats();
+
+            setTimeout(() => {
+                field.status = Math.random() > 0.2 ? 'synced' : 'error';
+                renderFields();
+                updateStats();
+            }, 2000);
+        }
+
+        function deleteField(id) {
+            if (confirm('Are you sure you want to delete this field?')) {
+                fields = fields.filter(f => f.id !== id);
+                renderFields();
+                updateStats();
+            }
+        }
+
+        // Initialize
+        init();
+    </script>
+</body>
+</html>

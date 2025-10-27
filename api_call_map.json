@@ -1,0 +1,56 @@
+{
+  "version": "1.0",
+  "operations": [
+    {
+      "name": "schema.sync_custom_fields",
+      "preconditions": ["location_id"],
+      "writes": ["custom_field.v2.create", "custom_field.v2.update"],
+      "idempotency_key": "location_id:field_key",
+      "retries": {"max": 5, "backoff": "exponential"}
+    },
+    {
+      "name": "schema.sync_custom_values",
+      "preconditions": ["location_id"],
+      "writes": ["location.custom_values.set"],
+      "idempotency_key": "location_id:key",
+      "retries": {"max": 5, "backoff": "exponential"}
+    },
+    {
+      "name": "voice_ai.upsert_agent",
+      "preconditions": ["location_id", "schema.ready"],
+      "writes": ["voice_ai.agent.create_or_update", "voice_ai.actions.attach"],
+      "idempotency_key": "location_id:agent_name",
+      "retries": {"max": 3, "backoff": "exponential"}
+    },
+    {
+      "name": "phone.ensure_number_and_routing",
+      "preconditions": ["location_id", "lc_phone.enabled"],
+      "reads": ["phone.numbers.list"],
+      "writes": ["phone.routing.set", "ivr.menu.upsert", "business_hours.upsert"],
+      "idempotency_key": "location_id:routing_profile",
+      "retries": {"max": 4, "backoff": "exponential"}
+    },
+    {
+      "name": "workflows.ensure_voice_triggers",
+      "preconditions": ["location_id"],
+      "writes": ["workflow.trigger.upsert", "workflow.actions.upsert"],
+      "idempotency_key": "location_id:workflow_name",
+      "retries": {"max": 3, "backoff": "exponential"}
+    },
+    {
+      "name": "qa.run_golden_pack",
+      "preconditions": ["location_id", "voice_ai.agent_id", "workflow.ready"],
+      "reads": ["call_logs.fetch", "contacts.get"],
+      "writes": ["contacts.create_if_missing", "test_report.store"],
+      "idempotency_key": "location_id:qa_suite:v1",
+      "retries": {"max": 2}
+    }
+  ],
+  "conventions": {
+    "timeout_ms": 2000,
+    "verify_signatures": true,
+    "p95_latency_budget_ms": 1500,
+    "on_conflict": "read-before-write",
+    "dedupe": "idempotency-key+hash"
+  }
+}

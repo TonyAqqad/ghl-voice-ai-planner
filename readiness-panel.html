@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GHL Voice AI - Deployment Readiness Panel</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --background: #0a0a0a;
+            --foreground: #ffffff;
+            --card: #111111;
+            --card-foreground: #ffffff;
+            --primary: #5566ff;
+            --primary-foreground: #ffffff;
+            --secondary: #1a1a1a;
+            --secondary-foreground: #ffffff;
+            --muted: #1a1a1a;
+            --muted-foreground: #a3a3a3;
+            --accent: #1a1a1a;
+            --accent-foreground: #ffffff;
+            --destructive: #ff4444;
+            --destructive-foreground: #ffffff;
+            --warning: #f59e0b;
+            --warning-foreground: #0a0a0a;
+            --success: #10b981;
+            --success-foreground: #0a0a0a;
+            --border: #262626;
+            --input: #262626;
+            --ring: #5566ff;
+            --radius: 0.75rem;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+            background-color: var(--background);
+            color: var(--foreground);
+            background-image: radial-gradient(circle at 1px 1px, rgba(85,102,255,0.1) 1px, transparent 0);
+            background-size: 20px 20px;
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        .header h1 {
+            font-size: 3rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, var(--primary), #4c5ce6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header p {
+            font-size: 1.25rem;
+            color: var(--muted-foreground);
+        }
+
+        .readiness-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 2rem;
+            margin-bottom: 3rem;
+        }
+
+        .readiness-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 2rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .readiness-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.5rem;
+        }
+
+        .card-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--foreground);
+        }
+
+        .status-badge {
+            padding: 0.5rem 1rem;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .status-pass {
+            background: var(--success);
+            color: var(--success-foreground);
+        }
+
+        .status-warn {
+            background: var(--warning);
+            color: var(--warning-foreground);
+        }
+
+        .status-block {
+            background: var(--destructive);
+            color: var(--destructive-foreground);
+        }
+
+        .status-pending {
+            background: var(--muted);
+            color: var(--muted-foreground);
+        }
+
+        .checklist {
+            list-style: none;
+        }
+
+        .checklist-item {
+            display: flex;
+            align-items: center;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .checklist-item:last-child {
+            border-bottom: none;
+        }
+
+        .check-icon {
+            width: 20px;
+            height: 20px;
+            margin-right: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .check-pass {
+            color: var(--success);
+        }
+
+        .check-warn {
+            color: var(--warning);
+        }
+
+        .check-block {
+            color: var(--destructive);
+        }
+
+        .check-pending {
+            color: var(--muted-foreground);
+        }
+
+        .check-text {
+            flex: 1;
+            font-size: 0.875rem;
+        }
+
+        .check-details {
+            font-size: 0.75rem;
+            color: var(--muted-foreground);
+            margin-top: 0.25rem;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 1rem;
+            margin-top: 2rem;
+            justify-content: center;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            white-space: nowrap;
+            border-radius: var(--radius);
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            cursor: pointer;
+            border: 1px solid transparent;
+            padding: 0.75rem 1.5rem;
+            min-height: 2.75rem;
+            text-decoration: none;
+        }
+
+        .btn-primary {
+            background-color: var(--primary);
+            color: var(--primary-foreground);
+            font-weight: 600;
+            box-shadow: 0 4px 14px 0 rgba(0, 255, 163, 0.3);
+        }
+
+        .btn-primary:hover {
+            background-color: #00e694;
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px 0 rgba(0, 255, 163, 0.4);
+        }
+
+        .btn-secondary {
+            background-color: var(--secondary);
+            color: var(--secondary-foreground);
+            border-color: var(--border);
+        }
+
+        .btn-secondary:hover {
+            background-color: var(--accent);
+            color: var(--accent-foreground);
+        }
+
+        .btn-outline {
+            border: 1px solid var(--border);
+            background-color: transparent;
+            color: var(--foreground);
+        }
+
+        .btn-outline:hover {
+            background-color: var(--accent);
+            color: var(--accent-foreground);
+            border-color: var(--primary);
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: var(--muted);
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 1rem 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), #00d4aa);
+            transition: width 0.3s ease;
+        }
+
+        .summary-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 1.5rem;
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-label {
+            font-size: 0.875rem;
+            color: var(--muted-foreground);
+        }
+
+        .stat-pass { color: var(--success); }
+        .stat-warn { color: var(--warning); }
+        .stat-block { color: var(--destructive); }
+
+        .loading {
+            display: inline-block;
+            width: 1rem;
+            height: 1rem;
+            border: 2px solid var(--muted);
+            border-radius: 50%;
+            border-top-color: var(--primary);
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        @media (max-width: 768px) {
+            .readiness-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .action-buttons {
+                flex-direction: column;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Deployment Readiness Panel</h1>
+            <p>Comprehensive preflight checks for GHL Voice AI Agent deployment</p>
+        </div>
+
+        <!-- Summary Stats -->
+        <div class="summary-stats">
+            <div class="stat-card">
+                <div class="stat-number stat-pass" id="passCount">0</div>
+                <div class="stat-label">Passed</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number stat-warn" id="warnCount">0</div>
+                <div class="stat-label">Warnings</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number stat-block" id="blockCount">0</div>
+                <div class="stat-label">Blocked</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="totalCount">0</div>
+                <div class="stat-label">Total Checks</div>
+            </div>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="progress-bar">
+            <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+        </div>
+
+        <!-- Readiness Checks Grid -->
+        <div class="readiness-grid">
+            <!-- Telephony & Trust -->
+            <div class="readiness-card fade-in">
+                <div class="card-header">
+                    <h3 class="card-title">Telephony & Trust</h3>
+                    <span class="status-badge status-pending" id="telephonyStatus">PENDING</span>
+                </div>
+                <ul class="checklist" id="telephonyChecks">
+                    <li class="checklist-item">
+                        <div class="check-icon check-pending">⏳</div>
+                        <div class="check-text">
+                            <div>LC Phone active, at least one number attached</div>
+                            <div class="check-details">Checking phone number configuration...</div>
+                        </div>
+                    </li>
+                    <li class="checklist-item">
+                        <div class="check-icon check-pending">⏳</div>
+                        <div class="check-text">
+                            <div>Outbound Voice AI enabled</div>
+                            <div class="check-details">Verifying outbound capabilities...</div>
+                        </div>
+                    </li>
+                    <li class="checklist-item">
+                        <div class="check-icon check-pending">⏳</div>
+                        <div class="check-text">
+                            <div>Business hours + holidays configured</div>
+                            <div class="check-details">Validating business hours setup...</div>
+                        </div>
+                    </li>
+                    <li class="checklist-item">
+                        <div class="check-icon check-pending">⏳</div>
+                        <div class="check-text">
+                            <div>Regulatory bundle/A2P campaign approved</div>
+                            <div class="check-details">Checking regulatory compliance...</div>
+                        </div>
+                    </li>
+                    <li class="checklist-item">
+                        <div class="check-icon check-pending">⏳</div>
+                        <div class="check-text">
+                            <div>STIR/SHAKEN status checked</div>
+                            <div class="check-details">Verifying call authentication...</div>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- GHL Objects & Schema -->
+            <div class="readiness-card fade-in">
+                <div class="card-header">
+                    <h3 class="card-title">GHL Objects & Schema</h3>
+                    <span class="status-badge status-pending" id="schemaStatus">PENDING</span>
+                </div>
+                <ul class="checklist" id="schemaChecks">
+                    <li class="checklist-item">
+                        <div class="check-icon check-pending">⏳</div>
+                        <div class="check-text">
+                            <div>Pipelines + default stage exist</div>
+                            <div class="check-details">Validating pipeline configuration...</div>
+                        </div>
+                    </li>
+                    <li class="checklist-item">
+                        <div class="check-icon check-pending">⏳</div>
+                        <div class="check-text">
+                            <div>Calendars/resources present if booking is used</div>
+                            <div class="check-details">Checking calendar integration...</div>
+                        </div>
+                    </li>
+                    <li class="checklist-item">
+                        <div class="check-icon check-pending">⏳</div>
+                        <div class="check-text">
+                            <div>Custom Field Schema synced</div>
+                            <div class="check-details">Synchronizing custom fields...</div>
+                        </div>
+                    </li>
+                    <li class="checklist-item">
+                        <div class="check-icon check-pending">⏳</div>
+                        <div class="check-text">
+                            <div>Location Custom Values present</div>
+                            <div class="check-details">Validating custom values...</div>
+                        </div>
+                    </li>
+                    <li class="checklist-item">
+                        <div class="check-icon check-pending">⏳</div>
+                        <div class="check-text">
+                            <div>Merge tag preview renders without "{{missing}}"</div>
+                            <div class="check-details">Testing merge tag resolution...</div>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Webhooks & Custom Actions -->
+            <div class="readiness-card fade-in">
+                <div class="card-header">
+                    <h3 class="card-title">Webhooks & Custom Actions</h3>
+                    <span class="status-badge status-pending" id="webhookStatus">PENDING</span>
+                </div>
+                <ul class="checklist" id="webhookChecks">
+                    <li class="checklist-item">
+                        <div class="check-icon check-pending">⏳</div>
+                        <div class="check-text">
+                            <div>Webhook endpoints reachable (&lt; 1500ms p95)</div>
+                            <div class="check-details">Testing endpoint response times...</div>
+                        </div>
+                    </li>
+                    <li class="checklist-item">
+                        <div class="check-icon check-pending">⏳</div>
+                        <div class="check-text">
+                            <div>Signature verification on</div>
+                            <div class="check-details">Validating webhook security...</div>
+                        </div>
+                    </li>
+                    <li class="checklist-item">
+                        <div class="check-icon check-pending">⏳</div>
+                        <div class="check-text">
+                            <div>Idempotency key support (dedupe writes)</div>
+                            <div class="check-details">Testing duplicate request handling...</div>
+                        </div>
+                    </li>
+                    <li class="checklist-item">
+                        <div class="check-icon check-pending">⏳</div>
+                        <div class="check-text">
+                            <div>Retry/backoff on 429/5xx</div>
+                            <div class="check-details">Configuring retry mechanisms...</div>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Rate Limits & Quotas -->
+            <div class="readiness-card fade-in">
+                <div class="card-header">
+                    <h3 class="card-title">Rate Limits & Quotas</h3>
+                    <span class="status-badge status-pending" id="rateLimitStatus">PENDING</span>
+                </div>
+                <ul class="checklist" id="rateLimitChecks">
+                    <li class="checklist-item">
+                        <div class="check-icon check-pending">⏳</div>
+                        <div class="check-text">
+                            <div>Estimated request budget &lt; limit window</div>
+                            <div class="check-details">Calculating request budget...</div>
+                        </div>
+                    </li>
+                    <li class="checklist-item">
+                        <div class="check-icon check-pending">⏳</div>
+                        <div class="check-text">
+                            <div>Queue with exponential backoff configured</div>
+                            <div class="check-details">Setting up rate limiting queue...</div>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- QA Golden Pack -->
+            <div class="readiness-card fade-in">
+                <div class="card-header">
+                    <h3 class="card-title">QA Golden Pack</h3>
+                    <span class="status-badge status-pending" id="qaStatus">PENDING</span>
+                </div>
+                <ul class="checklist" id="qaChecks">
+                    <li class="checklist-item">
+                        <div class="check-icon check-pending">⏳</div>
+                        <div class="check-text">
+                            <div>Test contact created</div>
+                            <div class="check-details">Creating test contact...</div>
+                        </div>
+                    </li>
+                    <li class="checklist-item">
+                        <div class="check-icon check-pending">⏳</div>
+                        <div class="check-text">
+                            <div>Outbound (or inbound) test call triggered</div>
+                            <div class="check-details">Initiating test call...</div>
+                        </div>
+                    </li>
+                    <li class="checklist-item">
+                        <div class="check-icon check-pending">⏳</div>
+                        <div class="check-text">
+                            <div>Call log pulled: intents fired, actions executed</div>
+                            <div class="check-details">Analyzing call logs...</div>
+                        </div>
+                    </li>
+                    <li class="checklist-item">
+                        <div class="check-icon check-pending">⏳</div>
+                        <div class="check-text">
+                            <div>Booking/field updates verified</div>
+                            <div class="check-details">Validating data updates...</div>
+                        </div>
+                    </li>
+                    <li class="checklist-item">
+                        <div class="check-icon check-pending">⏳</div>
+                        <div class="check-text">
+                            <div>Transcript snippet saved to /qa-reports</div>
+                            <div class="check-details">Saving test results...</div>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Compliance & Safety -->
+            <div class="readiness-card fade-in">
+                <div class="card-header">
+                    <h3 class="card-title">Compliance & Safety</h3>
+                    <span class="status-badge status-pending" id="complianceStatus">PENDING</span>
+                </div>
+                <ul class="checklist" id="complianceChecks">
+                    <li class="checklist-item">
+                        <div class="check-icon check-pending">⏳</div>
+                        <div class="check-text">
+                            <div>TCPA / GDPR checklist completed</div>
+                            <div class="check-details">Verifying compliance requirements...</div>
+                        </div>
+                    </li>
+                    <li class="checklist-item">
+                        <div class="check-icon check-pending">⏳</div>
+                        <div class="check-text">
+                            <div>Recording consent script present</div>
+                            <div class="check-details">Checking consent management...</div>
+                        </div>
+                    </li>
+                    <li class="checklist-item">
+                        <div class="check-icon check-pending">⏳</div>
+                        <div class="check-text">
+                            <div>DNC metadata loaded (rows &gt; 0 if configured)</div>
+                            <div class="check-details">Loading do-not-call lists...</div>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Export Sanity -->
+            <div class="readiness-card fade-in">
+                <div class="card-header">
+                    <h3 class="card-title">Export Sanity</h3>
+                    <span class="status-badge status-pending" id="exportStatus">PENDING</span>
+                </div>
+                <ul class="checklist" id="exportChecks">
+                    <li class="checklist-item">
+                        <div class="check-icon check-pending">⏳</div>
+                        <div class="check-text">
+                            <div>No orphan workflow nodes/edges</div>
+                            <div class="check-details">Validating workflow integrity...</div>
+                        </div>
+                    </li>
+                    <li class="checklist-item">
+                        <div class="check-icon check-pending">⏳</div>
+                        <div class="check-text">
+                            <div>All {{variables}} mapped</div>
+                            <div class="check-details">Checking variable resolution...</div>
+                        </div>
+                    </li>
+                    <li class="checklist-item">
+                        <div class="check-icon check-pending">⏳</div>
+                        <div class="check-text">
+                            <div>At least one knowledge base source attached</div>
+                            <div class="check-details">Verifying knowledge base setup...</div>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="action-buttons">
+            <button class="btn btn-primary" onclick="runAllChecks()">
+                <span id="runButtonText">Run All Checks</span>
+                <div class="loading" id="runLoading" style="display: none; margin-left: 0.5rem;"></div>
+            </button>
+            <button class="btn btn-secondary" onclick="exportReport()">Export Report</button>
+            <button class="btn btn-outline" onclick="clearResults()">Clear Results</button>
+        </div>
+    </div>
+
+    <script>
+        let checkResults = {
+            telephony: { status: 'pending', checks: [] },
+            schema: { status: 'pending', checks: [] },
+            webhook: { status: 'pending', checks: [] },
+            rateLimit: { status: 'pending', checks: [] },
+            qa: { status: 'pending', checks: [] },
+            compliance: { status: 'pending', checks: [] },
+            export: { status: 'pending', checks: [] }
+        };
+
+        function updateStats() {
+            let pass = 0, warn = 0, block = 0, total = 0;
+            
+            Object.values(checkResults).forEach(category => {
+                category.checks.forEach(check => {
+                    total++;
+                    if (check.status === 'pass') pass++;
+                    else if (check.status === 'warn') warn++;
+                    else if (check.status === 'block') block++;
+                });
+            });
+
+            document.getElementById('passCount').textContent = pass;
+            document.getElementById('warnCount').textContent = warn;
+            document.getElementById('blockCount').textContent = block;
+            document.getElementById('totalCount').textContent = total;
+
+            const progress = total > 0 ? ((pass + warn) / total) * 100 : 0;
+            document.getElementById('progressFill').style.width = `${progress}%`;
+        }
+
+        function updateCategoryStatus(categoryId) {
+            const category = checkResults[categoryId];
+            const statusElement = document.getElementById(`${categoryId}Status`);
+            
+            const hasBlock = category.checks.some(check => check.status === 'block');
+            const hasWarn = category.checks.some(check => check.status === 'warn');
+            const allPass = category.checks.every(check => check.status === 'pass');
+            
+            if (hasBlock) {
+                statusElement.textContent = 'BLOCK';
+                statusElement.className = 'status-badge status-block';
+                category.status = 'block';
+            } else if (hasWarn) {
+                statusElement.textContent = 'WARN';
+                statusElement.className = 'status-badge status-warn';
+                category.status = 'warn';
+            } else if (allPass) {
+                statusElement.textContent = 'PASS';
+                statusElement.className = 'status-badge status-pass';
+                category.status = 'pass';
+            } else {
+                statusElement.textContent = 'PENDING';
+                statusElement.className = 'status-badge status-pending';
+                category.status = 'pending';
+            }
+        }
+
+        function updateCheckStatus(categoryId, checkIndex, status, details = '') {
+            const checkResults = window.checkResults[categoryId];
+            checkResults.checks[checkIndex] = { status, details };
+            
+            const checkElement = document.querySelector(`#${categoryId}Checks .checklist-item:nth-child(${checkIndex + 1})`);
+            const iconElement = checkElement.querySelector('.check-icon');
+            const detailsElement = checkElement.querySelector('.check-details');
+            
+            iconElement.className = `check-icon check-${status}`;
+            
+            if (status === 'pass') {
+                iconElement.textContent = '✅';
+                detailsElement.textContent = details || 'Check passed successfully';
+            } else if (status === 'warn') {
+                iconElement.textContent = '⚠️';
+                detailsElement.textContent = details || 'Warning: ' + details;
+            } else if (status === 'block') {
+                iconElement.textContent = '❌';
+                detailsElement.textContent = details || 'Blocked: ' + details;
+            } else {
+                iconElement.textContent = '⏳';
+                detailsElement.textContent = details || 'Check in progress...';
+            }
+            
+            updateCategoryStatus(categoryId);
+            updateStats();
+        }
+
+        async function simulateCheck(categoryId, checkIndex, checkName) {
+            // Simulate API call delay
+            await new Promise(resolve => setTimeout(resolve, Math.random() * 2000 + 1000));
+            
+            // Simulate different outcomes based on check type
+            const outcomes = ['pass', 'warn', 'block'];
+            const weights = [0.7, 0.2, 0.1]; // 70% pass, 20% warn, 10% block
+            
+            const random = Math.random();
+            let status = 'pass';
+            if (random < weights[0]) status = 'pass';
+            else if (random < weights[0] + weights[1]) status = 'warn';
+            else status = 'block';
+            
+            const details = {
+                pass: 'Check completed successfully',
+                warn: 'Warning: Minor issue detected',
+                block: 'Critical issue found - deployment blocked'
+            };
+            
+            updateCheckStatus(categoryId, checkIndex, status, details[status]);
+        }
+
+        async function runAllChecks() {
+            const runButton = document.getElementById('runButtonText');
+            const runLoading = document.getElementById('runLoading');
+            
+            runButton.textContent = 'Running Checks...';
+            runLoading.style.display = 'inline-block';
+            
+            // Initialize check results
+            Object.keys(checkResults).forEach(categoryId => {
+                checkResults[categoryId].checks = [];
+                const categoryChecks = document.querySelectorAll(`#${categoryId}Checks .checklist-item`);
+                categoryChecks.forEach(() => {
+                    checkResults[categoryId].checks.push({ status: 'pending' });
+                });
+            });
+            
+            // Run all checks in parallel
+            const allChecks = [];
+            
+            // Telephony checks
+            allChecks.push(simulateCheck('telephony', 0, 'LC Phone active'));
+            allChecks.push(simulateCheck('telephony', 1, 'Outbound Voice AI enabled'));
+            allChecks.push(simulateCheck('telephony', 2, 'Business hours configured'));
+            allChecks.push(simulateCheck('telephony', 3, 'Regulatory bundle approved'));
+            allChecks.push(simulateCheck('telephony', 4, 'STIR/SHAKEN status'));
+            
+            // Schema checks
+            allChecks.push(simulateCheck('schema', 0, 'Pipelines exist'));
+            allChecks.push(simulateCheck('schema', 1, 'Calendars present'));
+            allChecks.push(simulateCheck('schema', 2, 'Custom Field Schema synced'));
+            allChecks.push(simulateCheck('schema', 3, 'Location Custom Values'));
+            allChecks.push(simulateCheck('schema', 4, 'Merge tag preview'));
+            
+            // Webhook checks
+            allChecks.push(simulateCheck('webhook', 0, 'Webhook endpoints reachable'));
+            allChecks.push(simulateCheck('webhook', 1, 'Signature verification'));
+            allChecks.push(simulateCheck('webhook', 2, 'Idempotency key support'));
+            allChecks.push(simulateCheck('webhook', 3, 'Retry/backoff configured'));
+            
+            // Rate limit checks
+            allChecks.push(simulateCheck('rateLimit', 0, 'Request budget check'));
+            allChecks.push(simulateCheck('rateLimit', 1, 'Queue configuration'));
+            
+            // QA checks
+            allChecks.push(simulateCheck('qa', 0, 'Test contact created'));
+            allChecks.push(simulateCheck('qa', 1, 'Test call triggered'));
+            allChecks.push(simulateCheck('qa', 2, 'Call log analysis'));
+            allChecks.push(simulateCheck('qa', 3, 'Data updates verified'));
+            allChecks.push(simulateCheck('qa', 4, 'Transcript saved'));
+            
+            // Compliance checks
+            allChecks.push(simulateCheck('compliance', 0, 'TCPA/GDPR compliance'));
+            allChecks.push(simulateCheck('compliance', 1, 'Recording consent script'));
+            allChecks.push(simulateCheck('compliance', 2, 'DNC metadata loaded'));
+            
+            // Export checks
+            allChecks.push(simulateCheck('export', 0, 'Workflow integrity'));
+            allChecks.push(simulateCheck('export', 1, 'Variable mapping'));
+            allChecks.push(simulateCheck('export', 2, 'Knowledge base setup'));
+            
+            await Promise.all(allChecks);
+            
+            runButton.textContent = 'Run All Checks';
+            runLoading.style.display = 'none';
+        }
+
+        function exportReport() {
+            const report = {
+                timestamp: new Date().toISOString(),
+                summary: {
+                    pass: document.getElementById('passCount').textContent,
+                    warn: document.getElementById('warnCount').textContent,
+                    block: document.getElementById('blockCount').textContent,
+                    total: document.getElementById('totalCount').textContent
+                },
+                categories: checkResults
+            };
+            
+            const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `readiness-report-${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function clearResults() {
+            Object.keys(checkResults).forEach(categoryId => {
+                checkResults[categoryId].checks = [];
+                updateCategoryStatus(categoryId);
+                
+                const categoryChecks = document.querySelectorAll(`#${categoryId}Checks .checklist-item`);
+                categoryChecks.forEach((check, index) => {
+                    const iconElement = check.querySelector('.check-icon');
+                    const detailsElement = check.querySelector('.check-details');
+                    
+                    iconElement.className = 'check-icon check-pending';
+                    iconElement.textContent = '⏳';
+                    detailsElement.textContent = 'Check pending...';
+                });
+            });
+            
+            updateStats();
+        }
+
+        // Initialize
+        updateStats();
+    </script>
+</body>
+</html>

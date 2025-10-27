@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GHL Voice AI - Rate Limit Queue</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        /* Global Styles (VAPI Redesign) */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+            --background: #0a0a0a; --foreground: #e0e0e0; --card: #1a1a1a; --card-foreground: #f0f0f0;
+            --primary: #00ffa3; --primary-foreground: #0a0a0a; --secondary: #2a2a2a; --secondary-foreground: #e0e0e0;
+            --muted: #3a3a3a; --muted-foreground: #a0a0a0; --accent: #1a1a1a; --accent-foreground: #00ffa3;
+            --destructive: #ef4444; --destructive-foreground: #ffffff; --border: #333333; --input: #444444;
+            --ring: #00ffa3; --radius: 0.5rem;
+            --success: #22c55e; --warning: #facc15; --error: #ef4444; --info: #3b82f6;
+        }
+        html { font-family: 'Inter', sans-serif; line-height: 1.5; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+        body { background-color: var(--background); color: var(--foreground); transition: background-color 0.3s ease, color 0.3s ease; min-height: 100vh; position: relative; overflow-x: hidden; }
+        body::before { content: ''; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-image: radial-gradient(circle, var(--muted) 1px, transparent 1px); background-size: 20px 20px; opacity: 0.1; z-index: -1; }
+        .gradient-text { background: linear-gradient(90deg, #00ffa3, #00e694, #00c885); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; color: transparent; }
+        .glow { box-shadow: 0 0 15px rgba(0, 255, 163, 0.4), 0 0 30px rgba(0, 255, 163, 0.2); }
+        .container { max-width: 1400px; margin: 0 auto; padding: 2rem; }
+        .card { background-color: var(--card); color: var(--card-foreground); border-radius: var(--radius); border: 1px solid var(--border); box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1); transition: all 0.2s ease; }
+        .card:hover { box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1); transform: translateY(-2px); }
+        .btn { display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; border-radius: var(--radius); font-size: 0.875rem; font-weight: 500; transition: all 0.2s ease; cursor: pointer; border: 1px solid transparent; padding: 0.5rem 1rem; min-height: 2.5rem; }
+        .btn-primary { background-color: var(--primary); color: var(--primary-foreground); box-shadow: 0 4px 14px 0 rgba(0, 255, 163, 0.3); }
+        .btn-primary:hover:not(:disabled) { background-color: #00e694; transform: translateY(-1px); box-shadow: 0 6px 20px 0 rgba(0, 255, 163, 0.4); }
+        .btn-outline { border: 1px solid var(--border); background-color: transparent; color: var(--foreground); }
+        .btn-outline:hover:not(:disabled) { background-color: var(--accent); color: var(--accent-foreground); }
+        .btn-destructive { background-color: var(--destructive); color: var(--destructive-foreground); }
+        .btn-destructive:hover:not(:disabled) { background-color: color-mix(in srgb, var(--destructive) 90%, black); }
+        .btn-success { background-color: var(--success); color: white; }
+        .btn-warning { background-color: var(--warning); color: black; }
+        .btn-error { background-color: var(--error); color: white; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .flex { display: flex; } .items-center { align-items: center; } .justify-between { justify-content: space-between; } .flex-col { flex-direction: column; }
+        .gap-2 { gap: 0.5rem; } .gap-4 { gap: 1rem; } .gap-6 { gap: 1.5rem; } .gap-8 { gap: 2rem; }
+        .p-4 { padding: 1rem; } .p-6 { padding: 1.5rem; } .py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; } .px-4 { padding-left: 1rem; padding-right: 1rem; }
+        .mb-4 { margin-bottom: 1rem; } .mt-4 { margin-top: 1rem; } .mx-auto { margin-left: auto; margin-right: auto; }
+        .w-full { width: 100%; } .h-4 { height: 1rem; } .rounded-full { border-radius: 9999px; }
+        .text-sm { font-size: 0.875rem; line-height: 1.25rem; } .font-semibold { font-weight: 600; } .text-lg { font-size: 1.125rem; line-height: 1.75rem; }
+        .text-xl { font-size: 1.25rem; line-height: 1.75rem; } .text-2xl { font-size: 1.5rem; line-height: 2rem; } .text-3xl { font-size: 1.875rem; line-height: 2.25rem; }
+        .text-muted-foreground { color: var(--muted-foreground); } .text-foreground { color: var(--foreground); }
+        .relative { position: relative; } .overflow-hidden { overflow: hidden; }
+        .loading-spinner { display: inline-block; width: 1rem; height: 1rem; border: 2px solid var(--muted); border-radius: 50%; border-top-color: var(--primary); animation: spin 1s ease-in-out infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        input, select, textarea { font-family: inherit; font-size: inherit; line-height: inherit; color: inherit; background-color: var(--card); border: 1px solid var(--input); border-radius: var(--radius); padding: 0.5rem 0.75rem; outline: none; transition: border-color 0.2s ease, box-shadow 0.2s ease; }
+        input:focus, textarea:focus, select:focus { border-color: var(--ring); box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 20%, transparent); }
+        .status-queued { color: var(--warning); } .status-processing { color: var(--info); } .status-completed { color: var(--success); } .status-failed { color: var(--error); } .status-rate-limited { color: var(--destructive); }
+        .modal { position: fixed; inset: 0; background-color: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+        .modal-content { background-color: var(--card); padding: 2rem; border-radius: var(--radius); width: 100%; max-width: 800px; box-shadow: 0 10px 20px rgba(0,0,0,0.5); max-height: 90vh; overflow-y: auto; }
+        .grid { display: grid; } .grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); } .grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .space-y-4 > * + * { margin-top: 1rem; }
+        .border { border: 1px solid var(--border); } .border-t { border-top: 1px solid var(--border); } .border-b { border-bottom: 1px solid var(--border); }
+        .rounded { border-radius: var(--radius); } .rounded-md { border-radius: calc(var(--radius) - 2px); }
+        .text-center { text-align: center; }
+        .hidden { display: none; }
+        .block { display: block; }
+        .queue-item { padding: 1rem; border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 0.5rem; }
+        .queue-item.queued { border-color: var(--warning); background-color: color-mix(in srgb, var(--warning) 10%, transparent); }
+        .queue-item.processing { border-color: var(--info); background-color: color-mix(in srgb, var(--info) 10%, transparent); }
+        .queue-item.completed { border-color: var(--success); background-color: color-mix(in srgb, var(--success) 10%, transparent); }
+        .queue-item.failed { border-color: var(--error); background-color: color-mix(in srgb, var(--error) 10%, transparent); }
+        .queue-item.rate-limited { border-color: var(--destructive); background-color: color-mix(in srgb, var(--destructive) 10%, transparent); }
+        .progress-bar { height: 100%; transition: width 0.5s ease-in-out; }
+        .tabs { display: flex; border-b: 1px solid var(--border); margin-bottom: 1rem; }
+        .tab { padding: 0.75rem 1rem; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s ease; }
+        .tab.active { border-bottom-color: var(--primary); color: var(--primary); }
+        .tab:hover { background-color: var(--accent); }
+        .rate-limit-indicator { display: flex; align-items: center; gap: 0.5rem; }
+        .rate-limit-bar { width: 100px; height: 8px; background-color: var(--muted); border-radius: 4px; overflow: hidden; }
+        .rate-limit-fill { height: 100%; background-color: var(--primary); transition: width 0.3s ease; }
+        .priority-high { border-left: 4px solid var(--error); }
+        .priority-medium { border-left: 4px solid var(--warning); }
+        .priority-low { border-left: 4px solid var(--info); }
+    </style>
+</head>
+<body>
+    <div class="container py-8">
+        <h1 class="text-4xl font-bold text-center mb-8 gradient-text">GHL Voice AI - Rate Limit Queue</h1>
+        <p class="text-center text-lg text-muted-foreground mb-12">Intelligent queue management with rate limiting and exponential backoff for API calls.</p>
+
+        <!-- Queue Overview -->
+        <div class="card p-6 mb-8">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-2xl font-semibold text-foreground">Queue Overview</h2>
+                <div class="flex gap-2">
+                    <button id="start-queue-btn" class="btn btn-primary">Start Queue</button>
+                    <button id="pause-queue-btn" class="btn btn-outline">Pause Queue</button>
+                    <button id="clear-queue-btn" class="btn btn-destructive">Clear Queue</button>
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 text-center mb-6">
+                <div class="card p-4">
+                    <div class="text-3xl font-bold gradient-text" id="total-requests">0</div>
+                    <div class="text-sm text-muted-foreground">Total Requests</div>
+                </div>
+                <div class="card p-4">
+                    <div class="text-3xl font-bold text-warning" id="queued-requests">0</div>
+                    <div class="text-sm text-muted-foreground">Queued</div>
+                </div>
+                <div class="card p-4">
+                    <div class="text-3xl font-bold text-info" id="processing-requests">0</div>
+                    <div class="text-sm text-muted-foreground">Processing</div>
+                </div>
+                <div class="card p-4">
+                    <div class="text-3xl font-bold text-success" id="completed-requests">0</div>
+                    <div class="text-sm text-muted-foreground">Completed</div>
+                </div>
+            </div>
+
+            <!-- Rate Limit Status -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="card p-4">
+                    <h3 class="font-semibold text-foreground mb-2">GHL API</h3>
+                    <div class="rate-limit-indicator">
+                        <div class="rate-limit-bar">
+                            <div class="rate-limit-fill" id="ghl-rate-limit" style="width: 45%;"></div>
+                        </div>
+                        <span class="text-sm text-muted-foreground" id="ghl-rate-text">45/100</span>
+                    </div>
+                </div>
+                
+                <div class="card p-4">
+                    <h3 class="font-semibold text-foreground mb-2">Voice AI API</h3>
+                    <div class="rate-limit-indicator">
+                        <div class="rate-limit-bar">
+                            <div class="rate-limit-fill" id="voice-rate-limit" style="width: 20%;"></div>
+                        </div>
+                        <span class="text-sm text-muted-foreground" id="voice-rate-text">20/100</span>
+                    </div>
+                </div>
+                
+                <div class="card p-4">
+                    <h3 class="font-semibold text-foreground mb-2">Webhook API</h3>
+                    <div class="rate-limit-indicator">
+                        <div class="rate-limit-bar">
+                            <div class="rate-limit-fill" id="webhook-rate-limit" style="width: 80%;"></div>
+                        </div>
+                        <span class="text-sm text-muted-foreground" id="webhook-rate-text">80/100</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content Tabs -->
+        <div class="tabs">
+            <div class="tab active" data-tab="queue">Request Queue</div>
+            <div class="tab" data-tab="settings">Rate Limit Settings</div>
+            <div class="tab" data-tab="analytics">Queue Analytics</div>
+            <div class="tab" data-tab="logs">Queue Logs</div>
+        </div>
+
+        <!-- Request Queue Tab -->
+        <div id="queue-tab" class="tab-content">
+            <div class="space-y-4">
+                <div class="card p-6">
+                    <h3 class="text-xl font-semibold text-foreground mb-4">Request Queue</h3>
+                    <div id="queue-list">
+                        <!-- Queue items will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Rate Limit Settings Tab -->
+        <div id="settings-tab" class="tab-content hidden">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div class="card p-6">
+                    <h3 class="text-lg font-semibold text-foreground mb-4">API Rate Limits</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-foreground mb-2">GHL API Rate Limit</label>
+                            <div class="flex gap-2">
+                                <input type="number" id="ghl-limit" class="flex-1 p-2 rounded-md bg-card border border-border" value="100" />
+                                <select id="ghl-period" class="p-2 rounded-md bg-card border border-border">
+                                    <option value="60">per minute</option>
+                                    <option value="3600">per hour</option>
+                                    <option value="86400">per day</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-foreground mb-2">Voice AI API Rate Limit</label>
+                            <div class="flex gap-2">
+                                <input type="number" id="voice-limit" class="flex-1 p-2 rounded-md bg-card border border-border" value="100" />
+                                <select id="voice-period" class="p-2 rounded-md bg-card border border-border">
+                                    <option value="60">per minute</option>
+                                    <option value="3600">per hour</option>
+                                    <option value="86400">per day</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-foreground mb-2">Webhook API Rate Limit</label>
+                            <div class="flex gap-2">
+                                <input type="number" id="webhook-limit" class="flex-1 p-2 rounded-md bg-card border border-border" value="100" />
+                                <select id="webhook-period" class="p-2 rounded-md bg-card border border-border">
+                                    <option value="60">per minute</option>
+                                    <option value="3600">per hour</option>
+                                    <option value="86400">per day</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card p-6">
+                    <h3 class="text-lg font-semibold text-foreground mb-4">Backoff Settings</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-foreground mb-2">Initial Delay (ms)</label>
+                            <input type="number" id="initial-delay" class="w-full p-2 rounded-md bg-card border border-border" value="1000" />
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-foreground mb-2">Max Delay (ms)</label>
+                            <input type="number" id="max-delay" class="w-full p-2 rounded-md bg-card border border-border" value="30000" />
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-foreground mb-2">Backoff Multiplier</label>
+                            <input type="number" id="backoff-multiplier" class="w-full p-2 rounded-md bg-card border border-border" value="2" step="0.1" />
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-foreground mb-2">Max Retries</label>
+                            <input type="number" id="max-retries" class="w-full p-2 rounded-md bg-card border border-border" value="5" />
+                        </div>
+                        
+                        <button id="save-settings-btn" class="btn btn-primary w-full">Save Settings</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Queue Analytics Tab -->
+        <div id="analytics-tab" class="tab-content hidden">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div class="card p-6">
+                    <h3 class="text-lg font-semibold text-foreground mb-4">Queue Performance</h3>
+                    <div class="space-y-4">
+                        <div class="flex justify-between">
+                            <span class="text-muted-foreground">Average Processing Time</span>
+                            <span class="font-medium">1.2s</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-muted-foreground">Success Rate</span>
+                            <span class="font-medium text-success">94.5%</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-muted-foreground">Rate Limit Hits</span>
+                            <span class="font-medium text-warning">12</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-muted-foreground">Failed Requests</span>
+                            <span class="font-medium text-error">5</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card p-6">
+                    <h3 class="text-lg font-semibold text-foreground mb-4">API Usage</h3>
+                    <div class="space-y-4">
+                        <div class="flex justify-between">
+                            <span class="text-muted-foreground">GHL API Calls</span>
+                            <span class="font-medium">1,234</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-muted-foreground">Voice AI Calls</span>
+                            <span class="font-medium">856</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-muted-foreground">Webhook Calls</span>
+                            <span class="font-medium">2,456</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-muted-foreground">Total API Calls</span>
+                            <span class="font-medium">4,546</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Queue Logs Tab -->
+        <div id="logs-tab" class="tab-content hidden">
+            <div class="card p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-xl font-semibold text-foreground">Queue Logs</h3>
+                    <button id="clear-logs-btn" class="btn btn-outline">Clear Logs</button>
+                </div>
+                <div id="queue-logs" class="bg-muted p-4 rounded-md h-64 overflow-y-auto font-mono text-sm">
+                    <div class="log-entry text-info">Rate limit queue initialized. Ready to process requests.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class RateLimitQueue {
+            constructor() {
+                this.queue = [];
+                this.isProcessing = false;
+                this.rateLimits = {
+                    ghl: { limit: 100, period: 60, used: 0, resetTime: Date.now() + 60000 },
+                    voice: { limit: 100, period: 60, used: 0, resetTime: Date.now() + 60000 },
+                    webhook: { limit: 100, period: 60, used: 0, resetTime: Date.now() + 60000 }
+                };
+                this.settings = {
+                    initialDelay: 1000,
+                    maxDelay: 30000,
+                    backoffMultiplier: 2,
+                    maxRetries: 5
+                };
+                this.currentTab = 'queue';
+                this.init();
+            }
+
+            init() {
+                this.bindEvents();
+                this.loadSettings();
+                this.updateStats();
+                this.startQueueProcessor();
+            }
+
+            bindEvents() {
+                // Tab switching
+                document.querySelectorAll('.tab').forEach(tab => {
+                    tab.addEventListener('click', (e) => this.switchTab(e.target.dataset.tab));
+                });
+
+                // Button events
+                document.getElementById('start-queue-btn').addEventListener('click', () => this.startQueue());
+                document.getElementById('pause-queue-btn').addEventListener('click', () => this.pauseQueue());
+                document.getElementById('clear-queue-btn').addEventListener('click', () => this.clearQueue());
+                document.getElementById('save-settings-btn').addEventListener('click', () => this.saveSettings());
+                document.getElementById('clear-logs-btn').addEventListener('click', () => this.clearLogs());
+            }
+
+            switchTab(tabName) {
+                // Update tab appearance
+                document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+                document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+
+                // Show/hide tab content
+                document.querySelectorAll('.tab-content').forEach(content => content.classList.add('hidden'));
+                document.getElementById(`${tabName}-tab`).classList.remove('hidden');
+                
+                this.currentTab = tabName;
+            }
+
+            addRequest(request) {
+                const queueItem = {
+                    id: Date.now().toString(),
+                    type: request.type || 'api_call',
+                    priority: request.priority || 'medium',
+                    endpoint: request.endpoint || 'unknown',
+                    data: request.data || {},
+                    status: 'queued',
+                    createdAt: new Date(),
+                    retries: 0,
+                    lastAttempt: null,
+                    nextRetry: null
+                };
+                
+                this.queue.push(queueItem);
+                this.updateStats();
+                this.renderQueue();
+                this.logMessage('info', `Added request to queue: ${queueItem.endpoint}`);
+            }
+
+            async processQueue() {
+                if (this.isProcessing || this.queue.length === 0) return;
+                
+                this.isProcessing = true;
+                this.logMessage('info', 'Starting queue processing...');
+                
+                while (this.queue.length > 0) {
+                    const item = this.queue.find(i => i.status === 'queued' && (!i.nextRetry || Date.now() >= i.nextRetry));
+                    if (!item) break;
+                    
+                    await this.processRequest(item);
+                    await this.delay(100); // Small delay between requests
+                }
+                
+                this.isProcessing = false;
+                this.logMessage('info', 'Queue processing completed');
+            }
+
+            async processRequest(item) {
+                item.status = 'processing';
+                item.lastAttempt = new Date();
+                this.updateStats();
+                this.renderQueue();
+                
+                try {
+                    // Check rate limits
+                    const apiType = this.getApiType(item.endpoint);
+                    if (!this.checkRateLimit(apiType)) {
+                        item.status = 'rate-limited';
+                        item.nextRetry = Date.now() + this.calculateBackoffDelay(item.retries);
+                        this.logMessage('warning', `Rate limited: ${item.endpoint}`);
+                        this.updateStats();
+                        this.renderQueue();
+                        return;
+                    }
+                    
+                    // Simulate API call
+                    await this.simulateApiCall(item);
+                    
+                    // Mark as completed
+                    item.status = 'completed';
+                    this.rateLimits[apiType].used++;
+                    this.logMessage('success', `Request completed: ${item.endpoint}`);
+                    
+                } catch (error) {
+                    item.retries++;
+                    if (item.retries >= this.settings.maxRetries) {
+                        item.status = 'failed';
+                        this.logMessage('error', `Request failed after ${item.retries} retries: ${item.endpoint}`);
+                    } else {
+                        item.status = 'queued';
+                        item.nextRetry = Date.now() + this.calculateBackoffDelay(item.retries);
+                        this.logMessage('warning', `Request failed, retrying in ${this.calculateBackoffDelay(item.retries)}ms: ${item.endpoint}`);
+                    }
+                }
+                
+                this.updateStats();
+                this.renderQueue();
+            }
+
+            async simulateApiCall(item) {
+                // Simulate API call delay
+                const delay = Math.random() * 2000 + 500; // 500-2500ms
+                await this.delay(delay);
+                
+                // Simulate occasional failures
+                if (Math.random() < 0.1) { // 10% failure rate
+                    throw new Error('API call failed');
+                }
+            }
+
+            checkRateLimit(apiType) {
+                const limit = this.rateLimits[apiType];
+                const now = Date.now();
+                
+                // Reset if period has passed
+                if (now >= limit.resetTime) {
+                    limit.used = 0;
+                    limit.resetTime = now + (limit.period * 1000);
+                }
+                
+                return limit.used < limit.limit;
+            }
+
+            getApiType(endpoint) {
+                if (endpoint.includes('ghl')) return 'ghl';
+                if (endpoint.includes('voice')) return 'voice';
+                if (endpoint.includes('webhook')) return 'webhook';
+                return 'ghl'; // default
+            }
+
+            calculateBackoffDelay(retries) {
+                const delay = this.settings.initialDelay * Math.pow(this.settings.backoffMultiplier, retries);
+                return Math.min(delay, this.settings.maxDelay);
+            }
+
+            startQueue() {
+                this.isProcessing = false;
+                this.processQueue();
+                this.logMessage('info', 'Queue started');
+            }
+
+            pauseQueue() {
+                this.isProcessing = false;
+                this.logMessage('info', 'Queue paused');
+            }
+
+            clearQueue() {
+                if (confirm('Are you sure you want to clear the queue?')) {
+                    this.queue = [];
+                    this.updateStats();
+                    this.renderQueue();
+                    this.logMessage('warning', 'Queue cleared');
+                }
+            }
+
+            startQueueProcessor() {
+                // Add some sample requests
+                this.addRequest({ type: 'api_call', priority: 'high', endpoint: 'ghl/contacts/create', data: { name: 'John Doe' } });
+                this.addRequest({ type: 'api_call', priority: 'medium', endpoint: 'voice/agent/update', data: { agentId: '123' } });
+                this.addRequest({ type: 'api_call', priority: 'low', endpoint: 'webhook/trigger', data: { event: 'contact_created' } });
+                this.addRequest({ type: 'api_call', priority: 'high', endpoint: 'ghl/opportunities/create', data: { contactId: '456' } });
+                this.addRequest({ type: 'api_call', priority: 'medium', endpoint: 'voice/agent/test', data: { agentId: '123' } });
+            }
+
+            renderQueue() {
+                const container = document.getElementById('queue-list');
+                container.innerHTML = this.queue.map(item => `
+                    <div class="queue-item ${item.status} priority-${item.priority}">
+                        <div class="flex items-center justify-between">
+                            <div class="flex-1">
+                                <div class="flex items-center gap-2 mb-2">
+                                    <h4 class="font-medium text-foreground">${item.endpoint}</h4>
+                                    <span class="text-xs px-2 py-1 rounded bg-muted">${item.priority}</span>
+                                    <span class="status-${item.status} text-sm font-medium">${item.status.toUpperCase()}</span>
+                                </div>
+                                <p class="text-sm text-muted-foreground">Type: ${item.type} | Retries: ${item.retries}/${this.settings.maxRetries}</p>
+                                ${item.nextRetry ? `<p class="text-xs text-muted-foreground">Next retry: ${new Date(item.nextRetry).toLocaleTimeString()}</p>` : ''}
+                            </div>
+                            <div class="flex gap-2">
+                                ${item.status === 'queued' ? `<button class="btn btn-primary btn-sm" onclick="queue.processRequest('${item.id}')">Process Now</button>` : ''}
+                                ${item.status === 'failed' ? `<button class="btn btn-outline btn-sm" onclick="queue.retryRequest('${item.id}')">Retry</button>` : ''}
+                                <button class="btn btn-destructive btn-sm" onclick="queue.removeRequest('${item.id}')">Remove</button>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            retryRequest(itemId) {
+                const item = this.queue.find(i => i.id === itemId);
+                if (item) {
+                    item.status = 'queued';
+                    item.retries = 0;
+                    item.nextRetry = null;
+                    this.updateStats();
+                    this.renderQueue();
+                    this.logMessage('info', `Retrying request: ${item.endpoint}`);
+                }
+            }
+
+            removeRequest(itemId) {
+                this.queue = this.queue.filter(i => i.id !== itemId);
+                this.updateStats();
+                this.renderQueue();
+                this.logMessage('warning', 'Request removed from queue');
+            }
+
+            loadSettings() {
+                const saved = localStorage.getItem('ghl-queue-settings');
+                if (saved) {
+                    try {
+                        this.settings = { ...this.settings, ...JSON.parse(saved) };
+                    } catch (error) {
+                        console.error('Failed to load settings:', error);
+                    }
+                }
+                
+                // Update form values
+                document.getElementById('initial-delay').value = this.settings.initialDelay;
+                document.getElementById('max-delay').value = this.settings.maxDelay;
+                document.getElementById('backoff-multiplier').value = this.settings.backoffMultiplier;
+                document.getElementById('max-retries').value = this.settings.maxRetries;
+            }
+
+            saveSettings() {
+                this.settings = {
+                    initialDelay: parseInt(document.getElementById('initial-delay').value),
+                    maxDelay: parseInt(document.getElementById('max-delay').value),
+                    backoffMultiplier: parseFloat(document.getElementById('backoff-multiplier').value),
+                    maxRetries: parseInt(document.getElementById('max-retries').value)
+                };
+                
+                localStorage.setItem('ghl-queue-settings', JSON.stringify(this.settings));
+                this.logMessage('success', 'Settings saved');
+            }
+
+            updateStats() {
+                const total = this.queue.length;
+                const queued = this.queue.filter(i => i.status === 'queued').length;
+                const processing = this.queue.filter(i => i.status === 'processing').length;
+                const completed = this.queue.filter(i => i.status === 'completed').length;
+
+                document.getElementById('total-requests').textContent = total;
+                document.getElementById('queued-requests').textContent = queued;
+                document.getElementById('processing-requests').textContent = processing;
+                document.getElementById('completed-requests').textContent = completed;
+
+                // Update rate limit indicators
+                this.updateRateLimitIndicator('ghl', this.rateLimits.ghl);
+                this.updateRateLimitIndicator('voice', this.rateLimits.voice);
+                this.updateRateLimitIndicator('webhook', this.rateLimits.webhook);
+            }
+
+            updateRateLimitIndicator(apiType, limit) {
+                const percentage = (limit.used / limit.limit) * 100;
+                document.getElementById(`${apiType}-rate-limit`).style.width = `${percentage}%`;
+                document.getElementById(`${apiType}-rate-text`).textContent = `${limit.used}/${limit.limit}`;
+            }
+
+            logMessage(type, message) {
+                const logsContainer = document.getElementById('queue-logs');
+                const timestamp = new Date().toLocaleTimeString();
+                const logEntry = document.createElement('div');
+                logEntry.className = `log-entry text-${type}`;
+                logEntry.textContent = `[${timestamp}] ${message}`;
+                logsContainer.appendChild(logEntry);
+                logsContainer.scrollTop = logsContainer.scrollHeight;
+            }
+
+            clearLogs() {
+                document.getElementById('queue-logs').innerHTML = '<div class="log-entry text-info">Logs cleared.</div>';
+            }
+
+            delay(ms) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            }
+        }
+
+        // Initialize the rate limit queue
+        const queue = new RateLimitQueue();
+    </script>
+</body>
+</html>
