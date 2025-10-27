@@ -49,7 +49,12 @@ app.get('/auth/callback', async (req, res) => {
   const { code, state } = req.query;
   
   if (!code) {
-    return res.status(400).json({ error: 'Missing authorization code' });
+    return res.json({ 
+      message: 'OAuth callback endpoint',
+      status: 'waiting',
+      info: 'This endpoint receives the authorization code from GHL after OAuth flow',
+      howToUse: 'Visit /auth/ghl to start the OAuth flow'
+    });
   }
   
   try {
@@ -261,6 +266,19 @@ app.post('/api/voice-ai/process-contact', async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+});
+
+// Root endpoint
+app.get('/', (req, res) => {
+  res.json({ 
+    service: 'GHL OAuth API',
+    status: 'running',
+    endpoints: {
+      health: '/health',
+      oauth: '/auth/ghl',
+      callback: '/auth/callback'
+    }
+  });
 });
 
 // Health check
