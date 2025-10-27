@@ -27,18 +27,18 @@ const GHL_CONFIG = {
 app.get('/auth/ghl', (req, res) => {
   const state = Math.random().toString(36).substring(2, 15);
   
-  // Store state in session/cache for verification
-  req.session = req.session || {};
-  req.session.oauth_state = state;
-  
   // Using the exact scopes from your working OAuth URL
   const scope = 'calendars.write conversations/message.readonly voice-ai-agents.readonly voice-ai-agents.write conversations.readonly conversations.write contacts.readonly contacts.write workflows.readonly phonenumbers.read voice-ai-dashboard.readonly voice-ai-agent-goals.readonly voice-ai-agent-goals.write knowledge-bases.write knowledge-bases.readonly conversation-ai.readonly conversation-ai.write agent-studio.readonly calendars.readonly calendars/events.readonly calendars/events.write agent-studio.write locations/customValues.write locations/customFields.write locations/customFields.readonly locations.readonly locations/customValues.readonly conversations/message.write';
+  
+  // Extract version_id from client_id (remove suffix)
+  const versionId = GHL_CONFIG.client_id.split('-')[0];
   
   const authUrl = `${GHL_CONFIG.auth_url}/oauth/chooselocation?` +
     `response_type=code&` +
     `redirect_uri=${encodeURIComponent(GHL_CONFIG.redirect_uri)}&` +
     `client_id=${GHL_CONFIG.client_id}&` +
     `scope=${encodeURIComponent(scope)}&` +
+    `version_id=${versionId}&` +
     `state=${state}`;
   
   res.redirect(authUrl);
@@ -47,6 +47,10 @@ app.get('/auth/ghl', (req, res) => {
 // ===== STEP 2: EXCHANGE CODE FOR TOKENS =====
 app.get('/auth/callback', async (req, res) => {
   const { code, state } = req.query;
+  
+  if (!code) {
+    return res.status(400).json({ error: 'Missing authorization code' });
+  }
   
   try {
     // Convert to URL-encoded form data
@@ -57,7 +61,6 @@ app.get('/auth/callback', async (req, res) => {
     params.append('code', code);
     params.append('user_type', 'Location');
     params.append('redirect_uri', GHL_CONFIG.redirect_uri);
-    params.append('appId', GHL_CONFIG.client_id); // Add appId parameter
     
     const tokenResponse = await axios.post(
       `${GHL_CONFIG.base_url}/oauth/token`,
@@ -265,7 +268,7 @@ app.get('/health', (req, res) => {
   res.json({ status: 'healthy', service: 'GHL OAuth API' });
 });
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`🚀 GHL OAuth API Server running on port ${PORT}`);
   console.log(`📡 Auth endpoint: http://localhost:${PORT}/auth/ghl`);
