@@ -7,6 +7,14 @@ const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
 require('dotenv').config();
+const { 
+  storeTokens, 
+  getLatestTokens, 
+  storeLocation, 
+  getLocation,
+  getAllLocations,
+  isTokenExpired 
+} = require('./database');
 
 const app = express();
 
@@ -49,12 +57,7 @@ app.get('/auth/callback', async (req, res) => {
   const { code, state } = req.query;
   
   if (!code) {
-    return res.json({ 
-      message: 'OAuth callback endpoint',
-      status: 'waiting',
-      info: 'This endpoint receives the authorization code from GHL after OAuth flow',
-      howToUse: 'Visit /auth/ghl to start the OAuth flow'
-    });
+    return res.status(400).json({ error: 'Missing authorization code' });
   }
   
   try {
@@ -67,8 +70,14 @@ app.get('/auth/callback', async (req, res) => {
     params.append('user_type', 'Location');
     params.append('redirect_uri', GHL_CONFIG.redirect_uri);
     
+    console.log('🔑 Requesting tokens with params:', {
+      client_id: GHL_CONFIG.client_id,
+      redirect_uri: GHL_CONFIG.redirect_uri,
+      user_type: 'Location'
+    });
+    
     const tokenResponse = await axios.post(
-      `${GHL_CONFIG.base_url}/oauth/token`,
+      `https://services.leadconnectorhq.com/oauth/token`,
       params.toString(),
       {
         headers: {
@@ -80,14 +89,27 @@ app.get('/auth/callback', async (req, res) => {
     
     const { access_token, refresh_token } = tokenResponse.data;
     
-    // Store tokens securely (implement your storage logic)
+    // Store tokens securely in database
     console.log('✅ Tokens received:', { access_token: access_token.substring(0, 20) + '...', refresh_token: refresh_token?.substring(0, 20) + '...' });
+    
+    try {
+      storeTokens({ access_token, refresh_token });
+      console.log('✅ Tokens stored in database');
+    } catch (err) {
+      console.error('⚠️ Failed to store tokens:', err.message);
+    }
     
     // Redirect to frontend with success
     res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/ghl-api?connected=true`);
   } catch (error) {
-    console.error('❌ OAuth error:', error.response?.data || error.message);
-    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/ghl-api?error=${encodeURIComponent(error.message)}`);
+    console.error('❌ OAuth error details:', {
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+      message: error.message
+    });
+    const errorMsg = error.response?.data?.error || error.response?.data?.message || error.message;
+    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/ghl-api?error=${encodeURIComponent(errorMsg)}`);
   }
 });
 
@@ -268,22 +290,52 @@ app.post('/api/voice-ai/process-contact', async (req, res) => {
   }
 });
 
-// Root endpoint
-app.get('/', (req, res) => {
-  res.json({ 
-    service: 'GHL OAuth API',
-    status: 'running',
-    endpoints: {
-      health: '/health',
-      oauth: '/auth/ghl',
-      callback: '/auth/callback'
-    }
-  });
-});
-
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'healthy', service: 'GHL OAuth API' });
+});
+
+// Get latest tokens
+app.get('/api/tokens/latest', (req, res) => {
+  try {
+    const tokens = getLatestTokens();
+    if (!tokens) {
+      return res.status(404).json({ error: 'No tokens found' });
+    }
+    
+    // Check if expired
+    const expired = isTokenExpired(tokens.expires_at);
+    
+    res.json({
+      ...tokens,
+      expired
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get all locations
+app.get('/api/locations', (req, res) => {
+  try {
+    const locations = getAllLocations();
+    res.json(locations);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get location details
+app.get('/api/locations/:locationId', (req, res) => {
+  try {
+    const location = getLocation(req.params.locationId);
+    if (!location) {
+      return res.status(404).json({ error: 'Location not found' });
+    }
+    res.json(location);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 const PORT = process.env.PORT || 10000;
