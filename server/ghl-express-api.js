@@ -20,7 +20,7 @@ const GHL_CONFIG = {
   auth_url: 'https://marketplace.gohighlevel.com', // Correct OAuth authorization URL
   client_id: process.env.GHL_CLIENT_ID || '68fd461dc407410f0f0c0cb1-mh6umpou',
   client_secret: process.env.GHL_CLIENT_SECRET || '',
-  redirect_uri: process.env.GHL_REDIRECT_URI || 'https://captureclient.com/oauth/callback'
+  redirect_uri: process.env.GHL_REDIRECT_URI || 'https://ghlvoiceai.captureclient.com/auth/callback'
 };
 
 // ===== STEP 1: GET AUTHORIZATION CODE =====

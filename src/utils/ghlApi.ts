@@ -68,17 +68,33 @@ class GHLAPIClient {
    * Initialize OAuth flow
    */
   async initializeAuth(): Promise<string> {
-    // OAuth API endpoint (deployed at ghlvoiceai.captureclient.com)
-    // For local dev: http://localhost:3001/auth/ghl
-    // For production: https://ghlvoiceai.captureclient.com/auth/ghl
-    const oauthApiUrl = window.location.hostname === 'localhost' 
-      ? 'http://localhost:3001/auth/ghl'
-      : 'https://ghlvoiceai.captureclient.com/auth/ghl';
+    // Redirect URI based on environment
+    const redirectUri = window.location.hostname === 'localhost' 
+      ? 'http://localhost:3001/auth/ghl/callback'
+      : 'https://ghlvoiceai.captureclient.com/auth/callback';
     
-    // Use OAuth API endpoint
-    console.log('📍 Initiating OAuth via API:', oauthApiUrl);
-    window.location.href = oauthApiUrl;
-    return oauthApiUrl;
+    // Get scope
+    const scope = 'calendars.write conversations/message.readonly voice-ai-agents.readonly voice-ai-agents.write conversations.readonly conversations.write contacts.readonly contacts.write workflows.readonly phonenumbers.read voice-ai-dashboard.readonly voice-ai-agent-goals.readonly voice-ai-agent-goals.write knowledge-bases.write knowledge-bases.readonly conversation-ai.readonly conversation-ai.write agent-studio.readonly calendars.readonly calendars/events.readonly calendars/events.write agent-studio.write locations/customValues.write locations/customFields.write locations/customFields.readonly locations.readonly locations/customValues.readonly conversations/message.write';
+    
+    // Generate state
+    const state = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    localStorage.setItem('ghl_oauth_state', state);
+    
+    // Extract version_id from client_id (remove suffix)
+    const versionId = this.clientId.split('-')[0];
+    
+    // Build OAuth URL
+    const authUrl = `https://marketplace.gohighlevel.com/oauth/chooselocation?` +
+      `response_type=code&` +
+      `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+      `client_id=${this.clientId}&` +
+      `scope=${encodeURIComponent(scope)}&` +
+      `version_id=${versionId}&` +
+      `state=${state}`;
+    
+    console.log('📍 OAuth URL:', authUrl);
+    window.location.href = authUrl;
+    return authUrl;
   }
 
   /**
