@@ -6,6 +6,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   
   return {
+    base: '/',
     plugins: [
       react({
         // Allow TypeScript errors to not block builds

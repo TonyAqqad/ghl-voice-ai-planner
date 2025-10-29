@@ -1728,8 +1728,6 @@ app.post('/api/webhooks/agent', async (req, res) => {
 
 } // Close route guard
 
-const PORT = process.env.PORT || 10000;
-
 // Initialize database and start server
 (async () => {
   try {
