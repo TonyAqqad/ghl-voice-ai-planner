@@ -75,6 +75,142 @@ const templateService = new TemplateService();
 app.use(cors());
 app.use(express.json());
 
+// ===== HELPER FUNCTIONS (defined at module scope for exports) =====
+// ===== STEP 3: GET LOCATION TOKEN (for sub-accounts) =====
+async function getLocationToken(companyToken, locationId) {
+  try {
+    const response = await axios.post(
+      `${GHL_CONFIG.base_url}/oauth/locationToken`,
+      { locationId },
+      {
+        headers: {
+          'Authorization': `Bearer ${companyToken}`,
+          'Version': '2021-07-28',
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    
+    return response.data.access_token;
+  } catch (error) {
+    console.error('Location token error:', error.response?.data);
+    throw error;
+  }
+}
+
+// ===== STEP 4: CREATE CUSTOM FIELD =====
+async function createCustomField(locationToken, locationId, fieldName) {
+  try {
+    const response = await axios.post(
+      `${GHL_CONFIG.base_url}/locations/${locationId}/customFields`,
+      { name: fieldName, dataType: 'TEXT' },
+      {
+        headers: {
+          'Authorization': `Bearer ${locationToken}`,
+          'Version': '2021-07-28',
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    
+    return response.data.customField.id;
+  } catch (error) {
+    if (error.response?.status === 400 && error.response.data.message.includes('already exists')) {
+      console.log('Custom field already exists');
+      return null;
+    }
+    throw error;
+  }
+}
+
+// ===== STEP 5: UPSERT CONTACT WITH CUSTOM FIELD =====
+async function upsertContact(locationToken, locationId, contactData, customFieldId) {
+  try {
+    const contactPayload = {
+      locationId,
+      firstName: contactData.firstName,
+      phone: contactData.phone
+    };
+    
+    if (customFieldId && contactData.customFieldValue) {
+      contactPayload.customFields = [
+        { id: customFieldId, value: contactData.customFieldValue }
+      ];
+    }
+    
+    const response = await axios.post(
+      `${GHL_CONFIG.base_url}/contacts/upsert`,
+      contactPayload,
+      {
+        headers: {
+          'Authorization': `Bearer ${locationToken}`,
+          'Version': '2021-07-28',
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    
+    return response.data.contact;
+  } catch (error) {
+    console.error('Upsert contact error:', error.response?.data);
+    throw error;
+  }
+}
+
+// ===== STEP 6: SEND SMS MESSAGE =====
+async function sendSMS(locationToken, locationId, contactId, message) {
+  try {
+    const response = await axios.post(
+      `${GHL_CONFIG.base_url}/conversations/messages`,
+      {
+        locationId,
+        contactId,
+        message,
+        type: 'SMS',
+        assignedTo: locationId
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${locationToken}`,
+          'Version': '2021-07-28',
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    
+    return response.data;
+  } catch (error) {
+    console.error('Send message error:', error.response?.data);
+    throw error;
+  }
+}
+
+// ===== REFRESH TOKEN =====
+async function refreshAccessToken(refreshToken) {
+  try {
+    const response = await axios.post(
+      `${GHL_CONFIG.base_url}/oauth/token`,
+      {
+        client_id: GHL_CONFIG.client_id,
+        client_secret: GHL_CONFIG.client_secret,
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
+        user_type: 'Location'
+      },
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      }
+    );
+    
+    return response.data;
+  } catch (error) {
+    console.error('Refresh token error:', error.response?.data);
+    throw error;
+  }
+}
+
 // Prevent duplicate route mounts
 if (app.locals.__routesInitialized) {
   console.warn('⚠️ Routes already initialized — skipping duplicate mounts');
@@ -232,141 +368,6 @@ app.get('/auth/callback', async (req, res) => {
     res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/ghl-api?error=${encodeURIComponent(errorMsg)}`);
   }
 });
-
-// ===== STEP 3: GET LOCATION TOKEN (for sub-accounts) =====
-async function getLocationToken(companyToken, locationId) {
-  try {
-    const response = await axios.post(
-      `${GHL_CONFIG.base_url}/oauth/locationToken`,
-      { locationId },
-      {
-        headers: {
-          'Authorization': `Bearer ${companyToken}`,
-          'Version': '2021-07-28',
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-    
-    return response.data.access_token;
-  } catch (error) {
-    console.error('Location token error:', error.response?.data);
-    throw error;
-  }
-}
-
-// ===== STEP 4: CREATE CUSTOM FIELD =====
-async function createCustomField(locationToken, locationId, fieldName) {
-  try {
-    const response = await axios.post(
-      `${GHL_CONFIG.base_url}/locations/${locationId}/customFields`,
-      { name: fieldName, dataType: 'TEXT' },
-      {
-        headers: {
-          'Authorization': `Bearer ${locationToken}`,
-          'Version': '2021-07-28',
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-    
-    return response.data.customField.id;
-  } catch (error) {
-    if (error.response?.status === 400 && error.response.data.message.includes('already exists')) {
-      console.log('Custom field already exists');
-      return null;
-    }
-    throw error;
-  }
-}
-
-// ===== STEP 5: UPSERT CONTACT WITH CUSTOM FIELD =====
-async function upsertContact(locationToken, locationId, contactData, customFieldId) {
-  try {
-    const contactPayload = {
-      locationId,
-      firstName: contactData.firstName,
-      phone: contactData.phone
-    };
-    
-    if (customFieldId && contactData.customFieldValue) {
-      contactPayload.customFields = [
-        { id: customFieldId, value: contactData.customFieldValue }
-      ];
-    }
-    
-    const response = await axios.post(
-      `${GHL_CONFIG.base_url}/contacts/upsert`,
-      contactPayload,
-      {
-        headers: {
-          'Authorization': `Bearer ${locationToken}`,
-          'Version': '2021-07-28',
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-    
-    return response.data.contact;
-  } catch (error) {
-    console.error('Upsert contact error:', error.response?.data);
-    throw error;
-  }
-}
-
-// ===== STEP 6: SEND SMS MESSAGE =====
-async function sendSMS(locationToken, locationId, contactId, message) {
-  try {
-    const response = await axios.post(
-      `${GHL_CONFIG.base_url}/conversations/messages`,
-      {
-        locationId,
-        contactId,
-        message,
-        type: 'SMS',
-        assignedTo: locationId
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${locationToken}`,
-          'Version': '2021-07-28',
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-    
-    return response.data;
-  } catch (error) {
-    console.error('Send message error:', error.response?.data);
-    throw error;
-  }
-}
-
-// ===== REFRESH TOKEN =====
-async function refreshAccessToken(refreshToken) {
-  try {
-    const response = await axios.post(
-      `${GHL_CONFIG.base_url}/oauth/token`,
-      {
-        client_id: GHL_CONFIG.client_id,
-        client_secret: GHL_CONFIG.client_secret,
-        grant_type: 'refresh_token',
-        refresh_token: refreshToken,
-        user_type: 'Location'
-      },
-      {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
-        }
-      }
-    );
-    
-    return response.data;
-  } catch (error) {
-    console.error('Refresh token error:', error.response?.data);
-    throw error;
-  }
-}
 
 // ===== EXAMPLE: COMPLETE FLOW =====
 app.post('/api/voice-ai/process-contact', async (req, res) => {
