@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { BookOpen, Save, Upload, RefreshCw, Database, Sparkles, CheckCircle, Link2 } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { toast } from 'react-hot-toast';
+import { useMCP } from '../../hooks/useMCP';
+import { getApiBaseUrl } from '../../utils/apiBase';
 
 interface TrainingPayload {
   agentId: string;
@@ -21,6 +23,9 @@ const TrainingHub: React.FC = () => {
   const [qna, setQna] = useState(defaultQnA);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [genLoading, setGenLoading] = useState(false);
+
+  const mcp = useMCP();
 
   const selectedAgent = useMemo(() => voiceAgents.find(a => a.id === selectedId), [voiceAgents, selectedId]);
 
@@ -82,6 +87,87 @@ const TrainingHub: React.FC = () => {
     }
   };
 
+  const handleGeneratePrompt = async () => {
+    if (!selectedAgent) return;
+    setGenLoading(true);
+    try {
+      const result = await mcp.voiceAgentGeneratePrompt({
+        template: 'You are a sales assistant. Gather needs and book calls.',
+        businessHours: { open: '9 AM', close: '5 PM' },
+        clientContext: { industry: 'general' },
+        enhance: true
+      });
+      if ((result as any)?.success && (result as any).data) {
+        const prompt = (result as any).data as string;
+        setSystemPrompt(prompt);
+        toast.success('Prompt generated');
+      } else {
+        toast.error('Prompt generation failed');
+      }
+    } catch (e: any) {
+      toast.error(e.message || 'Prompt generation failed');
+    } finally {
+      setGenLoading(false);
+    }
+  };
+
+  const handleSaveState = async () => {
+    if (!payload) return;
+    setSaving(true);
+    try {
+      const res = await mcp.agentSaveState({
+        agentId: payload.agentId,
+        customerId: 'training',
+        state: {
+          systemPrompt: payload.systemPrompt,
+          knowledgeBase: payload.knowledgeBase,
+          qnaPairs: payload.qnaPairs
+        }
+      });
+      if ((res as any)?.success !== false) {
+        toast.success('State saved');
+      } else {
+        toast.error('Save failed');
+      }
+    } catch (e: any) {
+      toast.error(e.message || 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeploy = async () => {
+    if (!payload || !selectedAgent) return;
+    setSyncing(true);
+    try {
+      const base = getApiBaseUrl();
+      const body = {
+        name: selectedAgent.name || 'Sales Assistant',
+        description: 'Qualifies leads and books appointments',
+        voiceSettings: { provider: 'elevenlabs', voiceId: 'rachel', speed: 1.0, stability: 0.7, similarityBoost: 0.8 },
+        conversationSettings: { systemPrompt, temperature: 0.7, maxTokens: 1000 },
+        scripts: { greeting: 'Hi! Thanks for calling. How can I help?', fallback: 'Sorry, could you rephrase?', transfer: 'Connecting you with a specialist.', goodbye: 'Thanks for calling!' },
+        intents: [
+          { name: 'schedule_appointment', phrases: ['schedule','book','appointment'], action: 'schedule_appointment' },
+          { name: 'pricing_inquiry', phrases: ['price','cost','how much'], action: 'provide_pricing_info' }
+        ],
+        knowledgeBase: payload.knowledgeBase,
+        compliance: { tcpaCompliant: true, recordingConsent: true }
+      };
+      const res = await fetch(`${base}/api/voice-ai/agents`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) throw new Error('Deploy failed');
+      toast.success('Agent deploy request submitted');
+    } catch (e: any) {
+      toast.error(e.message || 'Deploy failed');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
     <div className="p-6 bg-background min-h-screen text-foreground">
       <div className="mb-6 flex items-center justify-between">
@@ -93,9 +179,16 @@ const TrainingHub: React.FC = () => {
           <button onClick={handleLocalSave} disabled={saving} className="btn btn-outline">
             <Save className="w-4 h-4 mr-2" /> Save Local
           </button>
-          <button onClick={handleSyncToGHL} disabled={syncing || !payload} className="btn btn-primary">
+          <button onClick={handleGeneratePrompt} disabled={genLoading} className="btn btn-outline">
+            {genLoading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
+            Generate Prompt
+          </button>
+          <button onClick={handleSaveState} disabled={saving || !payload} className="btn btn-outline">
+            <Database className="w-4 h-4 mr-2" /> Save State
+          </button>
+          <button onClick={handleDeploy} disabled={syncing || !payload} className="btn btn-primary">
             {syncing ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
-            Sync to GHL
+            Deploy Agent
           </button>
         </div>
       </div>
