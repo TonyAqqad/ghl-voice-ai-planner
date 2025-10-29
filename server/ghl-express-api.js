@@ -1751,17 +1751,20 @@ app.post('/api/webhooks/agent', async (req, res) => {
     const fs = require('fs');
     const path = require('path');
     
-    // Prefer explicit env path if set
     const distFromEnv = process.env.FRONTEND_DIST_PATH;
     const candidates = [
       distFromEnv && path.resolve(distFromEnv),
-      path.resolve('/opt/render/project/src/dist'),
-      path.resolve('/opt/render/project/dist'),
-      path.resolve(__dirname, '..', 'dist'),
-      path.resolve(__dirname, 'dist')
+      '/opt/render/project/src/dist',         // Render root dist (preferred)
+      '/opt/render/project/dist',             // older fallback
+      path.resolve(__dirname, '..', 'dist'),  // local dev fallback
+      path.resolve(__dirname, 'dist')         // very last resort
     ].filter(Boolean);
     
-    const distDir = candidates.find(p => fs.existsSync(p) && fs.existsSync(path.join(p, 'index.html')));
+    const distDir = candidates.find(p => {
+      try {
+        return fs.existsSync(p) && fs.existsSync(path.join(p, 'index.html'));
+      } catch { return false; }
+    });
     
     if (distDir) {
       app.use(express.static(distDir));
@@ -1770,8 +1773,7 @@ app.post('/api/webhooks/agent', async (req, res) => {
       });
       console.log('🎨 Serving SPA from:', distDir);
     } else {
-      console.warn('⚠️  Frontend dist not found; API-only mode.');
-      console.warn('   Checked paths:', candidates.map(p => p || '(undefined)').join(', '));
+      console.warn('⚠️  Frontend dist not found; API-only mode.\n   Checked paths:', candidates.join(', '));
     }
     
     // List all registered routes for debugging
