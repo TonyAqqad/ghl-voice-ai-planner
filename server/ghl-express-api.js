@@ -1823,20 +1823,54 @@ const PORT = process.env.PORT || 10000;
     
     // Serve static files from the frontend build
     // Build folder is one level up from server directory
-    const frontendDistPath = path.join(__dirname, '..', 'dist');
-    console.log(`📁 Frontend dist path: ${frontendDistPath}`);
-    
-    // Serve static assets (JS, CSS, images) from dist folder
-    // Check if dist folder exists first
     const fs = require('fs');
+    const frontendDistPath = path.join(__dirname, '..', 'dist');
+    const parentPath = path.join(__dirname, '..');
+    
+    console.log(`📁 Current working directory: ${process.cwd()}`);
+    console.log(`📁 Server __dirname: ${__dirname}`);
+    console.log(`📁 Frontend dist path: ${frontendDistPath}`);
+    console.log(`📁 Parent directory: ${parentPath}`);
+    
+    // List parent directory contents
+    try {
+      const parentContents = fs.readdirSync(parentPath);
+      console.log(`📁 Parent directory contents:`, parentContents.join(', '));
+    } catch (e) {
+      console.log(`⚠️  Could not read parent directory:`, e.message);
+    }
+    
+    // Check if dist folder exists and list its contents
     if (fs.existsSync(frontendDistPath)) {
-      app.use(express.static(frontendDistPath, {
-        maxAge: '1y', // Cache static assets for 1 year
-        etag: true
-      }));
-      console.log('✅ Static file serving enabled');
+      try {
+        const distContents = fs.readdirSync(frontendDistPath);
+        console.log(`✅ Dist folder found! Contents:`, distContents.join(', '));
+        
+        // Check for index.html specifically
+        const indexPath = path.join(frontendDistPath, 'index.html');
+        if (fs.existsSync(indexPath)) {
+          console.log('✅ index.html found in dist folder');
+        } else {
+          console.log('⚠️  index.html NOT found in dist folder');
+        }
+        
+        app.use(express.static(frontendDistPath, {
+          maxAge: '1y', // Cache static assets for 1 year
+          etag: true
+        }));
+        console.log('✅ Static file serving enabled');
+      } catch (e) {
+        console.log(`⚠️  Error reading dist folder:`, e.message);
+      }
     } else {
-      console.log('⚠️  Frontend dist folder not found - app will serve API only until build completes');
+      console.log('⚠️  Frontend dist folder not found at:', frontendDistPath);
+      console.log('⚠️  App will serve API only until build completes');
+      
+      // Try alternative paths
+      const altPath1 = path.join(process.cwd(), 'dist');
+      const altPath2 = './dist';
+      console.log(`🔍 Checking alternative path 1: ${altPath1} - ${fs.existsSync(altPath1) ? 'EXISTS' : 'NOT FOUND'}`);
+      console.log(`🔍 Checking alternative path 2: ${altPath2} - ${fs.existsSync(altPath2) ? 'EXISTS' : 'NOT FOUND'}`);
     }
     
     // For all non-API routes, serve the React app (handles React Router)
