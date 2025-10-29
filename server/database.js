@@ -5,21 +5,49 @@ const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
 
+// Force IPv4 resolution to avoid IPv6 issues
+const dns = require('dns');
+const { promisify } = require('util');
+const lookup = promisify(dns.lookup);
+
 // Create connection pool with IPv4 and proper SSL configuration
-const pool = new Pool({
-  host: 'db.wkmnikcqijqboxwwfxle.supabase.co',
-  port: 5432,
-  user: 'postgres',
-  password: 'Sharmoota19!',
-  database: 'postgres',
-  ssl: {
-    rejectUnauthorized: false // Required for Supabase
-  },
-  // Connection timeout settings
-  connectionTimeoutMillis: 10000,
-  idleTimeoutMillis: 30000,
-  max: 10
-});
+let pool;
+
+async function createPool() {
+  try {
+    // Force IPv4 resolution
+    const result = await lookup('db.wkmnikcqijqboxwwfxle.supabase.co', { family: 4 });
+    console.log('✅ Resolved Supabase host to IPv4:', result.address);
+    
+    pool = new Pool({
+      host: result.address, // Use resolved IPv4 address
+      port: 5432,
+      user: 'postgres',
+      password: 'Sharmoota19!',
+      database: 'postgres',
+      ssl: {
+        rejectUnauthorized: false // Required for Supabase
+      },
+      // Connection timeout settings
+      connectionTimeoutMillis: 10000,
+      idleTimeoutMillis: 30000,
+      max: 10
+    });
+    
+    return pool;
+  } catch (error) {
+    console.error('❌ Failed to resolve Supabase host:', error.message);
+    throw error;
+  }
+}
+
+// Initialize pool function
+async function initializePool() {
+  if (!pool) {
+    pool = await createPool();
+  }
+  return pool;
+}
 
 // Test database connection
 async function testConnection() {
@@ -38,6 +66,9 @@ async function testConnection() {
 // Initialize database tables
 async function initializeDatabase() {
   try {
+    // Initialize pool first
+    await initializePool();
+    
     // Test connection first
     const connected = await testConnection();
     if (!connected) {
@@ -60,6 +91,9 @@ async function initializeDatabase() {
  */
 async function storeTokens(tokensData, locationId = null, companyToken = null) {
   try {
+    // Ensure pool is initialized
+    await initializePool();
+    
     const expiresAt = Date.now() + 3600000; // 1 hour from now
     
     const result = await pool.query(
@@ -238,6 +272,7 @@ process.on('SIGTERM', async () => {
 
 module.exports = {
   pool,
+  initializePool,
   initializeDatabase,
   storeTokens,
   getLatestTokens,
