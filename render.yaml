@@ -20,12 +20,26 @@ services:
         exit 1
       }
       echo ""
-      echo "=== STEP 3: Building frontend ==="
-      echo "Working directory: $(pwd)"
-      echo "Using npx to run vite (fixes permission issues)"
+      echo "=== STEP 3: Setting executable permissions ==="
+      echo "Fixing vite binary permissions..."
+      if [ -f "./node_modules/.bin/vite" ]; then
+        echo "✅ Vite binary found, checking current permissions:"
+        ls -l ./node_modules/.bin/vite
+        chmod +x ./node_modules/.bin/vite
+        echo "✅ Executable permission set"
+        ls -l ./node_modules/.bin/vite
+      else
+        echo "⚠️  Vite binary not found in ./node_modules/.bin/vite"
+        echo "Checking node_modules/.bin directory:"
+        ls -la ./node_modules/.bin/ | head -10 || echo "node_modules/.bin not found"
+      fi
       echo ""
-      # Use npx to ensure vite has proper permissions
-      npx vite build --mode production 2>&1 || {
+      echo "=== STEP 4: Building frontend ==="
+      echo "Working directory: $(pwd)"
+      echo "Using npx to run vite (with explicit permissions)"
+      echo ""
+      # Ensure vite is executable before building
+      chmod +x ./node_modules/.bin/vite && npx vite build --mode production 2>&1 || {
         echo ""
         echo "❌ Build failed!"
         echo "Error details above"
@@ -60,7 +74,7 @@ services:
       echo ""
       echo "✅ Build completed successfully!"
       echo ""
-      echo "=== STEP 4: Final verification ==="
+      echo "=== STEP 5: Final verification ==="
       echo "Dist location: $(pwd)/dist"
       echo "Dist exists: $([ -d dist ] && echo 'YES' || echo 'NO')"
       echo "index.html exists: $([ -f dist/index.html ] && echo 'YES' || echo 'NO')"
@@ -69,7 +83,7 @@ services:
       touch dist/.render-build-complete 2>/dev/null || true
       echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > dist/.render-build-timestamp 2>/dev/null || true
       echo ""
-      echo "=== STEP 5: Installing server dependencies ==="
+      echo "=== STEP 6: Installing server dependencies ==="
       cd server && npm install
     startCommand: cd server && node ghl-express-api.js
     envVars:
