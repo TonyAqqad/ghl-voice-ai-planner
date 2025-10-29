@@ -2,7 +2,7 @@ services:
   - type: web
     name: ghl-oauth-api
     runtime: node
-    buildCommand: cd server && npm install
+    buildCommand: npm install && npm run build && cd server && npm install
     startCommand: cd server && node ghl-express-api.js
     envVars:
       - key: GHL_CLIENT_ID

@@ -74,13 +74,11 @@ const templateService = new TemplateService();
 app.use(cors());
 app.use(express.json());
 
-// Root endpoint for health check - MUST come BEFORE static file serving
-app.get('/', (req, res) => {
-  console.log(`📡 Root endpoint hit - Method: ${req.method}, Path: ${req.path}, URL: ${req.url}`);
-  res.setHeader('Content-Type', 'application/json');
+// API health check endpoint (keep this for API monitoring)
+app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    message: 'GHL Voice AI Platform is running',
+    message: 'GHL Voice AI Platform API is running',
     version: '1.0.0',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development',
@@ -140,10 +138,8 @@ app.get('/health/db', async (_req, res) => {
   }
 });
 
-// Serve static files from the frontend build (if it exists) - AFTER API routes
-app.use(express.static('dist'));
-app.use(express.static('build'));
-app.use(express.static('public'));
+// Note: Static file serving and React Router handler will be set up
+// AFTER all routes are registered (see async initialization below)
 
 // ===== STEP 1: GET AUTHORIZATION CODE =====
 app.get('/auth/ghl', (req, res) => {
@@ -1806,28 +1802,6 @@ app.post('/api/webhooks/agent', async (req, res) => {
 
 const PORT = process.env.PORT || 10000;
 
-// Catch-all route for 404s - MUST be last, after all other routes but BEFORE server starts
-// This ensures all routes are registered before server accepts connections
-app.use((req, res) => {
-  console.log(`🔍 404 - Route not found: ${req.method} ${req.path}`);
-  res.status(404).json({
-    error: 'Route not found',
-    method: req.method,
-    path: req.path,
-    timestamp: new Date().toISOString(),
-    availableRoutes: [
-      'GET /',
-      'GET /ghl-api',
-      'GET /health/db',
-      'GET /auth/ghl',
-      'GET /auth/callback',
-      'GET /api/templates',
-      'GET /api/voice-ai/agents',
-      'POST /api/demo/create-agent'
-    ]
-  });
-});
-
 // Initialize database and start server
 (async () => {
   try {
@@ -1847,6 +1821,60 @@ app.use((req, res) => {
     await initializeDatabase();
     console.log('✅ Database connected and initialized');
     
+    // Serve static files from the frontend build
+    // Build folder is one level up from server directory
+    const frontendDistPath = path.join(__dirname, '..', 'dist');
+    console.log(`📁 Frontend dist path: ${frontendDistPath}`);
+    
+    // Serve static assets (JS, CSS, images) from dist folder
+    // Check if dist folder exists first
+    const fs = require('fs');
+    if (fs.existsSync(frontendDistPath)) {
+      app.use(express.static(frontendDistPath, {
+        maxAge: '1y', // Cache static assets for 1 year
+        etag: true
+      }));
+      console.log('✅ Static file serving enabled');
+    } else {
+      console.log('⚠️  Frontend dist folder not found - app will serve API only until build completes');
+    }
+    
+    // For all non-API routes, serve the React app (handles React Router)
+    // This MUST be the very last route handler
+    app.get('*', (req, res) => {
+      // Skip API routes - these should have been handled already
+      if (req.path.startsWith('/api/') || 
+          req.path.startsWith('/auth/') || 
+          req.path.startsWith('/health/') || 
+          req.path.startsWith('/ghl-api')) {
+        return res.status(404).json({
+          error: 'Route not found',
+          path: req.path
+        });
+      }
+      
+      // Serve index.html for all other routes (React Router handles client-side routing)
+      const indexPath = path.join(frontendDistPath, 'index.html');
+      res.sendFile(indexPath, (err) => {
+        if (err) {
+          console.log(`⚠️  Frontend not found at ${indexPath}, serving API fallback`);
+          res.json({
+            status: 'ok',
+            message: 'GHL Voice AI Platform API is running',
+            note: 'Frontend app not found. Please ensure frontend is built.',
+            apiEndpoints: {
+              health: '/api/health',
+              dbHealth: '/health/db',
+              auth: '/auth/ghl',
+              templates: '/api/templates'
+            }
+          });
+        } else {
+          console.log(`✅ Served React app for: ${req.path}`);
+        }
+      });
+    });
+    
     // List all registered routes for debugging
     const routes = [];
     app._router?.stack?.forEach((middleware) => {
@@ -1856,6 +1884,7 @@ app.use((req, res) => {
     });
     console.log(`📋 Registered routes: ${routes.length} routes`);
     routes.forEach(route => console.log(`   ${route}`));
+    console.log(`🎨 React app will be served for all non-API routes`);
     
     // Start server
     const PORT = process.env.PORT || 10000;
