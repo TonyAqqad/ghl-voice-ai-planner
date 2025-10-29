@@ -123,31 +123,9 @@ app.get('/api/health', (req, res) => {
 });
 
 // API routes - Place BEFORE static file serving
-app.get('/ghl-api', (req, res) => {
-  console.log('📡 /ghl-api endpoint hit');
-  res.json({
-    status: 'ok',
-    message: 'GHL Voice AI API is running',
-    timestamp: new Date().toISOString(),
-    auth: {
-      authUrl: '/auth/ghl',
-      callback: '/auth/callback'
-    },
-    endpoints: [
-      'GET /api/voice-ai/agents',
-      'POST /api/voice-ai/agents',
-      'GET /api/voice-ai/agents/:agentId',
-      'PUT /api/voice-ai/agents/:agentId',
-      'POST /api/voice-ai/agents/:agentId/activate',
-      'POST /api/voice-ai/agents/:agentId/deactivate',
-      'DELETE /api/voice-ai/agents/:agentId',
-      'GET /api/elevenlabs/voices',
-      'POST /api/elevenlabs/speech',
-      'GET /api/templates',
-      'POST /api/demo/create-agent'
-    ]
-  });
-});
+// Note: /ghl-api route is also defined later (line ~1099) with token validation
+// Keeping this simple endpoint here for quick status checks
+// The main /ghl-api endpoint with auth check is below
 
 // Database health check endpoint
 app.get('/health/db', async (_req, res) => {
@@ -1343,61 +1321,13 @@ app.get('/api/demo/agent-stats/:agentId', async (req, res) => {
   }
 });
 
-// Update Voice AI agent
-app.put('/api/voice-ai/agents/:agentId', async (req, res) => {
-  try {
-    const tokens = getLatestTokens();
-    if (!tokens || tokens.expired) {
-      return res.status(401).json({ error: 'No valid tokens' });
-    }
-
-    const response = await axios.put(
-      `${GHL_CONFIG.base_url}/voice-ai/agents/${req.params.agentId}`,
-      req.body,
-      {
-        headers: {
-          'Authorization': `Bearer ${tokens.access_token}`,
-          'Version': '2021-07-28',
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-
-    res.json(response.data);
-  } catch (error) {
-    console.error('Failed to update agent:', error.response?.data || error.message);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Delete Voice AI agent
-app.delete('/api/voice-ai/agents/:agentId', async (req, res) => {
-  try {
-    const tokens = getLatestTokens();
-    if (!tokens || tokens.expired) {
-      return res.status(401).json({ error: 'No valid tokens' });
-    }
-
-    await axios.delete(
-      `${GHL_CONFIG.base_url}/voice-ai/agents/${req.params.agentId}`,
-      {
-        headers: {
-          'Authorization': `Bearer ${tokens.access_token}`,
-          'Version': '2021-07-28'
-        }
-      }
-    );
-
-    res.json({ success: true, message: 'Agent deleted successfully' });
-  } catch (error) {
-    console.error('Failed to delete agent:', error.response?.data || error.message);
-    res.status(500).json({ error: error.message });
-  }
-});
-
 // ===== ENHANCED VOICE AI AGENT MANAGEMENT =====
+// NOTE: Primary routes are defined earlier (lines ~787-1072)
+// The duplicate routes below have been commented out to prevent conflicts
 
-// Create Voice AI agent with full configuration
+// Create Voice AI agent with full configuration (DUPLICATE - commented out)
+// Primary route is at line ~787 - use that one instead
+/*
 app.post('/api/voice-ai/agents', async (req, res) => {
   try {
     const tokens = getLatestTokens();
@@ -1408,15 +1338,13 @@ app.post('/api/voice-ai/agents', async (req, res) => {
     const agentConfig = req.body;
     console.log('🚀 Creating Voice AI agent:', agentConfig.name);
 
-    // Create agent in GHL
     const agent = await ghlProvider.createAgent(tokens.access_token, agentConfig);
     
-    // Record creation cost
     costingService.recordCost({
       agentId: agent.agent_id,
       type: 'agent_creation',
       provider: 'ghl',
-      cost: 0, // No direct cost for creation
+      cost: 0,
       metadata: { action: 'create' }
     });
 
@@ -1434,60 +1362,21 @@ app.post('/api/voice-ai/agents', async (req, res) => {
     });
   }
 });
+*/
 
-// Get Voice AI agent with full details
-app.get('/api/voice-ai/agents/:agentId', async (req, res) => {
-  try {
-    const tokens = getLatestTokens();
-    if (!tokens || tokens.expired) {
-      return res.status(401).json({ error: 'No valid tokens' });
-    }
+// NOTE: Duplicate routes for /api/voice-ai/agents/:agentId (GET, PUT, DELETE) 
+// are already defined earlier (lines ~955-1072). 
+// These duplicates are commented out to prevent route conflicts.
+// If you need different behavior, modify the primary routes above.
 
-    const agent = await ghlProvider.getAgent(tokens.access_token, req.params.agentId);
-    res.json(agent);
-  } catch (error) {
-    console.error('Failed to get agent:', error.response?.data || error.message);
-    res.status(500).json({ error: error.message });
-  }
-});
+// Get Voice AI agent with full details (DUPLICATE - commented out)
+// app.get('/api/voice-ai/agents/:agentId', async (req, res) => { ... });
 
-// Update Voice AI agent
-app.put('/api/voice-ai/agents/:agentId', async (req, res) => {
-  try {
-    const tokens = getLatestTokens();
-    if (!tokens || tokens.expired) {
-      return res.status(401).json({ error: 'No valid tokens' });
-    }
+// Update Voice AI agent (DUPLICATE - commented out)
+// app.put('/api/voice-ai/agents/:agentId', async (req, res) => { ... });
 
-    const updates = req.body;
-    const agent = await ghlProvider.updateAgent(tokens.access_token, req.params.agentId, updates);
-    
-    res.json({
-      success: true,
-      agent: agent,
-      message: 'Agent updated successfully'
-    });
-  } catch (error) {
-    console.error('Failed to update agent:', error.response?.data || error.message);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Delete Voice AI agent
-app.delete('/api/voice-ai/agents/:agentId', async (req, res) => {
-  try {
-    const tokens = getLatestTokens();
-    if (!tokens || tokens.expired) {
-      return res.status(401).json({ error: 'No valid tokens' });
-    }
-
-    await ghlProvider.deleteAgent(tokens.access_token, req.params.agentId);
-    res.json({ success: true, message: 'Agent deleted successfully' });
-  } catch (error) {
-    console.error('Failed to delete agent:', error.response?.data || error.message);
-    res.status(500).json({ error: error.message });
-  }
-});
+// Delete Voice AI agent (DUPLICATE - commented out)
+// app.delete('/api/voice-ai/agents/:agentId', async (req, res) => { ... });
 
 // Add custom action to agent
 app.post('/api/voice-ai/agents/:agentId/custom-actions', async (req, res) => {
@@ -2016,7 +1905,10 @@ const PORT = process.env.PORT || 10000;
       console.log(`📡 Auth endpoint: http://localhost:${PORT}/auth/ghl`);
       console.log(`✅ Callback: http://localhost:${PORT}/auth/callback`);
       console.log(`💾 Database: PostgreSQL (Supabase)`);
-      console.log(`🌐 Frontend: ${process.env.FRONTEND_URL || 'http://localhost:3001'}`);
+      // Only show localhost URL in development
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`🌐 Frontend: ${process.env.FRONTEND_URL || 'http://localhost:3001'}`);
+      }
       console.log(`🔗 API Status: http://localhost:${PORT}/ghl-api`);
       console.log(`🏠 Root endpoint: http://localhost:${PORT}/`);
       console.log(`📊 Available routes:`);
