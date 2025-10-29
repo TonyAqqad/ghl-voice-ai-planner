@@ -15,6 +15,7 @@ import { useStore } from '../../store/useStore';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { Skeleton, CardSkeleton } from '../ui/LoadingStates';
 import { toast } from 'react-hot-toast';
+import { getWsBaseUrl } from '../../utils/apiBase';
 
 interface LiveAgent {
   id: string;
@@ -39,9 +40,7 @@ const RealTimeAgentMonitor: React.FC = () => {
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
 
   // WebSocket connection for real-time updates
-  const wsUrl = process.env.NODE_ENV === 'production' 
-    ? 'wss://ghlvoiceai.captureclient.com/ws'
-    : 'ws://localhost:10000/ws';
+  const wsUrl = `${getWsBaseUrl()}/ws`;
     
   const { isConnected, lastMessage } = useWebSocket({
     url: wsUrl,

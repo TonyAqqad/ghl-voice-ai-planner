@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useStore } from '../../store/useStore';
+import { getApiBaseUrl } from '../../utils/apiBase';
 
 const GHLIntegrationManager: React.FC = () => {
   const { voiceAgents, workflows } = useStore();
@@ -87,7 +88,8 @@ const GHLIntegrationManager: React.FC = () => {
   const checkConnection = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('http://localhost:10000/api/health');
+      const base = getApiBaseUrl();
+      const response = await fetch(`${base}/api/health`, { credentials: 'include' });
       if (response.ok) {
         setIsConnected(true);
         setGhlStatus('connected');

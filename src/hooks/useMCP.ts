@@ -6,9 +6,10 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import axios from 'axios';
+import { getApiBaseUrl } from '../utils/apiBase';
 import toast from 'react-hot-toast';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:10000';
+const API_BASE_URL = getApiBaseUrl();
 
 interface MCPResponse<T = any> {
   success: boolean;
