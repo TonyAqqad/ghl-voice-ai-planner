@@ -206,11 +206,11 @@ async function sendSMS(locationToken, locationId, contactId, message) {
 async function refreshAccessToken(refreshToken) {
   try {
     const body = new URLSearchParams({
-      client_id: GHL_CONFIG.client_id,
-      client_secret: GHL_CONFIG.client_secret,
-      grant_type: 'refresh_token',
-      refresh_token: refreshToken,
-      user_type: 'Location'
+        client_id: GHL_CONFIG.client_id,
+        client_secret: GHL_CONFIG.client_secret,
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
+        user_type: 'Location'
     });
     
     const response = await axios.post(
@@ -375,7 +375,10 @@ app.get('/auth/callback', async (req, res) => {
     }
     
     // Redirect to frontend with success
-    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/ghl-api?connected=true`);
+    {
+      const base = process.env.FRONTEND_URL || `${req.protocol}://${req.get('host')}`;
+      res.redirect(`${base}/training?connected=true`);
+    }
   } catch (error) {
     console.error('❌ OAuth error details:', {
       status: error.response?.status,
@@ -384,7 +387,10 @@ app.get('/auth/callback', async (req, res) => {
       message: error.message
     });
     const errorMsg = error.response?.data?.error || error.response?.data?.message || error.message;
-    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/ghl-api?error=${encodeURIComponent(errorMsg)}`);
+    {
+      const base = process.env.FRONTEND_URL || `${req.protocol}://${req.get('host')}`;
+      res.redirect(`${base}/ghl-api?error=${encodeURIComponent(errorMsg)}`);
+    }
   }
 });
 
@@ -1792,9 +1798,9 @@ app.post('/api/webhooks/agent', async (req, res) => {
         res.sendFile(path.join(distDir, 'index.html'));
       });
       console.log('🎨 Serving SPA from:', distDir);
-    } else {
+        } else {
       console.warn('⚠️  Frontend dist not found; API-only mode.\n   Checked paths:', candidates.join(', '));
-    }
+        }
     
     // List all registered routes for debugging
     const routes = [];
@@ -1816,7 +1822,7 @@ app.post('/api/webhooks/agent', async (req, res) => {
       console.log(`💾 Database: PostgreSQL (Supabase)`);
       // Only show localhost URL in development
       if (process.env.NODE_ENV !== 'production') {
-        console.log(`🌐 Frontend: ${process.env.FRONTEND_URL || 'http://localhost:3001'}`);
+      console.log(`🌐 Frontend: ${process.env.FRONTEND_URL || 'http://localhost:3001'}`);
       }
       console.log(`🔗 API Status: http://localhost:${PORT}/ghl-api`);
       console.log(`🏠 Root endpoint: http://localhost:${PORT}/`);
