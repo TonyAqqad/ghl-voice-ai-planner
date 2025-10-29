@@ -1882,16 +1882,16 @@ const PORT = process.env.PORT || 10000;
     }
     
     // Build list of possible paths to check (in order of likelihood for Render)
-    // Most likely: dist is one level up from server directory
+    // Most likely: dist is at /opt/render/project/dist (root of repo after build)
     const possiblePaths = [
-      path.join(__dirname, '..', 'dist'),        // Standard: ../dist from server (/opt/render/project/src/dist)
-      path.join(parentDir, 'dist'),              // Explicit parent/dist (same as above, redundant but safe)
-      '/opt/render/project/src/dist',           // Absolute Render path (most common)
-      '/opt/render/project/dist',               // Alternative Render path (if build runs from different location)
-      path.join(process.cwd(), 'dist'),         // From current working directory
-      path.join(process.cwd(), '..', 'dist'),   // One level up from CWD (if CWD is in server/)
-      path.resolve(__dirname, '../../dist'),    // Two levels up (fallback)
+      '/opt/render/project/dist',               // Absolute Render path (build output location)
       process.env.FRONTEND_DIST_PATH,           // Explicit env var override (if set)
+      path.join(process.cwd(), 'dist'),         // From current working directory
+      path.join(__dirname, '..', 'dist'),       // Standard: ../dist from server (/opt/render/project/src/dist)
+      path.join(parentDir, 'dist'),             // Explicit parent/dist
+      path.join(process.cwd(), '..', 'dist'),  // One level up from CWD (if CWD is in server/)
+      '/opt/render/project/src/dist',           // Alternative Render path
+      path.resolve(__dirname, '../../dist'),    // Two levels up (fallback)
     ].filter(Boolean); // Remove any undefined/null entries
     
     // Remove duplicates and normalize all paths

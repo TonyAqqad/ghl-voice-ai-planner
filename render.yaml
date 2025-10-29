@@ -4,39 +4,27 @@ services:
     runtime: node
     buildCommand: |
       set -e
-      echo "=== STEP 1: Environment Setup ==="
-      echo "Current directory: $(pwd)"
+      echo "=== Building Application ==="
+      echo "Working directory: $(pwd)"
       echo "Node version: $(node -v)"
-      echo "NPM version: $(npm -v)"
       echo ""
-      echo "=== STEP 2: Installing root dependencies ==="
-      npm ci || {
-        echo "❌ npm ci failed! Trying npm install..."
-        npm install --production=false || exit 1
-      }
+      echo "=== Installing root dependencies ==="
+      npm ci
       echo ""
-      echo "=== STEP 3: Building frontend with Vite ==="
-      npx vite build --mode production || {
-        echo "❌ Vite build failed! Trying npm run build:actual..."
-        npm run build:actual || exit 1
-      }
+      echo "=== Building frontend with Vite ==="
+      npm run build
       echo ""
-      echo "=== STEP 4: Verifying build output ==="
-      if [ ! -d "dist" ]; then
-        echo "❌ CRITICAL: dist folder was NOT created after build!"
-        exit 1
-      fi
-      if [ ! -f "dist/index.html" ]; then
+      echo "=== Verifying build output ==="
+      if [ ! -d "dist" ] || [ ! -f "dist/index.html" ]; then
         echo "❌ CRITICAL: dist/index.html NOT found!"
         echo "Dist contents:"
-        ls -la dist/ | head -10
+        ls -la dist/ 2>/dev/null || echo "dist directory does not exist"
         exit 1
       fi
-      echo "✅ Build verification passed! dist/index.html exists"
+      echo "✅ Build complete! dist/index.html exists"
       echo ""
-      echo "=== STEP 5: Installing server dependencies ==="
-      cd server && npm ci || npm install
-      cd ..
+      echo "=== Installing server dependencies ==="
+      cd server && npm ci
     startCommand: node server/ghl-express-api.js
     envVars:
       # NOTE: Set these in Render Dashboard Environment tab - NEVER commit secrets here!
