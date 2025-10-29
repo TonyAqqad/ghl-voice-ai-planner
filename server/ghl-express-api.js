@@ -54,7 +54,8 @@ const storeTokensAsync = (tokens, locationId, companyToken) => {
 const GHL_CONFIG = {
   base_url: 'https://services.leadconnectorhq.com',
   auth_url: 'https://marketplace.gohighlevel.com', // GHL Marketplace OAuth URL
-  client_id: process.env.GHL_CLIENT_ID || '68fd461dc407410f0f0c0cb1-mh6umpou',
+  // SECURITY: Never hardcode secrets - use environment variables only
+  client_id: process.env.GHL_CLIENT_ID || '',
   client_secret: process.env.GHL_CLIENT_SECRET || '',
   redirect_uri: process.env.GHL_REDIRECT_URI || 'https://ghlvoiceai.captureclient.com/auth/callback',
   webhook_secret: process.env.GHL_WEBHOOK_SECRET || ''

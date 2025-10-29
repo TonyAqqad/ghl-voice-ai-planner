@@ -14,13 +14,43 @@ dns.setDefaultResultOrder?.('ipv4first');
 console.log('🚀 Enhanced Database Connection Test');
 console.log('=====================================\n');
 
-// Test configurations
+// SECURITY: Load environment variables from .env file
+// Never hardcode database passwords or connection strings
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
+
+if (!process.env.DATABASE_URL) {
+  console.error('❌ ERROR: DATABASE_URL environment variable is required!');
+  console.error('   Please set DATABASE_URL in your .env file or environment variables.');
+  process.exit(1);
+}
+
+// Parse the DATABASE_URL to create test configurations with different ports
+const parseDatabaseUrl = (url) => {
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname;
+    const database = parsed.pathname.substring(1);
+    const username = parsed.username;
+    const password = parsed.password;
+    
+    return { hostname, database, username, password };
+  } catch (e) {
+    throw new Error('Invalid DATABASE_URL format');
+  }
+};
+
+const dbInfo = parseDatabaseUrl(process.env.DATABASE_URL);
+
+// Test configurations - all use DATABASE_URL from environment
 const configs = [
   {
     name: 'Transaction Pooler (Port 6543)',
-    connectionString: process.env.DATABASE_URL || 'postgresql://postgres:Emadaqqad46!@db.wkmnikcqijqboxwwfxle.pooler.supabase.co:6543/postgres',
     config: {
-      connectionString: process.env.DATABASE_URL || 'postgresql://postgres:Emadaqqad46!@db.wkmnikcqijqboxwwfxle.pooler.supabase.co:6543/postgres',
+      host: dbInfo.hostname.replace('.supabase.co', '.pooler.supabase.com'),
+      port: 6543,
+      database: dbInfo.database,
+      user: dbInfo.username,
+      password: dbInfo.password,
       ssl: { rejectUnauthorized: false },
       max: 10,
       idleTimeoutMillis: 30000,
@@ -32,9 +62,12 @@ const configs = [
   },
   {
     name: 'Session Pooler (Port 6543)',
-    connectionString: 'postgresql://postgres:Emadaqqad46!@db.wkmnikcqijqboxwwfxle.supabase.co:6543/postgres',
     config: {
-      connectionString: 'postgresql://postgres:Emadaqqad46!@db.wkmnikcqijqboxwwfxle.supabase.co:6543/postgres',
+      host: dbInfo.hostname,
+      port: 6543,
+      database: dbInfo.database,
+      user: dbInfo.username,
+      password: dbInfo.password,
       ssl: { rejectUnauthorized: false },
       max: 10,
       idleTimeoutMillis: 30000,
@@ -46,9 +79,12 @@ const configs = [
   },
   {
     name: 'Direct Connection (Port 5432)',
-    connectionString: 'postgresql://postgres:Emadaqqad46!@db.wkmnikcqijqboxwwfxle.supabase.co:5432/postgres',
     config: {
-      connectionString: 'postgresql://postgres:Emadaqqad46!@db.wkmnikcqijqboxwwfxle.supabase.co:5432/postgres',
+      host: dbInfo.hostname,
+      port: 5432,
+      database: dbInfo.database,
+      user: dbInfo.username,
+      password: dbInfo.password,
       ssl: { rejectUnauthorized: false },
       max: 10,
       idleTimeoutMillis: 30000,
