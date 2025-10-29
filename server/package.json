@@ -5,7 +5,13 @@
   "main": "ghl-express-api.js",
   "scripts": {
     "start": "node ghl-express-api.js",
-    "dev": "nodemon ghl-express-api.js"
+    "dev": "nodemon ghl-express-api.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "test-connection": "node test-connection.js",
+    "test-render": "node test-render-connection.js",
+    "test-api": "node test-api.js",
+    "live-test": "node live-test.js",
+    "init-db": "node -e \"require('./database').initializeDatabase().then(() => console.log('Database initialized')).catch(console.error)\""
   },
   "dependencies": {
     "express": "^4.18.2",

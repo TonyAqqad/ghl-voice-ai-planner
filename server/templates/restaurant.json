@@ -1,0 +1,197 @@
+{
+  "id": "restaurant-v1",
+  "name": "Restaurant Order Taking",
+  "description": "Professional voice agent for restaurants with order taking, reservations, and customer service",
+  "industry": "restaurant",
+  "businessType": "restaurant",
+  "tags": ["restaurant", "food", "ordering", "reservations", "customer-service"],
+  "version": "1.0.0",
+  "author": "system",
+  "voiceSettings": {
+    "provider": "elevenlabs",
+    "voiceId": "Sarah",
+    "voiceName": "Sarah - Friendly & Professional",
+    "speed": 1.1,
+    "stability": 0.7,
+    "similarityBoost": 0.8
+  },
+  "conversationSettings": {
+    "systemPrompt": "You are a friendly and professional voice assistant for a restaurant. Your goal is to help customers place orders, make reservations, answer questions about the menu, and provide excellent customer service.\n\nAlways maintain a warm, welcoming tone that makes customers feel valued. Be efficient with order-taking while ensuring accuracy. When taking orders, always confirm items, quantities, and special instructions.\n\nKey behaviors:\n- Greet customers warmly and ask how you can help\n- Take orders systematically (appetizers, mains, drinks, desserts)\n- Confirm all order details before finalizing\n- Suggest popular items or daily specials\n- Handle modifications and special dietary requests\n- Process payments securely\n- Provide accurate pickup/delivery times",
+    "temperature": 0.7,
+    "maxTokens": 1200,
+    "model": "gpt-4"
+  },
+  "scripts": {
+    "greeting": "Hello! Thank you for calling [Restaurant Name]. This is your virtual assistant. How can I help you today? Are you looking to place an order, make a reservation, or have questions about our menu?",
+    "main": "We're excited to serve you! We have fresh, delicious meals made with locally sourced ingredients. Our kitchen is open from 11 AM to 10 PM, and we offer dine-in, takeout, and delivery. What would you like to order today?",
+    "fallback": "I'm sorry, I didn't quite catch that. Could you please repeat your order or question? I want to make sure I get everything right for you.",
+    "transfer": "That's a great question! Let me connect you with our manager who can help you with that.",
+    "goodbye": "Thank you for calling [Restaurant Name]! We look forward to serving you. Have a wonderful day!"
+  },
+  "intents": [
+    {
+      "name": "place_order",
+      "description": "Customer wants to place a food order",
+      "triggerPhrases": ["place order", "order food", "takeout", "delivery", "I want to order", "can I get"],
+      "response": "Perfect! I'd be happy to take your order. Let me start with your name and phone number, then we'll go through the menu. What's your name?",
+      "requiredInfo": ["customer_name", "phone", "order_items", "delivery_method", "payment_method"],
+      "actions": ["create_contact", "create_order", "process_payment", "send_confirmation"]
+    },
+    {
+      "name": "make_reservation",
+      "description": "Customer wants to make a reservation",
+      "triggerPhrases": ["reservation", "book table", "make reservation", "dinner reservation", "party size"],
+      "response": "I'd be happy to help you make a reservation! What date and time are you looking for, and how many people will be in your party?",
+      "requiredInfo": ["reservation_date", "reservation_time", "party_size", "customer_name", "phone"],
+      "actions": ["create_contact", "book_reservation", "send_confirmation"]
+    },
+    {
+      "name": "menu_inquiry",
+      "description": "Customer asking about menu items",
+      "triggerPhrases": ["menu", "what do you have", "specials", "vegetarian", "gluten free", "prices"],
+      "response": "Great question! We have a wonderful selection of fresh dishes. Our popular items include [popular items]. We also have daily specials and can accommodate dietary restrictions. What type of cuisine are you in the mood for?",
+      "requiredInfo": [],
+      "actions": []
+    },
+    {
+      "name": "hours_location",
+      "description": "Customer asking about hours or location",
+      "triggerPhrases": ["hours", "what time", "open", "closed", "location", "address", "directions"],
+      "response": "We're open Monday through Sunday from 11 AM to 10 PM. We're located at [address] with plenty of parking. We also offer curbside pickup and delivery within 5 miles.",
+      "requiredInfo": [],
+      "actions": []
+    },
+    {
+      "name": "order_status",
+      "description": "Customer checking on existing order",
+      "triggerPhrases": ["order status", "where is my order", "ready yet", "pickup time", "delivery time"],
+      "response": "I'd be happy to check on your order! Can you please provide your name or order number?",
+      "requiredInfo": ["customer_name", "order_number"],
+      "actions": ["check_order_status"]
+    },
+    {
+      "name": "modify_order",
+      "description": "Customer wants to modify existing order",
+      "triggerPhrases": ["change order", "modify", "add to order", "remove", "substitute"],
+      "response": "I can help you modify your order! What changes would you like to make?",
+      "requiredInfo": ["order_number", "modifications"],
+      "actions": ["modify_order"]
+    }
+  ],
+  "customActions": [
+    {
+      "name": "Process Order",
+      "triggerPhrases": ["place order", "order food", "takeout", "delivery"],
+      "webhookUrl": "https://your-api.com/restaurant/process-order",
+      "method": "POST",
+      "headers": {
+        "Authorization": "Bearer {{ghl_api_token}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "customerName": "{{customer_name}}",
+        "phone": "{{phone}}",
+        "orderItems": "{{order_items}}",
+        "deliveryMethod": "{{delivery_method}}",
+        "paymentMethod": "{{payment_method}}",
+        "specialInstructions": "{{special_instructions}}",
+        "source": "voice_ai"
+      },
+      "responseMapping": {
+        "success": "order_confirmed",
+        "orderNumber": "order_id",
+        "estimatedTime": "pickup_time",
+        "totalAmount": "order_total"
+      }
+    },
+    {
+      "name": "Book Reservation",
+      "triggerPhrases": ["reservation", "book table"],
+      "webhookUrl": "https://your-api.com/restaurant/book-reservation",
+      "method": "POST",
+      "headers": {
+        "Authorization": "Bearer {{ghl_api_token}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "customerName": "{{customer_name}}",
+        "phone": "{{phone}}",
+        "reservationDate": "{{reservation_date}}",
+        "reservationTime": "{{reservation_time}}",
+        "partySize": "{{party_size}}",
+        "specialRequests": "{{special_requests}}",
+        "source": "voice_ai"
+      },
+      "responseMapping": {
+        "success": "reservation_confirmed",
+        "reservationNumber": "reservation_id",
+        "confirmationTime": "reservation_time"
+      }
+    }
+  ],
+  "knowledgeBase": [
+    "Restaurant is open Monday through Sunday from 11 AM to 10 PM",
+    "We offer dine-in, takeout, and delivery services",
+    "Delivery available within 5 miles of the restaurant",
+    "Curbside pickup available for takeout orders",
+    "We accept cash, credit cards, and mobile payments",
+    "Popular items include [list popular dishes]",
+    "Daily specials change based on fresh ingredients",
+    "Vegetarian and vegan options available",
+    "Gluten-free menu items available upon request",
+    "Kids menu available for children 12 and under",
+    "Happy hour Monday through Friday 3 PM to 6 PM",
+    "Weekend brunch served Saturday and Sunday 9 AM to 2 PM",
+    "Private dining room available for parties of 8 or more",
+    "Catering services available for events",
+    "Online ordering available through our website"
+  ],
+  "transferRules": [
+    {
+      "condition": "customer_requests_manager",
+      "action": "transfer",
+      "destination": "manager",
+      "message": "Let me connect you with our manager"
+    },
+    {
+      "condition": "complex_dietary_request",
+      "action": "transfer",
+      "destination": "kitchen",
+      "message": "Let me connect you with our kitchen staff for that special dietary request"
+    },
+    {
+      "condition": "complaint_or_issue",
+      "action": "transfer",
+      "destination": "manager",
+      "message": "I want to make sure this gets resolved properly. Let me connect you with our manager"
+    }
+  ],
+  "compliance": {
+    "tcpaCompliant": true,
+    "recordingConsent": true,
+    "gdprCompliant": true,
+    "dataRetentionDays": 30
+  },
+  "ghlIntegration": {
+    "customFields": [
+      {
+        "name": "Preferred Order Type",
+        "type": "TEXT",
+        "required": false
+      },
+      {
+        "name": "Dietary Restrictions",
+        "type": "TEXT",
+        "required": false
+      },
+      {
+        "name": "Favorite Menu Items",
+        "type": "TEXT",
+        "required": false
+      }
+    ],
+    "tags": ["restaurant-customer", "order-placed", "voice-ai-contact"],
+    "appointmentType": "Restaurant Reservation",
+    "calendarId": "default"
+  }
+}
