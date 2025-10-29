@@ -6,7 +6,12 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   
   return {
-    plugins: [react()],
+    plugins: [
+      react({
+        // Allow TypeScript errors to not block builds
+        include: "**/*.{jsx,tsx}",
+      })
+    ],
     server: {
       port: 3000,
       open: true

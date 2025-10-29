@@ -2,7 +2,29 @@ services:
   - type: web
     name: ghl-oauth-api
     runtime: node
-    buildCommand: echo "=== Installing root dependencies ===" && npm install && echo "=== Current directory: $(pwd) ===" && echo "=== Building frontend ===" && npm run build || (echo "❌ Build failed - check errors above" && exit 1) && echo "=== Listing root directory after build ===" && ls -la | grep -E "(dist|node_modules|server)" && echo "=== Verifying dist folder ===" && if [ -d dist ]; then echo "✅ dist folder exists at $(pwd)/dist" && ls -la dist/ | head -10; else echo "❌ dist folder missing at $(pwd)/dist" && echo "Available directories:" && ls -la | head -20 && exit 1; fi && echo "=== Installing server dependencies ===" && cd server && npm install
+    buildCommand: |
+      set -e
+      echo "=== STEP 1: Installing root dependencies ==="
+      npm install
+      echo ""
+      echo "=== STEP 2: Current directory ==="
+      pwd
+      echo ""
+      echo "=== STEP 3: Building frontend (this may take a few minutes) ==="
+      npm run build
+      echo ""
+      echo "=== STEP 4: Verifying build output ==="
+      if [ ! -d "dist" ]; then
+        echo "❌ ERROR: dist folder was not created!"
+        echo "Build may have failed. Checking for errors..."
+        ls -la | head -20
+        exit 1
+      fi
+      echo "✅ dist folder exists"
+      ls -la dist/ | head -10
+      echo ""
+      echo "=== STEP 5: Installing server dependencies ==="
+      cd server && npm install
     startCommand: cd server && node ghl-express-api.js
     envVars:
       # NOTE: Set these in Render Dashboard Environment tab - NEVER commit secrets here!

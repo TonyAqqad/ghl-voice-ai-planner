@@ -1825,33 +1825,65 @@ const PORT = process.env.PORT || 10000;
     // Serve static files from the frontend build
     // Try multiple possible paths since Render build location may vary
     const fs = require('fs');
-    const possiblePaths = [
-      path.join(__dirname, '..', 'dist'),        // Standard: ../dist from server
-      path.join(process.cwd(), 'dist'),          // From current working directory
-      path.join(process.cwd(), '..', 'dist'),    // One level up from CWD
-      '/opt/render/project/src/dist',            // Absolute Render path
-      './dist'                                    // Relative from CWD
-    ];
     
     console.log(`📁 Current working directory: ${process.cwd()}`);
     console.log(`📁 Server __dirname: ${__dirname}`);
     
+    // First, let's see what's actually in the parent directory
+    const parentDir = path.join(__dirname, '..');
+    console.log(`📁 Parent directory: ${parentDir}`);
+    try {
+      const parentContents = fs.readdirSync(parentDir);
+      console.log(`📁 Parent directory contents (${parentContents.length} items):`);
+      parentContents.forEach((item, idx) => {
+        const itemPath = path.join(parentDir, item);
+        const isDir = fs.statSync(itemPath).isDirectory();
+        console.log(`   ${idx + 1}. ${item}${isDir ? ' [DIR]' : ''}`);
+      });
+    } catch (e) {
+      console.log(`⚠️  Could not read parent directory: ${e.message}`);
+    }
+    
+    // Build list of possible paths to check
+    const possiblePaths = [
+      path.join(__dirname, '..', 'dist'),        // Standard: ../dist from server
+      path.join(parentDir, 'dist'),              // Explicit parent/dist
+      '/opt/render/project/src/dist',            // Absolute Render path
+      '/opt/render/project/dist',                // Alternative Render path
+      path.join(process.cwd(), '..', 'dist'),    // One level up from CWD
+      path.join(process.cwd(), 'dist'),         // From current working directory
+    ];
+    
+    // Remove duplicates
+    const uniquePaths = [...new Set(possiblePaths)];
+    
     let frontendDistPath = null;
     
+    console.log(`\n🔍 Checking ${uniquePaths.length} possible dist locations:`);
     // Try each possible path
-    for (const testPath of possiblePaths) {
-      console.log(`🔍 Checking: ${testPath}`);
-      if (fs.existsSync(testPath)) {
-        const indexPath = path.join(testPath, 'index.html');
-        if (fs.existsSync(indexPath)) {
-          frontendDistPath = testPath;
-          console.log(`✅ Found dist folder with index.html at: ${testPath}`);
-          break;
+    for (const testPath of uniquePaths) {
+      const normalizedPath = path.resolve(testPath);
+      console.log(`   Checking: ${normalizedPath}`);
+      try {
+        if (fs.existsSync(normalizedPath)) {
+          const indexPath = path.join(normalizedPath, 'index.html');
+          if (fs.existsSync(indexPath)) {
+            frontendDistPath = normalizedPath;
+            console.log(`   ✅ FOUND! Dist folder with index.html at: ${normalizedPath}`);
+            break;
+          } else {
+            console.log(`   └─ Path exists but no index.html inside`);
+            // List what IS in there
+            try {
+              const contents = fs.readdirSync(normalizedPath).slice(0, 5);
+              console.log(`      Contents: ${contents.join(', ')}...`);
+            } catch (e) {}
+          }
         } else {
-          console.log(`   └─ Path exists but no index.html`);
+          console.log(`   └─ Not found`);
         }
-      } else {
-        console.log(`   └─ Not found`);
+      } catch (e) {
+        console.log(`   └─ Error checking path: ${e.message}`);
       }
     }
     
