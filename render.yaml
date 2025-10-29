@@ -20,108 +20,18 @@ services:
         exit 1
       }
       echo ""
-      echo "=== STEP 3: Fixing all binary permissions ==="
-      echo "Ensuring all node_modules/.bin executables have proper permissions..."
-      if [ -d "./node_modules/.bin" ]; then
-        echo "✅ node_modules/.bin directory found"
-        echo "Setting executable permissions on all binaries..."
-        chmod +x ./node_modules/.bin/* 2>/dev/null || true
-        echo "✅ Permissions set"
-        echo "Verifying vite binary:"
-        if [ -f "./node_modules/.bin/vite" ]; then
-          ls -l ./node_modules/.bin/vite
-        else
-          echo "⚠️  Vite binary not found - npm run build should handle this"
-        fi
-      else
-        echo "⚠️  node_modules/.bin directory not found"
-      fi
-      echo ""
-      echo "=== STEP 4: Building frontend ==="
+      echo "=== STEP 3: Building frontend with CI build script ==="
       echo "Working directory: $(pwd)"
-      echo "Using npm run build (recommended method with proper path resolution)"
+      echo "Using npm run build (calls scripts/ci-build.js with multi-method fallback)"
       echo ""
-      # Use npm run build as primary method - it has better path resolution
+      # The ci-build.js script handles permissions, multiple build methods, and verification
       npm run build 2>&1 || {
         echo ""
-        echo "❌ npm run build failed!"
-        echo "Error details above"
-        echo ""
-        echo "Checking node_modules and trying alternative methods..."
-        echo "Vite binary check:"
-        ls -la node_modules/.bin/vite 2>/dev/null || echo "vite not found in node_modules/.bin"
-        echo ""
-        echo "Trying alternative build methods..."
-        echo ""
-        echo "Method 1: Direct npx with explicit permissions"
-        if [ -f "./node_modules/.bin/vite" ]; then
-          chmod +x ./node_modules/.bin/vite
-          npx vite build --mode production 2>&1 || {
-            echo ""
-            echo "❌ npx method failed, trying node directly..."
-            echo ""
-            echo "Method 2: Using node to call vite directly"
-            if [ -f "./node_modules/vite/bin/vite.js" ]; then
-              node ./node_modules/vite/bin/vite.js build --mode production 2>&1 || {
-                echo ""
-                echo "❌ All build methods failed!"
-                echo "Directory contents:"
-                ls -la | head -20
-                echo ""
-                echo "Node version: $(node -v)"
-                echo "NPM version: $(npm -v)"
-                echo ""
-                echo "Vite locations checked:"
-                ls -la node_modules/.bin/vite 2>/dev/null || echo "  - node_modules/.bin/vite: NOT FOUND"
-                ls -la node_modules/vite/bin/vite.js 2>/dev/null || echo "  - node_modules/vite/bin/vite.js: NOT FOUND"
-                exit 1
-              }
-            else
-              echo "❌ Vite entry point not found - cannot proceed"
-              exit 1
-            fi
-          }
-        else
-          echo "⚠️  Vite binary not in .bin, trying node directly..."
-          if [ -f "./node_modules/vite/bin/vite.js" ]; then
-            node ./node_modules/vite/bin/vite.js build --mode production 2>&1 || {
-              echo "❌ Direct node method also failed"
-              exit 1
-            }
-          else
-            echo "❌ Vite not found anywhere - cannot proceed"
-            exit 1
-          fi
-        fi
+        echo "❌ Build failed! Check logs above for details."
+        exit 1
       }
-      # Verify dist was created
-      if [ ! -d "dist" ]; then
-        echo ""
-        echo "❌ CRITICAL: dist folder was NOT created after build!"
-        echo "Directory contents:"
-        ls -la
-        exit 1
-      fi
-      if [ ! -f "dist/index.html" ]; then
-        echo ""
-        echo "❌ CRITICAL: dist/index.html NOT found!"
-        echo "Dist contents:"
-        ls -la dist/ || echo "Cannot list dist"
-        exit 1
-      fi
       echo ""
-      echo "✅ Build completed successfully!"
-      echo ""
-      echo "=== STEP 5: Final verification ==="
-      echo "Dist location: $(pwd)/dist"
-      echo "Dist exists: $([ -d dist ] && echo 'YES' || echo 'NO')"
-      echo "index.html exists: $([ -f dist/index.html ] && echo 'YES' || echo 'NO')"
-      echo ""
-      echo "Creating persistence markers..."
-      touch dist/.render-build-complete 2>/dev/null || true
-      echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > dist/.render-build-timestamp 2>/dev/null || true
-      echo ""
-      echo "=== STEP 6: Installing server dependencies ==="
+      echo "=== STEP 4: Installing server dependencies ==="
       cd server && npm install
     startCommand: cd server && node ghl-express-api.js
     envVars:
