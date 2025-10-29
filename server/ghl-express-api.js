@@ -1832,30 +1832,41 @@ const PORT = process.env.PORT || 10000;
     // First, let's see what's actually in the parent directory
     const parentDir = path.join(__dirname, '..');
     console.log(`📁 Parent directory: ${parentDir}`);
+    console.log(`📁 Checking if parent directory exists: ${fs.existsSync(parentDir)}`);
+    
     try {
       const parentContents = fs.readdirSync(parentDir);
       console.log(`📁 Parent directory contents (${parentContents.length} items):`);
       parentContents.forEach((item, idx) => {
-        const itemPath = path.join(parentDir, item);
-        const isDir = fs.statSync(itemPath).isDirectory();
-        console.log(`   ${idx + 1}. ${item}${isDir ? ' [DIR]' : ''}`);
+        try {
+          const itemPath = path.join(parentDir, item);
+          const isDir = fs.statSync(itemPath).isDirectory();
+          const size = fs.statSync(itemPath).size;
+          const marker = item === 'dist' ? ' ← LOOKING FOR THIS!' : '';
+          console.log(`   ${idx + 1}. ${item}${isDir ? ' [DIR]' : ` [${size} bytes]`}${marker}`);
+        } catch (e) {
+          console.log(`   ${idx + 1}. ${item} [ERROR: ${e.message}]`);
+        }
       });
     } catch (e) {
       console.log(`⚠️  Could not read parent directory: ${e.message}`);
+      console.log(`   Parent dir exists: ${fs.existsSync(parentDir)}`);
+      console.log(`   Parent dir is directory: ${fs.existsSync(parentDir) ? fs.statSync(parentDir).isDirectory() : 'N/A'}`);
     }
     
-    // Build list of possible paths to check
+    // Build list of possible paths to check (in order of likelihood)
     const possiblePaths = [
-      path.join(__dirname, '..', 'dist'),        // Standard: ../dist from server
-      path.join(parentDir, 'dist'),              // Explicit parent/dist
-      '/opt/render/project/src/dist',            // Absolute Render path
-      '/opt/render/project/dist',                // Alternative Render path
-      path.join(process.cwd(), '..', 'dist'),    // One level up from CWD
+      path.join(__dirname, '..', 'dist'),        // Standard: ../dist from server (/opt/render/project/src/dist)
+      path.join(parentDir, 'dist'),              // Explicit parent/dist  
+      path.join(process.cwd(), '..', 'dist'),   // One level up from CWD
+      '/opt/render/project/src/dist',           // Absolute Render path
+      '/opt/render/project/dist',               // Alternative Render path (if build runs from different location)
       path.join(process.cwd(), 'dist'),         // From current working directory
+      path.resolve(__dirname, '../../dist'),    // Two levels up (fallback)
     ];
     
-    // Remove duplicates
-    const uniquePaths = [...new Set(possiblePaths)];
+    // Remove duplicates and normalize all paths
+    const uniquePaths = [...new Set(possiblePaths.map(p => path.resolve(p)))];
     
     let frontendDistPath = null;
     

@@ -20,17 +20,28 @@ services:
       }
       echo ""
       echo "=== STEP 4: Verifying build output ==="
-      npm run build:verify || {
-        echo "❌ Build verification failed!"
-        echo "Current directory contents:"
+      if [ ! -d "dist" ]; then
+        echo "❌ CRITICAL: dist folder was not created!"
+        echo "Directory contents after build:"
         ls -la
-        echo ""
-        echo "Checking if dist exists:"
-        test -d dist && echo "dist exists" || echo "dist does NOT exist"
         exit 1
-      }
+      fi
+      if [ ! -f "dist/index.html" ]; then
+        echo "❌ CRITICAL: dist/index.html not found!"
+        echo "Dist contents:"
+        ls -la dist/ || echo "dist directory doesn't exist"
+        exit 1
+      fi
+      echo "✅ Build verification passed"
+      echo "Dist folder size: $(du -sh dist | cut -f1)"
+      echo "Dist contents preview:"
+      ls -la dist/ | head -10
       echo ""
-      echo "=== STEP 5: Installing server dependencies ==="
+      echo "=== STEP 5: Ensuring dist persists (creating marker) ==="
+      touch dist/.render-build-complete
+      echo "$(date)" > dist/.render-build-timestamp
+      echo ""
+      echo "=== STEP 6: Installing server dependencies ==="
       cd server && npm install
     startCommand: cd server && node ghl-express-api.js
     envVars:
