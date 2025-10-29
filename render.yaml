@@ -51,22 +51,47 @@ services:
         echo "Vite binary check:"
         ls -la node_modules/.bin/vite 2>/dev/null || echo "vite not found in node_modules/.bin"
         echo ""
-        echo "Trying direct npx method with explicit permissions:"
+        echo "Trying alternative build methods..."
+        echo ""
+        echo "Method 1: Direct npx with explicit permissions"
         if [ -f "./node_modules/.bin/vite" ]; then
           chmod +x ./node_modules/.bin/vite
           npx vite build --mode production 2>&1 || {
             echo ""
-            echo "❌ All build methods failed!"
-            echo "Directory contents:"
-            ls -la | head -20
+            echo "❌ npx method failed, trying node directly..."
             echo ""
-            echo "Node version: $(node -v)"
-            echo "NPM version: $(npm -v)"
-            exit 1
+            echo "Method 2: Using node to call vite directly"
+            if [ -f "./node_modules/vite/bin/vite.js" ]; then
+              node ./node_modules/vite/bin/vite.js build --mode production 2>&1 || {
+                echo ""
+                echo "❌ All build methods failed!"
+                echo "Directory contents:"
+                ls -la | head -20
+                echo ""
+                echo "Node version: $(node -v)"
+                echo "NPM version: $(npm -v)"
+                echo ""
+                echo "Vite locations checked:"
+                ls -la node_modules/.bin/vite 2>/dev/null || echo "  - node_modules/.bin/vite: NOT FOUND"
+                ls -la node_modules/vite/bin/vite.js 2>/dev/null || echo "  - node_modules/vite/bin/vite.js: NOT FOUND"
+                exit 1
+              }
+            else
+              echo "❌ Vite entry point not found - cannot proceed"
+              exit 1
+            fi
           }
         else
-          echo "❌ Vite binary not found - cannot proceed"
-          exit 1
+          echo "⚠️  Vite binary not in .bin, trying node directly..."
+          if [ -f "./node_modules/vite/bin/vite.js" ]; then
+            node ./node_modules/vite/bin/vite.js build --mode production 2>&1 || {
+              echo "❌ Direct node method also failed"
+              exit 1
+            }
+          else
+            echo "❌ Vite not found anywhere - cannot proceed"
+            exit 1
+          fi
         fi
       }
       # Verify dist was created
