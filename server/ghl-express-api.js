@@ -75,6 +75,12 @@ const templateService = new TemplateService();
 app.use(cors());
 app.use(express.json());
 
+// Prevent duplicate route mounts
+if (app.locals.__routesInitialized) {
+  console.warn('⚠️ Routes already initialized — skipping duplicate mounts');
+} else {
+  app.locals.__routesInitialized = true;
+
 // MCP Server Routes (optional - won't crash if MCP not available)
 let mcpEnabled = false;
 try {
@@ -1717,6 +1723,8 @@ app.post('/api/webhooks/agent', async (req, res) => {
   }
 });
 
+} // Close route guard
+
 const PORT = process.env.PORT || 10000;
 
 // Initialize database and start server
@@ -1738,154 +1746,33 @@ const PORT = process.env.PORT || 10000;
     await initializeDatabase();
     console.log('✅ Database connected and initialized');
     
-    // Serve static files from the frontend build
-    // Try multiple possible paths since Render build location may vary
+    // ---- Serve built frontend (Vite) in production ----
     const fs = require('fs');
-    
-    console.log(`📁 Current working directory: ${process.cwd()}`);
-    console.log(`📁 Server __dirname: ${__dirname}`);
-    
-    // First, let's see what's actually in the parent directory
-    const parentDir = path.join(__dirname, '..');
-    console.log(`📁 Parent directory: ${parentDir}`);
-    console.log(`📁 Checking if parent directory exists: ${fs.existsSync(parentDir)}`);
-    
-    try {
-      const parentContents = fs.readdirSync(parentDir);
-      console.log(`📁 Parent directory contents (${parentContents.length} items):`);
-      parentContents.forEach((item, idx) => {
-        try {
-          const itemPath = path.join(parentDir, item);
-          const isDir = fs.statSync(itemPath).isDirectory();
-          const size = fs.statSync(itemPath).size;
-          const marker = item === 'dist' ? ' ← LOOKING FOR THIS!' : '';
-          console.log(`   ${idx + 1}. ${item}${isDir ? ' [DIR]' : ` [${size} bytes]`}${marker}`);
-        } catch (e) {
-          console.log(`   ${idx + 1}. ${item} [ERROR: ${e.message}]`);
-        }
+    const path = require('path');
+    function resolveDist() {
+      // Prefer explicit env path if set
+      const fromEnv = process.env.FRONTEND_DIST_PATH;
+      const candidates = [
+        fromEnv && path.resolve(fromEnv),
+        path.resolve('/opt/render/project/dist'),          // Vite root build on Render
+        path.resolve(__dirname, '..', 'dist'),            // repo-root/dist if cwd is /server
+        path.resolve(__dirname, 'dist')                    // fallback
+      ].filter(Boolean);
+      for (const p of candidates) {
+        if (fs.existsSync(p) && fs.existsSync(path.join(p, 'index.html'))) return p;
+      }
+      return null;
+    }
+    const distDir = resolveDist();
+    if (distDir) {
+      app.use(express.static(distDir));
+      app.get(/^(?!\/api\/|\/auth\/|\/health|\/ghl-api).*/, (_req, res) => {
+        res.sendFile(path.join(distDir, 'index.html'));
       });
-    } catch (e) {
-      console.log(`⚠️  Could not read parent directory: ${e.message}`);
-      console.log(`   Parent dir exists: ${fs.existsSync(parentDir)}`);
-      console.log(`   Parent dir is directory: ${fs.existsSync(parentDir) ? fs.statSync(parentDir).isDirectory() : 'N/A'}`);
-    }
-    
-    // Build list of possible paths to check (in order of likelihood for Render)
-    // Most likely: dist is at /opt/render/project/dist (root of repo after build)
-    const possiblePaths = [
-      '/opt/render/project/dist',               // Absolute Render path (build output location)
-      process.env.FRONTEND_DIST_PATH,           // Explicit env var override (if set)
-      path.join(process.cwd(), 'dist'),         // From current working directory
-      path.join(__dirname, '..', 'dist'),       // Standard: ../dist from server (/opt/render/project/src/dist)
-      path.join(parentDir, 'dist'),             // Explicit parent/dist
-      path.join(process.cwd(), '..', 'dist'),  // One level up from CWD (if CWD is in server/)
-      '/opt/render/project/src/dist',           // Alternative Render path
-      path.resolve(__dirname, '../../dist'),    // Two levels up (fallback)
-    ].filter(Boolean); // Remove any undefined/null entries
-    
-    // Remove duplicates and normalize all paths
-    const uniquePaths = [...new Set(possiblePaths.map(p => path.resolve(p)))];
-    
-    let frontendDistPath = null;
-    
-    console.log(`\n🔍 Checking ${uniquePaths.length} possible dist locations:`);
-    // Try each possible path
-    for (const testPath of uniquePaths) {
-      const normalizedPath = path.resolve(testPath);
-      console.log(`   Checking: ${normalizedPath}`);
-      try {
-        if (fs.existsSync(normalizedPath)) {
-          const indexPath = path.join(normalizedPath, 'index.html');
-          if (fs.existsSync(indexPath)) {
-            frontendDistPath = normalizedPath;
-            console.log(`   ✅ FOUND! Dist folder with index.html at: ${normalizedPath}`);
-            break;
-          } else {
-            console.log(`   └─ Path exists but no index.html inside`);
-            // List what IS in there
-            try {
-              const contents = fs.readdirSync(normalizedPath).slice(0, 5);
-              console.log(`      Contents: ${contents.join(', ')}...`);
-            } catch (e) {}
-          }
-        } else {
-          console.log(`   └─ Not found`);
-        }
-      } catch (e) {
-        console.log(`   └─ Error checking path: ${e.message}`);
-      }
-    }
-    
-    // Serve static files if found
-    if (frontendDistPath) {
-      try {
-        const distContents = fs.readdirSync(frontendDistPath);
-        console.log(`✅ Dist folder contents:`, distContents.slice(0, 10).join(', ') + (distContents.length > 10 ? '...' : ''));
-        
-        app.use(express.static(frontendDistPath, {
-          maxAge: '1y', // Cache static assets for 1 year
-          etag: true
-        }));
-        console.log('✅ Static file serving enabled');
-      } catch (e) {
-        console.log(`⚠️  Error serving dist folder:`, e.message);
-        frontendDistPath = null;
-      }
+      console.log('🎨 Serving SPA from:', distDir);
     } else {
-      console.log('⚠️  Frontend dist folder not found in any location');
-      console.log('⚠️  App will serve API only until build completes');
-      console.log('⚠️  Make sure "npm run build" completes successfully in Render build logs');
+      console.warn('⚠️  Frontend dist not found; API-only mode.');
     }
-    
-    // For all non-API routes, serve the React app (handles React Router)
-    // This MUST be the very last route handler
-    app.get('*', (req, res) => {
-      // Skip API routes - these should have been handled already
-      if (req.path.startsWith('/api/') || 
-          req.path.startsWith('/auth/') || 
-          req.path.startsWith('/health/') || 
-          req.path.startsWith('/ghl-api')) {
-        return res.status(404).json({
-          error: 'Route not found',
-          path: req.path
-        });
-      }
-      
-      // Serve index.html for all other routes (React Router handles client-side routing)
-      if (!frontendDistPath) {
-        return res.json({
-          status: 'ok',
-          message: 'GHL Voice AI Platform API is running',
-          note: 'Frontend app not found. Please ensure "npm run build" completes successfully.',
-          apiEndpoints: {
-            health: '/api/health',
-            dbHealth: '/health/db',
-            auth: '/auth/ghl',
-            templates: '/api/templates'
-          }
-        });
-      }
-      
-      const indexPath = path.join(frontendDistPath, 'index.html');
-      res.sendFile(indexPath, (err) => {
-        if (err) {
-          console.log(`⚠️  Error serving index.html: ${err.message}`);
-          res.json({
-            status: 'ok',
-            message: 'GHL Voice AI Platform API is running',
-            note: 'Frontend index.html not found. Please check build logs.',
-            apiEndpoints: {
-              health: '/api/health',
-              dbHealth: '/health/db',
-              auth: '/auth/ghl',
-              templates: '/api/templates'
-            }
-          });
-        } else {
-          console.log(`✅ Served React app for: ${req.path}`);
-        }
-      });
-    });
     
     // List all registered routes for debugging
     const routes = [];

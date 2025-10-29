@@ -1,31 +1,14 @@
 services:
   - type: web
     name: ghl-oauth-api
-    runtime: node
+    env: node
+    rootDir: .
     buildCommand: |
-      set -e
-      echo "=== Building Application ==="
-      echo "Working directory: $(pwd)"
-      echo "Node version: $(node -v)"
-      echo ""
-      echo "=== Installing root dependencies ==="
       npm ci
-      echo ""
-      echo "=== Building frontend with Vite ==="
       npm run build
-      echo ""
-      echo "=== Verifying build output ==="
-      if [ ! -d "dist" ] || [ ! -f "dist/index.html" ]; then
-        echo "❌ CRITICAL: dist/index.html NOT found!"
-        echo "Dist contents:"
-        ls -la dist/ 2>/dev/null || echo "dist directory does not exist"
-        exit 1
-      fi
-      echo "✅ Build complete! dist/index.html exists"
-      echo ""
-      echo "=== Installing server dependencies ==="
-      cd server && npm ci
-    startCommand: node server/ghl-express-api.js
+    startCommand: |
+      cd server
+      node ghl-express-api.js
     envVars:
       # NOTE: Set these in Render Dashboard Environment tab - NEVER commit secrets here!
       # - key: GHL_CLIENT_ID
@@ -36,6 +19,8 @@ services:
       #   value: YOUR_SHARED_SECRET
       - key: NODE_VERSION
         value: "20.17.0"
+      - key: FRONTEND_DIST_PATH
+        value: /opt/render/project/dist
       - key: GHL_REDIRECT_URI
         value: https://ghlvoiceai.captureclient.com/auth/callback
       - key: PORT
