@@ -937,6 +937,35 @@ app.post('/api/elevenlabs/speech', async (req, res) => {
   }
 });
 
+// ===== OPENAI TTS ENDPOINTS =====
+
+// Generate speech from text using OpenAI TTS
+app.post('/api/openai/speech', async (req, res) => {
+  try {
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(400).json({ error: 'OpenAI API key not configured' });
+    }
+    
+    const { text, voice, options } = req.body;
+    
+    if (!text || !voice) {
+      return res.status(400).json({ error: 'Text and voice are required' });
+    }
+    
+    const audioBuffer = await openAIProvider.generateSpeech(text, voice, options);
+    
+    res.set({
+      'Content-Type': 'audio/mpeg',
+      'Content-Length': audioBuffer.length
+    });
+    
+    res.send(audioBuffer);
+  } catch (error) {
+    console.error('OpenAI speech error:', error.response?.data || error.message);
+    res.status(500).json({ error: 'Failed to generate speech' });
+  }
+});
+
 // Get ElevenLabs usage and subscription info
 app.get('/api/elevenlabs/usage', async (req, res) => {
   try {

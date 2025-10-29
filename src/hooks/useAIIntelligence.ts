@@ -28,13 +28,14 @@ export function useAIIntelligence() {
   const [lastAnalysis, setLastAnalysis] = useState<AIAnalysis | null>(null);
 
   // Initialize with available providers
+  // Note: API keys are managed server-side for security
   useEffect(() => {
     const initialProviders: AIProvider[] = [
       {
         id: 'openai-1',
         name: 'OpenAI GPT-4',
         provider: 'openai',
-        apiKey: import.meta.env.VITE_OPENAI_API_KEY || '',
+        apiKey: '', // Keys managed server-side
         model: 'gpt-4-turbo-preview',
         enabled: true,
       },
@@ -42,7 +43,7 @@ export function useAIIntelligence() {
         id: 'anthropic-1',
         name: 'Anthropic Claude',
         provider: 'anthropic',
-        apiKey: import.meta.env.VITE_ANTHROPIC_API_KEY || '',
+        apiKey: '', // Keys managed server-side
         model: 'claude-3-opus-20240229',
         enabled: true,
       },
@@ -50,7 +51,7 @@ export function useAIIntelligence() {
         id: 'google-1',
         name: 'Google Gemini',
         provider: 'google',
-        apiKey: import.meta.env.VITE_GOOGLE_API_KEY || '',
+        apiKey: '', // Keys managed server-side
         model: 'gemini-pro',
         enabled: false,
       },

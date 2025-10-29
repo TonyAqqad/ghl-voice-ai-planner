@@ -326,6 +326,37 @@ Each variant should maintain the core functionality while testing the specific a
       throw error;
     }
   }
+
+  /**
+   * Generate speech from text using OpenAI TTS
+   */
+  async generateSpeech(text, voice, options = {}) {
+    try {
+      const validVoices = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'];
+      if (!validVoices.includes(voice)) {
+        throw new Error(`Invalid voice. Must be one of: ${validVoices.join(', ')}`);
+      }
+
+      const response = await axios.post(
+        `${this.baseUrl}/audio/speech`,
+        {
+          model: options.model || 'tts-1',
+          input: text,
+          voice: voice,
+          ...(options.speed !== undefined && { speed: options.speed })
+        },
+        {
+          headers: this.getHeaders(),
+          responseType: 'arraybuffer'
+        }
+      );
+
+      return response.data;
+    } catch (error) {
+      console.error('OpenAI generateSpeech error:', error.response?.data || error.message);
+      throw error;
+    }
+  }
 }
 
 module.exports = OpenAIProvider;

@@ -25,25 +25,22 @@ export interface ElevenLabsSettings {
 
 /**
  * Get all available voices
+ * Uses backend proxy to keep API keys secure
  */
 export async function getElevenLabsVoices(apiKey?: string): Promise<ElevenLabsVoice[]> {
   try {
-    const key = apiKey || import.meta.env.VITE_ELEVENLABS_API_KEY;
-    
-    if (!key) {
-      console.warn('ElevenLabs API key not configured');
-      return [];
-    }
+    const { getApiBaseUrl } = await import('./apiBase');
+    const apiBase = getApiBaseUrl();
 
-    const response = await fetch(`${ELEVENLABS_API_BASE}/voices`, {
+    const response = await fetch(`${apiBase}/api/elevenlabs/voices`, {
       headers: {
-        'xi-api-key': key,
         'Accept': 'application/json'
       }
     });
 
     if (!response.ok) {
-      throw new Error(`ElevenLabs API error: ${response.statusText}`);
+      const errorData = await response.json().catch(() => ({ error: response.statusText }));
+      throw new Error(`ElevenLabs API error: ${errorData.error || response.statusText}`);
     }
 
     const data = await response.json();
@@ -56,23 +53,26 @@ export async function getElevenLabsVoices(apiKey?: string): Promise<ElevenLabsVo
 
 /**
  * Get voice details by ID
+ * Uses backend proxy to keep API keys secure
  */
 export async function getElevenLabsVoice(voiceId: string, apiKey?: string): Promise<ElevenLabsVoice | null> {
   try {
-    const key = apiKey || import.meta.env.VITE_ELEVENLABS_API_KEY;
-    
-    if (!key) return null;
+    const { getApiBaseUrl } = await import('./apiBase');
+    const apiBase = getApiBaseUrl();
 
-    const response = await fetch(`${ELEVENLABS_API_BASE}/voices/${voiceId}`, {
+    const response = await fetch(`${apiBase}/api/elevenlabs/voices/${voiceId}`, {
       headers: {
-        'xi-api-key': key,
         'Accept': 'application/json'
       }
     });
 
-    if (!response.ok) return null;
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: response.statusText }));
+      throw new Error(`ElevenLabs API error: ${errorData.error || response.statusText}`);
+    }
 
-    return await response.json();
+    const data = await response.json();
+    return data.voice || null;
   } catch (error: any) {
     console.error('Failed to fetch ElevenLabs voice:', error);
     return null;
@@ -81,6 +81,7 @@ export async function getElevenLabsVoice(voiceId: string, apiKey?: string): Prom
 
 /**
  * Generate speech from text using ElevenLabs
+ * Uses backend proxy to keep API keys secure
  */
 export async function textToSpeech(
   text: string,
@@ -95,43 +96,37 @@ export async function textToSpeech(
   } = {}
 ): Promise<Blob | null> {
   try {
-    const key = options.apiKey || import.meta.env.VITE_ELEVENLABS_API_KEY;
-    
-    if (!key) {
-      console.warn('ElevenLabs API key not configured');
-      return null;
-    }
+    const { getApiBaseUrl } = await import('./apiBase');
+    const apiBase = getApiBaseUrl();
 
-    const model = options.model || 'eleven_monolingual_v1';
-    const settings = {
-      stability: options.stability ?? 0.5,
-      similarity_boost: options.similarity_boost ?? 0.75,
-      ...(options.style !== undefined && { style: options.style }),
-      ...(options.use_speaker_boost !== undefined && { use_speaker_boost: options.use_speaker_boost })
-    };
-
-    const response = await fetch(`${ELEVENLABS_API_BASE}/text-to-speech/${voiceId}`, {
+    const response = await fetch(`${apiBase}/api/elevenlabs/speech`, {
       method: 'POST',
       headers: {
-        'xi-api-key': key,
         'Content-Type': 'application/json',
         'Accept': 'audio/mpeg'
       },
       body: JSON.stringify({
         text,
-        model_id: model,
-        voice_settings: settings
+        voiceId,
+        options: {
+          model: options.model || 'eleven_monolingual_v1',
+          stability: options.stability ?? 0.5,
+          similarity_boost: options.similarity_boost ?? 0.75,
+          ...(options.style !== undefined && { style: options.style }),
+          ...(options.use_speaker_boost !== undefined && { use_speaker_boost: options.use_speaker_boost })
+        }
       })
     });
 
     if (!response.ok) {
-      throw new Error(`ElevenLabs TTS error: ${response.statusText}`);
+      const errorData = await response.json().catch(() => ({ error: response.statusText }));
+      throw new Error(`ElevenLabs TTS error: ${errorData.error || response.statusText}`);
     }
 
     return await response.blob();
   } catch (error: any) {
     console.error('Failed to generate speech:', error);
-    return null;
+    throw error;
   }
 }
 

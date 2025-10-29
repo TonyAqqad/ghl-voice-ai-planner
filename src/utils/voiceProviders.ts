@@ -4,10 +4,10 @@ import * as openaiTTS from './openaiTTS';
 
 export type VoiceProviderType = 'elevenlabs' | 'openai';
 export type ElevenLabsVoiceId = string;
-export type OpenAIVoice = 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer';
+export type OpenAIVoiceName = 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer';
 
 export interface VoiceProvider {
-  textToSpeech(text: string, voiceId: ElevenLabsVoiceId | OpenAIVoice, modelId?: string): Promise<ArrayBuffer | Buffer>;
+  textToSpeech(text: string, voiceId: ElevenLabsVoiceId | OpenAIVoiceName, modelId?: string): Promise<ArrayBuffer | Buffer>;
   getVoices?(): Promise<any[]>;
 }
 
@@ -38,7 +38,7 @@ const openaiProvider: VoiceProvider = {
     if (typeof voice !== 'string' || !['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'].includes(voice)) {
       throw new Error('OpenAI TTS requires a valid voice name (alloy, echo, fable, onyx, nova, shimmer)');
     }
-    const blob = await openaiTTS.openaiTextToSpeech(text, { voice: voice as OpenAIVoice });
+    const blob = await openaiTTS.openaiTextToSpeech(text, { voice: voice as OpenAIVoiceName });
     if (!blob) {
       throw new Error('Failed to generate speech');
     }
