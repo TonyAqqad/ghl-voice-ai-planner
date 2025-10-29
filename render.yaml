@@ -9,19 +9,26 @@ services:
       echo ""
       echo "=== STEP 2: Current directory ==="
       pwd
+      ls -la | head -15
       echo ""
       echo "=== STEP 3: Building frontend (this may take a few minutes) ==="
-      npm run build
+      npm run build 2>&1 || {
+        echo "❌ Build failed! Checking for errors..."
+        echo "Node version: $(node -v)"
+        echo "NPM version: $(npm -v)"
+        exit 1
+      }
       echo ""
       echo "=== STEP 4: Verifying build output ==="
-      if [ ! -d "dist" ]; then
-        echo "❌ ERROR: dist folder was not created!"
-        echo "Build may have failed. Checking for errors..."
-        ls -la | head -20
+      npm run build:verify || {
+        echo "❌ Build verification failed!"
+        echo "Current directory contents:"
+        ls -la
+        echo ""
+        echo "Checking if dist exists:"
+        test -d dist && echo "dist exists" || echo "dist does NOT exist"
         exit 1
-      fi
-      echo "✅ dist folder exists"
-      ls -la dist/ | head -10
+      }
       echo ""
       echo "=== STEP 5: Installing server dependencies ==="
       cd server && npm install
