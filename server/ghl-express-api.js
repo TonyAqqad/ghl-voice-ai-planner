@@ -1887,7 +1887,47 @@ const PORT = process.env.PORT || 10000;
       } else {
         console.log(`❌ No dist folder and no build marker found`);
         console.log(`   This indicates the buildCommand did NOT create dist successfully`);
-        console.log(`   Please check Render build logs for errors in STEP 3 or STEP 4`);
+        console.log(`   Attempting runtime build as fallback...`);
+        
+        // Runtime build fallback - build frontend now if it wasn't built during deploy
+        try {
+          const rootPackageJson = path.join(parentDir, 'package.json');
+          if (fs.existsSync(rootPackageJson)) {
+            console.log(`📦 Building frontend at runtime (this may take 2-3 minutes)...`);
+            const { execSync } = require('child_process');
+            
+            // Change to root directory for build
+            const originalCwd = process.cwd();
+            process.chdir(parentDir);
+            
+            try {
+              execSync('npm run build', {
+                stdio: 'inherit',
+                timeout: 300000, // 5 minutes max
+                env: { ...process.env, NODE_ENV: 'production' }
+              });
+              
+              console.log(`✅ Runtime build completed successfully!`);
+              // Refresh parent contents after build
+              parentContents = fs.readdirSync(parentDir);
+              
+              if (parentContents.includes('dist')) {
+                console.log(`✅ dist folder now exists after runtime build`);
+              } else {
+                console.log(`⚠️  Build completed but dist folder still not found`);
+              }
+            } catch (buildError) {
+              console.log(`❌ Runtime build failed: ${buildError.message}`);
+              console.log(`   Server will continue in API-only mode`);
+            } finally {
+              process.chdir(originalCwd);
+            }
+          } else {
+            console.log(`⚠️  Cannot build - package.json not found in parent directory`);
+          }
+        } catch (e) {
+          console.log(`⚠️  Could not attempt runtime build: ${e.message}`);
+        }
       }
     } else {
       console.log(`✅ dist folder found in parent directory!`);

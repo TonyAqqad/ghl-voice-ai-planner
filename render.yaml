@@ -2,6 +2,7 @@ services:
   - type: web
     name: ghl-oauth-api
     runtime: node
+    rootDir: .
     buildCommand: |
       set -e
       echo "=== STEP 1: Installing root dependencies ==="
@@ -12,12 +13,22 @@ services:
       ls -la | head -15
       echo ""
       echo "=== STEP 3: Building frontend (this may take a few minutes) ==="
-      npm run build 2>&1 || {
+      echo "Current directory before build: $(pwd)"
+      echo "Checking if src directory exists:"
+      ls -la src/ | head -5 || echo "src directory not found"
+      echo ""
+      echo "Running npm run build..."
+      npm run build 2>&1 | tee build-output.log || {
         echo "❌ Build failed! Checking for errors..."
         echo "Node version: $(node -v)"
         echo "NPM version: $(npm -v)"
+        echo "Build output (last 50 lines):"
+        tail -50 build-output.log 2>/dev/null || echo "No build output log found"
         exit 1
       }
+      echo ""
+      echo "Build command completed. Checking output..."
+      tail -20 build-output.log 2>/dev/null || echo "No build log to review"
       echo ""
       echo "=== STEP 4: Verifying build output ==="
       if [ ! -d "dist" ]; then
