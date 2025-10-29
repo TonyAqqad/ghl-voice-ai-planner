@@ -1834,16 +1834,18 @@ const PORT = process.env.PORT || 10000;
     console.log(`📁 Parent directory: ${parentDir}`);
     console.log(`📁 Checking if parent directory exists: ${fs.existsSync(parentDir)}`);
     
+    let parentContents = [];
     try {
-      const parentContents = fs.readdirSync(parentDir);
+      parentContents = fs.readdirSync(parentDir);
       console.log(`📁 Parent directory contents (${parentContents.length} items):`);
       parentContents.forEach((item, idx) => {
         try {
           const itemPath = path.join(parentDir, item);
-          const isDir = fs.statSync(itemPath).isDirectory();
-          const size = fs.statSync(itemPath).size;
+          const stats = fs.statSync(itemPath);
+          const isDir = stats.isDirectory();
+          const size = isDir ? '[DIR]' : `${(stats.size / 1024).toFixed(2)} KB`;
           const marker = item === 'dist' ? ' ← LOOKING FOR THIS!' : '';
-          console.log(`   ${idx + 1}. ${item}${isDir ? ' [DIR]' : ` [${size} bytes]`}${marker}`);
+          console.log(`   ${idx + 1}. ${item} ${size}${marker}`);
         } catch (e) {
           console.log(`   ${idx + 1}. ${item} [ERROR: ${e.message}]`);
         }
@@ -1851,7 +1853,44 @@ const PORT = process.env.PORT || 10000;
     } catch (e) {
       console.log(`⚠️  Could not read parent directory: ${e.message}`);
       console.log(`   Parent dir exists: ${fs.existsSync(parentDir)}`);
-      console.log(`   Parent dir is directory: ${fs.existsSync(parentDir) ? fs.statSync(parentDir).isDirectory() : 'N/A'}`);
+      if (fs.existsSync(parentDir)) {
+        try {
+          const stats = fs.statSync(parentDir);
+          console.log(`   Parent dir is directory: ${stats.isDirectory()}`);
+        } catch (e2) {
+          console.log(`   Could not stat parent dir: ${e2.message}`);
+        }
+      }
+    }
+    
+    // Check if dist exists in parent directory
+    const distInParent = parentContents.includes('dist');
+    if (!distInParent) {
+      console.log(`\n⚠️  dist folder NOT found in parent directory listing!`);
+      console.log(`🔍 Checking build logs - dist should have been created during buildCommand`);
+      console.log(`💡 If dist folder exists in build logs but not at runtime, this is a Render deployment issue`);
+      
+      // Check if build marker exists (created during buildCommand)
+      const buildMarker = path.join(parentDir, 'dist', '.render-build-complete');
+      const distPath = path.join(parentDir, 'dist');
+      
+      if (fs.existsSync(buildMarker)) {
+        console.log(`✅ Found build marker file - dist was created during build!`);
+        console.log(`   Marker path: ${buildMarker}`);
+        // Try to read timestamp
+        try {
+          const timestamp = fs.readFileSync(path.join(parentDir, 'dist', '.render-build-timestamp'), 'utf8');
+          console.log(`   Build timestamp: ${timestamp}`);
+        } catch (e) {}
+      } else if (fs.existsSync(distPath)) {
+        console.log(`✅ Found dist folder but no marker - build may have completed`);
+      } else {
+        console.log(`❌ No dist folder and no build marker found`);
+        console.log(`   This indicates the buildCommand did NOT create dist successfully`);
+        console.log(`   Please check Render build logs for errors in STEP 3 or STEP 4`);
+      }
+    } else {
+      console.log(`✅ dist folder found in parent directory!`);
     }
     
     // Build list of possible paths to check (in order of likelihood)
