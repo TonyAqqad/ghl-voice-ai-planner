@@ -17,9 +17,14 @@ export default defineConfig(({ mode }) => {
     },
     define: {
       // Vite requires VITE_ prefix for client-side env vars
-      'import.meta.env.VITE_GHL_CLIENT_ID': JSON.stringify(env.VITE_GHL_CLIENT_ID || env.GHL_CLIENT_ID || '68fd461dc407410f0f0c0cb1-mh6umpou'),
-      'import.meta.env.VITE_GHL_CLIENT_SECRET': JSON.stringify(env.VITE_GHL_CLIENT_SECRET || env.GHL_CLIENT_SECRET || 'a7a79a21-828d-4744-b1a3-c13158773c92'),
-      'import.meta.env.VITE_GHL_SHARED_SECRET': JSON.stringify(env.VITE_GHL_SHARED_SECRET || env.GHL_SHARED_SECRET || '0e06d8f4-6eed-4ab7-903e-ff93e5fdd42a'),
+      // SECURITY: Never hardcode secrets - use environment variables only!
+      // Set these in Render Dashboard or .env file (never commit .env)
+      'import.meta.env.VITE_GHL_CLIENT_ID': JSON.stringify(env.VITE_GHL_CLIENT_ID || env.GHL_CLIENT_ID || ''),
+      'import.meta.env.VITE_GHL_CLIENT_SECRET': JSON.stringify(env.VITE_GHL_CLIENT_SECRET || env.GHL_CLIENT_SECRET || ''),
+      'import.meta.env.VITE_GHL_SHARED_SECRET': JSON.stringify(env.VITE_GHL_SHARED_SECRET || env.GHL_SHARED_SECRET || ''),
+      'import.meta.env.VITE_ELEVENLABS_API_KEY': JSON.stringify(env.VITE_ELEVENLABS_API_KEY || env.ELEVENLABS_API_KEY || ''),
+      'import.meta.env.VITE_OPENAI_API_KEY': JSON.stringify(env.VITE_OPENAI_API_KEY || env.OPENAI_API_KEY || ''),
+      'import.meta.env.VITE_API_BASE_URL': JSON.stringify(env.VITE_API_BASE_URL || 'https://ghlvoiceai.captureclient.com'),
     }
   }
 })

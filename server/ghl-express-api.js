@@ -1822,37 +1822,43 @@ const PORT = process.env.PORT || 10000;
     console.log('✅ Database connected and initialized');
     
     // Serve static files from the frontend build
-    // Build folder is one level up from server directory
+    // Try multiple possible paths since Render build location may vary
     const fs = require('fs');
-    const frontendDistPath = path.join(__dirname, '..', 'dist');
-    const parentPath = path.join(__dirname, '..');
+    const possiblePaths = [
+      path.join(__dirname, '..', 'dist'),        // Standard: ../dist from server
+      path.join(process.cwd(), 'dist'),          // From current working directory
+      path.join(process.cwd(), '..', 'dist'),    // One level up from CWD
+      '/opt/render/project/src/dist',            // Absolute Render path
+      './dist'                                    // Relative from CWD
+    ];
     
     console.log(`📁 Current working directory: ${process.cwd()}`);
     console.log(`📁 Server __dirname: ${__dirname}`);
-    console.log(`📁 Frontend dist path: ${frontendDistPath}`);
-    console.log(`📁 Parent directory: ${parentPath}`);
     
-    // List parent directory contents
-    try {
-      const parentContents = fs.readdirSync(parentPath);
-      console.log(`📁 Parent directory contents:`, parentContents.join(', '));
-    } catch (e) {
-      console.log(`⚠️  Could not read parent directory:`, e.message);
+    let frontendDistPath = null;
+    
+    // Try each possible path
+    for (const testPath of possiblePaths) {
+      console.log(`🔍 Checking: ${testPath}`);
+      if (fs.existsSync(testPath)) {
+        const indexPath = path.join(testPath, 'index.html');
+        if (fs.existsSync(indexPath)) {
+          frontendDistPath = testPath;
+          console.log(`✅ Found dist folder with index.html at: ${testPath}`);
+          break;
+        } else {
+          console.log(`   └─ Path exists but no index.html`);
+        }
+      } else {
+        console.log(`   └─ Not found`);
+      }
     }
     
-    // Check if dist folder exists and list its contents
-    if (fs.existsSync(frontendDistPath)) {
+    // Serve static files if found
+    if (frontendDistPath) {
       try {
         const distContents = fs.readdirSync(frontendDistPath);
-        console.log(`✅ Dist folder found! Contents:`, distContents.join(', '));
-        
-        // Check for index.html specifically
-        const indexPath = path.join(frontendDistPath, 'index.html');
-        if (fs.existsSync(indexPath)) {
-          console.log('✅ index.html found in dist folder');
-        } else {
-          console.log('⚠️  index.html NOT found in dist folder');
-        }
+        console.log(`✅ Dist folder contents:`, distContents.slice(0, 10).join(', ') + (distContents.length > 10 ? '...' : ''));
         
         app.use(express.static(frontendDistPath, {
           maxAge: '1y', // Cache static assets for 1 year
@@ -1860,17 +1866,13 @@ const PORT = process.env.PORT || 10000;
         }));
         console.log('✅ Static file serving enabled');
       } catch (e) {
-        console.log(`⚠️  Error reading dist folder:`, e.message);
+        console.log(`⚠️  Error serving dist folder:`, e.message);
+        frontendDistPath = null;
       }
     } else {
-      console.log('⚠️  Frontend dist folder not found at:', frontendDistPath);
+      console.log('⚠️  Frontend dist folder not found in any location');
       console.log('⚠️  App will serve API only until build completes');
-      
-      // Try alternative paths
-      const altPath1 = path.join(process.cwd(), 'dist');
-      const altPath2 = './dist';
-      console.log(`🔍 Checking alternative path 1: ${altPath1} - ${fs.existsSync(altPath1) ? 'EXISTS' : 'NOT FOUND'}`);
-      console.log(`🔍 Checking alternative path 2: ${altPath2} - ${fs.existsSync(altPath2) ? 'EXISTS' : 'NOT FOUND'}`);
+      console.log('⚠️  Make sure "npm run build" completes successfully in Render build logs');
     }
     
     // For all non-API routes, serve the React app (handles React Router)
@@ -1888,14 +1890,28 @@ const PORT = process.env.PORT || 10000;
       }
       
       // Serve index.html for all other routes (React Router handles client-side routing)
+      if (!frontendDistPath) {
+        return res.json({
+          status: 'ok',
+          message: 'GHL Voice AI Platform API is running',
+          note: 'Frontend app not found. Please ensure "npm run build" completes successfully.',
+          apiEndpoints: {
+            health: '/api/health',
+            dbHealth: '/health/db',
+            auth: '/auth/ghl',
+            templates: '/api/templates'
+          }
+        });
+      }
+      
       const indexPath = path.join(frontendDistPath, 'index.html');
       res.sendFile(indexPath, (err) => {
         if (err) {
-          console.log(`⚠️  Frontend not found at ${indexPath}, serving API fallback`);
+          console.log(`⚠️  Error serving index.html: ${err.message}`);
           res.json({
             status: 'ok',
             message: 'GHL Voice AI Platform API is running',
-            note: 'Frontend app not found. Please ensure frontend is built.',
+            note: 'Frontend index.html not found. Please check build logs.',
             apiEndpoints: {
               health: '/api/health',
               dbHealth: '/health/db',
