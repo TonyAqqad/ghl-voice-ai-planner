@@ -20,7 +20,7 @@ services:
       - key: NODE_VERSION
         value: "20.17.0"
       - key: FRONTEND_DIST_PATH
-        value: /opt/render/project/dist
+        value: /opt/render/project/src/dist
       - key: GHL_REDIRECT_URI
         value: https://ghlvoiceai.captureclient.com/auth/callback
       - key: PORT

@@ -1757,6 +1757,7 @@ const PORT = process.env.PORT || 10000;
     const distFromEnv = process.env.FRONTEND_DIST_PATH;
     const candidates = [
       distFromEnv && path.resolve(distFromEnv),
+      path.resolve('/opt/render/project/src/dist'),
       path.resolve('/opt/render/project/dist'),
       path.resolve(__dirname, '..', 'dist'),
       path.resolve(__dirname, 'dist')
