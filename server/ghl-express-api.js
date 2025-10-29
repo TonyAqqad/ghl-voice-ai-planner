@@ -10,6 +10,8 @@ dns.setDefaultResultOrder?.('ipv4first');
 const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
+const compression = require('compression');
+const helmet = require('helmet');
 const path = require('path');
 
 // Load environment variables with explicit path
@@ -71,9 +73,24 @@ const webhookHandler = new VoiceAIWebhookHandler(process.env.GHL_WEBHOOK_SECRET)
 const costingService = new CostingService();
 const templateService = new TemplateService();
 
-// Middleware
-app.use(cors());
+// Middleware - Security and Performance
+app.use(compression());
+app.use(helmet({ contentSecurityPolicy: false })); // Disable CSP for SPA, can customize later
+app.use(cors({ 
+  origin: ['https://ghlvoiceai.captureclient.com'],
+  credentials: true 
+}));
 app.use(express.json());
+
+// Error handlers
+process.on('unhandledRejection', (e) => {
+  console.error('unhandledRejection', e);
+});
+
+process.on('uncaughtException', (e) => {
+  console.error('uncaughtException', e);
+  process.exit(1);
+});
 
 // ===== HELPER FUNCTIONS (defined at module scope for exports) =====
 // ===== STEP 3: GET LOCATION TOKEN (for sub-accounts) =====
@@ -1767,7 +1784,10 @@ app.post('/api/webhooks/agent', async (req, res) => {
     });
     
     if (distDir) {
-      app.use(express.static(distDir));
+      app.use(express.static(distDir, { 
+        maxAge: '1y', 
+        immutable: true 
+      }));
       app.get(/^(?!\/api\/|\/auth\/|\/health|\/ghl-api).*/, (_req, res) => {
         res.sendFile(path.join(distDir, 'index.html'));
       });
