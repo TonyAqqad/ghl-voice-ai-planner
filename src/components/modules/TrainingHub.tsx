@@ -26,6 +26,11 @@ const TrainingHub: React.FC = () => {
   const [genLoading, setGenLoading] = useState(false);
 
   const mcp = useMCP();
+  // Inline test panel state
+  const [testMessage, setTestMessage] = useState<string>('Hello');
+  const [testResult, setTestResult] = useState<any>(null);
+  const [healthLoading, setHealthLoading] = useState(false);
+  const [healthResult, setHealthResult] = useState<any>(null);
 
   const selectedAgent = useMemo(() => voiceAgents.find(a => a.id === selectedId), [voiceAgents, selectedId]);
 
@@ -168,6 +173,38 @@ const TrainingHub: React.FC = () => {
     }
   };
 
+  // === Inline Testing (same tab) ===
+  const handleHealthCheck = async () => {
+    setHealthLoading(true);
+    try {
+      const res = await mcp.agentCheckHealth({ agentId: 'system', checks: ['database','apis'] });
+      setHealthResult(res);
+      toast.success('Health OK');
+    } catch (e: any) {
+      toast.error(e.message || 'Health check failed');
+    } finally {
+      setHealthLoading(false);
+    }
+  };
+
+  const handleDryRun = async () => {
+    if (!selectedAgent) return;
+    setSyncing(true);
+    try {
+      const res = await mcp.voiceAgentCall({
+        agentId: selectedAgent.id,
+        phoneNumber: '+10000000000',
+        context: { userMessage: testMessage }
+      });
+      setTestResult(res);
+      toast.success('Dry-run completed');
+    } catch (e: any) {
+      toast.error(e.message || 'Dry-run failed');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
     <div className="p-6 bg-background min-h-screen text-foreground">
       <div className="mb-6 flex items-center justify-between">
@@ -245,6 +282,30 @@ const TrainingHub: React.FC = () => {
               <input value={row.a} onChange={(e) => setQna(qna.map((r, i) => i === idx ? { ...r, a: e.target.value } : r))} className="px-3 py-2 border border-border rounded-md bg-input" placeholder="Answer" />
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* Inline Testing Panel */}
+      <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="card p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold">Health & Connectivity</h2>
+            <button className="btn btn-outline btn-sm" onClick={handleHealthCheck} disabled={healthLoading}>
+              {healthLoading ? <RefreshCw className="w-4 h-4 mr-1 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-1" />} Check Health
+            </button>
+          </div>
+          <pre className="text-xs bg-muted/30 p-3 rounded overflow-auto max-h-48">{healthResult ? JSON.stringify(healthResult, null, 2) : 'No results yet.'}</pre>
+        </div>
+
+        <div className="card p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold">Dry-Run (Text → TTS)</h2>
+            <button className="btn btn-primary btn-sm" onClick={handleDryRun} disabled={!selectedAgent || syncing}>
+              {syncing ? <RefreshCw className="w-4 h-4 mr-1 animate-spin" /> : <Sparkles className="w-4 h-4 mr-1" />} Run
+            </button>
+          </div>
+          <textarea value={testMessage} onChange={(e) => setTestMessage(e.target.value)} className="w-full px-3 py-2 border border-border rounded-md bg-input h-20 mb-3" placeholder="Type a message for the agent..." />
+          <pre className="text-xs bg-muted/30 p-3 rounded overflow-auto max-h-48">{testResult ? JSON.stringify(testResult, null, 2) : 'No results yet.'}</pre>
         </div>
       </div>
 
