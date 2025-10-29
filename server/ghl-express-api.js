@@ -188,15 +188,17 @@ async function sendSMS(locationToken, locationId, contactId, message) {
 // ===== REFRESH TOKEN =====
 async function refreshAccessToken(refreshToken) {
   try {
+    const body = new URLSearchParams({
+      client_id: GHL_CONFIG.client_id,
+      client_secret: GHL_CONFIG.client_secret,
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+      user_type: 'Location'
+    });
+    
     const response = await axios.post(
       `${GHL_CONFIG.base_url}/oauth/token`,
-      {
-        client_id: GHL_CONFIG.client_id,
-        client_secret: GHL_CONFIG.client_secret,
-        grant_type: 'refresh_token',
-        refresh_token: refreshToken,
-        user_type: 'Location'
-      },
+      body,
       {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded'
