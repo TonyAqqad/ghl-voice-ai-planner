@@ -90,6 +90,16 @@ interface GHLStore {
   importData: (data: Partial<GHLStore>) => void;
   exportData: () => Partial<GHLStore>;
   clearAllData: () => void;
+  
+  // API Integration Actions
+  deployAgent: (agentConfig: any) => Promise<any>;
+  generateAgent: (businessDescription: string, industry: string, businessType?: string) => Promise<any>;
+  getAgentCosts: (agentId: string, startDate?: string, endDate?: string) => Promise<any>;
+  getAgentAnalytics: (agentId: string, startDate?: string, endDate?: string) => Promise<any>;
+  addCustomAction: (agentId: string, customAction: any) => Promise<any>;
+  createWorkflow: (workflowConfig: any) => Promise<any>;
+  loadTemplates: () => Promise<any>;
+  createTemplate: (agentConfig: any, metadata?: any) => Promise<any>;
 }
 
 export const useStore = create<GHLStore>()(
@@ -488,7 +498,194 @@ export const useStore = create<GHLStore>()(
         compliance: null,
         templates: [],
         analytics: []
-      })
+      }),
+      
+      // API Integration Actions
+      deployAgent: async (agentConfig) => {
+        try {
+          const response = await fetch('/api/voice-ai/agents', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(agentConfig),
+          });
+          
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          
+          const result = await response.json();
+          
+          // Add the deployed agent to local state
+          if (result.success && result.agent) {
+            get().addVoiceAgent(result.agent);
+          }
+          
+          return result;
+        } catch (error) {
+          console.error('Failed to deploy agent:', error);
+          throw error;
+        }
+      },
+      
+      generateAgent: async (businessDescription, industry, businessType = 'service') => {
+        try {
+          const response = await fetch('/api/voice-ai/generate', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              businessDescription,
+              industry,
+              businessType
+            }),
+          });
+          
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          
+          return await response.json();
+        } catch (error) {
+          console.error('Failed to generate agent:', error);
+          throw error;
+        }
+      },
+      
+      getAgentCosts: async (agentId, startDate, endDate) => {
+        try {
+          const params = new URLSearchParams();
+          if (startDate) params.append('startDate', startDate);
+          if (endDate) params.append('endDate', endDate);
+          
+          const response = await fetch(`/api/voice-ai/agents/${agentId}/costs?${params}`);
+          
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          
+          return await response.json();
+        } catch (error) {
+          console.error('Failed to get agent costs:', error);
+          throw error;
+        }
+      },
+      
+      getAgentAnalytics: async (agentId, startDate, endDate) => {
+        try {
+          const params = new URLSearchParams();
+          if (startDate) params.append('startDate', startDate);
+          if (endDate) params.append('endDate', endDate);
+          
+          const response = await fetch(`/api/voice-ai/agents/${agentId}/analytics?${params}`);
+          
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          
+          return await response.json();
+        } catch (error) {
+          console.error('Failed to get agent analytics:', error);
+          throw error;
+        }
+      },
+      
+      addCustomAction: async (agentId, customAction) => {
+        try {
+          const response = await fetch(`/api/voice-ai/agents/${agentId}/custom-actions`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(customAction),
+          });
+          
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          
+          return await response.json();
+        } catch (error) {
+          console.error('Failed to add custom action:', error);
+          throw error;
+        }
+      },
+      
+      createWorkflow: async (workflowConfig) => {
+        try {
+          const response = await fetch('/api/workflows', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(workflowConfig),
+          });
+          
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          
+          const result = await response.json();
+          
+          // Add the created workflow to local state
+          if (result.success && result.workflow) {
+            get().addWorkflow(result.workflow);
+          }
+          
+          return result;
+        } catch (error) {
+          console.error('Failed to create workflow:', error);
+          throw error;
+        }
+      },
+      
+      loadTemplates: async () => {
+        try {
+          const response = await fetch('/api/templates');
+          
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          
+          const templates = await response.json();
+          
+          // Update local templates
+          set({ templates });
+          
+          return templates;
+        } catch (error) {
+          console.error('Failed to load templates:', error);
+          throw error;
+        }
+      },
+      
+      createTemplate: async (agentConfig, metadata = {}) => {
+        try {
+          const response = await fetch('/api/templates', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ agentConfig, metadata }),
+          });
+          
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          
+          const template = await response.json();
+          
+          // Add the created template to local state
+          get().addTemplate(template);
+          
+          return template;
+        } catch (error) {
+          console.error('Failed to create template:', error);
+          throw error;
+        }
+      }
     }),
     {
       name: 'ghl-voice-ai-planner',

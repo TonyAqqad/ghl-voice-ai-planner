@@ -3,268 +3,24 @@ import {
   Rocket, 
   Play, 
   Pause, 
-  Stop, 
   Settings, 
   Plus, 
   Trash2, 
   Edit3, 
-  Copy, 
-  Eye, 
-  EyeOff, 
-  Lock, 
-  Unlock, 
-  Key, 
-  Database, 
-  Server, 
-  Activity, 
-  TrendingUp, 
-  TrendingDown, 
-  Target, 
-  Brain, 
-  Heart, 
-  Star, 
-  Award, 
-  Trophy, 
-  Medal, 
-  Crown, 
-  Flame, 
-  Zap, 
-  Shield, 
-  CheckSquare, 
-  Square, 
-  Circle, 
-  Dot, 
-  Minus, 
-  X, 
-  Check, 
-  ArrowRight, 
-  ArrowLeft, 
-  ArrowUp, 
-  ArrowDown, 
-  RotateCcw, 
-  RotateCw, 
-  Maximize, 
-  Minimize, 
-  Move, 
-  GripVertical, 
-  GripHorizontal, 
-  MoreHorizontal, 
-  MoreVertical, 
-  Menu, 
-  XCircle, 
-  AlertTriangle, 
-  Info, 
-  HelpCircle, 
-  QuestionMarkCircle, 
-  Lightbulb, 
-  BookOpen, 
-  Book, 
-  Bookmark, 
-  BookmarkCheck, 
-  Calendar, 
-  Timer, 
-  Stopwatch, 
-  Hourglass, 
-  History, 
-  Archive, 
-  Inbox, 
-  Outbox, 
-  Send, 
-  Reply, 
-  Forward, 
-  Share, 
-  Link, 
-  Link2, 
-  Unlink, 
   Bot,
-  Mic,
-  Headphones,
-  Volume2,
   Phone,
-  MessageSquare,
-  Mail,
-  PhoneCall,
-  Video,
-  Image,
-  File,
-  Folder,
-  FolderOpen,
-  Building2,
-  Car,
-  Home,
-  Stethoscope,
-  GraduationCap,
-  ShoppingCart,
-  CreditCard,
-  Briefcase,
-  Utensils,
-  Coffee,
-  Dumbbell,
-  Scissors,
-  Wrench,
-  Hammer,
-  Paintbrush,
-  Camera,
-  Music,
-  Gamepad2,
-  Plane,
-  Hotel,
-  MapPin,
-  Globe,
-  Tag,
-  Workflow,
-  Cpu,
-  HardDrive,
-  Wifi,
-  Signal,
-  Power,
-  PowerOff,
-  ToggleLeft,
-  ToggleRight,
-  Sliders,
-  Cog,
-  Wrench as WrenchIcon,
-  Settings as SettingsIcon,
-  Download,
-  Upload,
-  Share2,
-  Copy as CopyIcon,
-  Edit,
-  Trash,
-  MoreHorizontal as MoreHorizontalIcon,
-  ChevronUp,
-  ChevronLeft,
-  ChevronRight,
-  ChevronDown,
-  Plus as PlusIcon,
-  X as XIcon,
-  Check as CheckIcon,
-  AlertTriangle as AlertTriangleIcon,
-  Info as InfoIcon2,
-  HelpCircle as HelpCircleIcon2,
-  QuestionMarkCircle as QuestionMarkCircleIcon2,
-  Lightbulb as LightbulbIcon2,
-  BookOpen as BookOpenIcon2,
-  Book as BookIcon2,
-  Bookmark as BookmarkIcon2,
-  BookmarkCheck as BookmarkCheckIcon2,
-  Calendar as CalendarIcon3,
-  Clock as ClockIcon3,
-  Timer as TimerIcon2,
-  Stopwatch as StopwatchIcon2,
-  Hourglass as HourglassIcon2,
-  History as HistoryIcon2,
-  Archive as ArchiveIcon2,
-  Inbox as InboxIcon2,
-  Outbox as OutboxIcon2,
-  Send as SendIcon2,
-  Reply as ReplyIcon2,
-  Forward as ForwardIcon2,
-  Share as ShareIcon2,
-  Link as LinkIcon2,
-  Link2 as Link2Icon2,
-  Unlink as UnlinkIcon2,
-  Lock as LockIcon3,
-  Unlock as UnlockIcon3,
-  Key as KeyIcon3,
-  Shield as ShieldIcon3,
-  ShieldCheck,
-  ShieldAlert,
-  ShieldX,
-  ShieldOff,
-  CheckCircle2,
-  XCircle as XCircleIcon,
-  AlertCircle as AlertCircleIcon,
-  Info as InfoIcon3,
-  HelpCircle as HelpCircleIcon3,
-  QuestionMarkCircle as QuestionMarkCircleIcon3,
-  Lightbulb as LightbulbIcon3,
-  BookOpen as BookOpenIcon3,
-  Book as BookIcon3,
-  Bookmark as BookmarkIcon3,
-  BookmarkCheck as BookmarkCheckIcon3,
-  Calendar as CalendarIcon4,
-  Clock as ClockIcon4,
-  Timer as TimerIcon3,
-  Stopwatch as StopwatchIcon3,
-  Hourglass as HourglassIcon3,
-  History as HistoryIcon3,
-  Archive as ArchiveIcon3,
-  Inbox as InboxIcon3,
-  Outbox as OutboxIcon3,
-  Send as SendIcon3,
-  Reply as ReplyIcon3,
-  Forward as ForwardIcon3,
-  Share as ShareIcon3,
-  Link as LinkIcon3,
-  Link2 as Link2Icon3,
-  Unlink as UnlinkIcon3,
-  Lock as LockIcon4,
-  Unlock as UnlockIcon4,
-  Key as KeyIcon4,
-  Shield as ShieldIcon4,
-  ShieldCheck as ShieldCheckIcon2,
-  ShieldAlert as ShieldAlertIcon2,
-  ShieldX as ShieldXIcon2,
-  ShieldOff as ShieldOffIcon2,
-  BarChart3,
-  Users,
-  DollarSign,
-  Clock,
-  RefreshCw,
-  Filter,
-  Search,
+  Shield,
   CheckCircle,
-  AlertCircle,
-  Download as DownloadIcon,
-  Upload as UploadIcon,
-  Copy as CopyIcon2,
-  Edit as EditIcon,
-  Trash as TrashIcon,
-  MoreVertical as MoreVerticalIcon,
-  MoreHorizontal as MoreHorizontalIcon2,
-  ChevronUp as ChevronUpIcon,
-  ChevronLeft as ChevronLeftIcon,
-  ChevronRight as ChevronRightIcon,
-  ChevronDown as ChevronDownIcon,
-  Plus as PlusIcon2,
-  Minus as MinusIcon,
-  X as XIcon2,
-  Check as CheckIcon2,
-  AlertTriangle as AlertTriangleIcon2,
-  Info as InfoIcon4,
-  HelpCircle as HelpCircleIcon4,
-  QuestionMarkCircle as QuestionMarkCircleIcon4,
-  Lightbulb as LightbulbIcon4,
-  BookOpen as BookOpenIcon4,
-  Book as BookIcon4,
-  Bookmark as BookmarkIcon4,
-  BookmarkCheck as BookmarkCheckIcon4,
-  Calendar as CalendarIcon5,
-  Clock as ClockIcon5,
-  Timer as TimerIcon4,
-  Stopwatch as StopwatchIcon4,
-  Hourglass as HourglassIcon4,
-  History as HistoryIcon4,
-  Archive as ArchiveIcon4,
-  Inbox as InboxIcon4,
-  Outbox as OutboxIcon4,
-  Send as SendIcon4,
-  Reply as ReplyIcon4,
-  Forward as ForwardIcon4,
-  Share as ShareIcon4,
-  Link as LinkIcon4,
-  Link2 as Link2Icon4,
-  Unlink as UnlinkIcon4,
-  Lock as LockIcon5,
-  Unlock as UnlockIcon5,
-  Key as KeyIcon5,
-  Shield as ShieldIcon5,
-  ShieldCheck as ShieldCheckIcon3,
-  ShieldAlert as ShieldAlertIcon3,
-  ShieldX as ShieldXIcon3,
-  ShieldOff as ShieldOffIcon3
+  AlertTriangle,
+  XCircle,
+  BarChart3,
+  Search,
+  Download,
+  RotateCcw,
+  MoreHorizontal,
+  FileText
 } from 'lucide-react';
+import { useStore } from '../../store/useStore';
 
 interface Deployment {
   id: string;
@@ -307,6 +63,7 @@ interface Deployment {
 }
 
 const GHLVoiceAIDeployer: React.FC = () => {
+  const { voiceAgents, deployAgent, updateVoiceAgent, deleteVoiceAgent } = useStore();
   const [activeTab, setActiveTab] = useState('overview');
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [selectedDeployments, setSelectedDeployments] = useState<string[]>([]);
@@ -314,6 +71,23 @@ const GHLVoiceAIDeployer: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterEnvironment, setFilterEnvironment] = useState('all');
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showGenerateModal, setShowGenerateModal] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [newDeployment, setNewDeployment] = useState({
+    name: '',
+    description: '',
+    voiceAgentId: '',
+    voiceAgentName: '',
+    environment: 'production' as 'development' | 'staging' | 'production',
+    phoneNumbers: '',
+    webhookUrl: '',
+  });
+  const [aiGeneration, setAiGeneration] = useState({
+    businessDescription: '',
+    industry: '',
+    businessType: 'service',
+  });
 
   // Sample data
   useEffect(() => {
@@ -421,9 +195,207 @@ const GHLVoiceAIDeployer: React.FC = () => {
     return matchesSearch && matchesStatus && matchesEnvironment;
   });
 
-  const handleDeploy = (deployment: Deployment) => {
+  const handleDeploy = async (deployment: Deployment) => {
     setIsDeploying(true);
-    console.log('Deploying:', deployment.name);
+    try {
+      // Find the voice agent in our store
+      const agent = voiceAgents.find(a => a.id === deployment.voiceAgent.id);
+      if (!agent) {
+        alert('Voice agent not found');
+        return;
+      }
+
+      // Deploy to GHL using our backend API
+      const result = await deployAgent({
+        name: agent.name,
+        description: agent.description || deployment.description,
+        voiceSettings: agent.voiceSettings,
+        conversationSettings: agent.conversationSettings,
+        scripts: agent.scripts,
+        intents: agent.intents,
+        customActions: agent.customActions,
+        knowledgeBase: agent.knowledgeBase,
+        transferRules: agent.transferRules,
+        compliance: agent.compliance,
+        ghlIntegration: agent.ghlIntegration
+      });
+
+      if (result.success) {
+        alert('Agent deployed successfully to GHL!');
+        // Update local deployment status
+        setDeployments(prev => prev.map(d => 
+          d.id === deployment.id 
+            ? { ...d, status: 'active', updatedAt: new Date().toISOString() }
+            : d
+        ));
+      } else {
+        alert(`Failed to deploy: ${result.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Failed to deploy:', error);
+      alert('Failed to deploy agent');
+    } finally {
+      setIsDeploying(false);
+    }
+  };
+
+  const handleCreateDeployment = async () => {
+    if (!newDeployment.name.trim() || !newDeployment.voiceAgentName.trim()) {
+      alert('Please fill in all required fields');
+      return;
+    }
+
+    setIsDeploying(true);
+    try {
+      // Create a basic voice agent configuration
+      const agentConfig = {
+        name: newDeployment.voiceAgentName,
+        description: newDeployment.description,
+        voiceSettings: {
+          provider: 'elevenlabs',
+          voiceId: 'Adam',
+          voiceName: 'Adam - Professional',
+          speed: 1.0,
+          stability: 0.5,
+          similarityBoost: 0.75
+        },
+        conversationSettings: {
+          systemPrompt: `You are a helpful voice assistant for ${newDeployment.name}.`,
+          temperature: 0.7,
+          maxTokens: 1000,
+          model: 'gpt-4'
+        },
+        scripts: {
+          greeting: 'Hello! How can I help you today?',
+          main: 'I can assist you with your needs.',
+          fallback: 'Sorry, could you repeat that?',
+          transfer: 'Let me transfer you to a human agent.',
+          goodbye: 'Thank you for calling. Have a great day!'
+        },
+        intents: [],
+        customActions: [],
+        knowledgeBase: [],
+        transferRules: [],
+        compliance: {
+          tcpaCompliant: true,
+          recordingConsent: true,
+          gdprCompliant: true,
+          dataRetentionDays: 90
+        },
+        ghlIntegration: {
+          customFields: [],
+          tags: ['voice-ai-contact'],
+          appointmentType: 'General Inquiry',
+          calendarId: 'default'
+        }
+      };
+
+      // Deploy to GHL
+      const result = await deployAgent(agentConfig);
+
+      if (result.success) {
+        // Create local deployment record
+        const deployment: Deployment = {
+          id: result.agentId || `dep_${Date.now()}`,
+          name: newDeployment.name,
+          description: newDeployment.description,
+          voiceAgent: {
+            id: result.agentId || 'new_agent',
+            name: newDeployment.voiceAgentName,
+            version: 'v1.0.0'
+          },
+          environment: newDeployment.environment,
+          status: 'active',
+          phoneNumbers: newDeployment.phoneNumbers.split(',').map(p => p.trim()),
+          webhooks: newDeployment.webhookUrl ? [{
+            url: newDeployment.webhookUrl,
+            events: ['call.started', 'call.ended'],
+            status: 'active'
+          }] : [],
+          configuration: {
+            maxConcurrentCalls: 50,
+            callTimeout: 300,
+            retryAttempts: 3,
+            fallbackNumber: '+1-555-0000'
+          },
+          metrics: {
+            totalCalls: 0,
+            activeCalls: 0,
+            successfulCalls: 0,
+            failedCalls: 0,
+            averageCallDuration: 0,
+            uptime: 100
+          },
+          health: {
+            status: 'healthy',
+            lastCheck: new Date().toISOString(),
+            issues: []
+          },
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+
+        setDeployments(prev => [deployment, ...prev]);
+        setShowCreateModal(false);
+        setNewDeployment({
+          name: '',
+          description: '',
+          voiceAgentId: '',
+          voiceAgentName: '',
+          environment: 'production',
+          phoneNumbers: '',
+          webhookUrl: '',
+        });
+        alert('Agent deployed successfully to GHL!');
+      } else {
+        alert(`Failed to deploy: ${result.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Failed to deploy:', error);
+      alert('Failed to deploy agent');
+    } finally {
+      setIsDeploying(false);
+    }
+  };
+
+  const handleGenerateWithAI = async () => {
+    if (!aiGeneration.businessDescription.trim()) {
+      alert('Please provide a business description');
+      return;
+    }
+
+    setIsGenerating(true);
+    try {
+      const { generateAgent } = useStore.getState();
+      const result = await generateAgent(
+        aiGeneration.businessDescription,
+        aiGeneration.industry,
+        aiGeneration.businessType
+      );
+
+      if (result.success) {
+        // Pre-fill the deployment form with generated agent
+        setNewDeployment({
+          name: `${aiGeneration.industry} Voice Agent`,
+          description: aiGeneration.businessDescription,
+          voiceAgentId: result.agentId,
+          voiceAgentName: result.agentConfig.name,
+          environment: 'production',
+          phoneNumbers: '',
+          webhookUrl: '',
+        });
+        setShowGenerateModal(false);
+        setShowCreateModal(true);
+        alert('Agent generated successfully! Review and deploy.');
+      } else {
+        alert(`Failed to generate agent: ${result.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Failed to generate agent:', error);
+      alert('Failed to generate agent');
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const handlePause = (deployment: Deployment) => {
@@ -463,7 +435,14 @@ const GHLVoiceAIDeployer: React.FC = () => {
           </div>
           <div className="flex space-x-3">
             <button
-              onClick={() => console.log('Create deployment')}
+              onClick={() => setShowGenerateModal(true)}
+              className="btn btn-secondary"
+            >
+              <Bot className="w-4 h-4 mr-2" />
+              Generate with AI
+            </button>
+            <button
+              onClick={() => setShowCreateModal(true)}
               className="btn btn-primary"
             >
               <Plus className="w-4 h-4 mr-2" />
@@ -782,6 +761,202 @@ const GHLVoiceAIDeployer: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Create Deployment Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-card rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b">
+              <h2 className="text-2xl font-bold">Deploy New Voice AI Agent</h2>
+              <p className="text-muted-foreground mt-1">Configure and deploy your Voice AI agent</p>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Deployment Name *</label>
+                <input
+                  type="text"
+                  className="input w-full"
+                  value={newDeployment.name}
+                  onChange={(e) => setNewDeployment({ ...newDeployment, name: e.target.value })}
+                  placeholder="e.g., Solar Sales Agent - Production"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Description</label>
+                <textarea
+                  className="input w-full h-24 resize-y"
+                  value={newDeployment.description}
+                  onChange={(e) => setNewDeployment({ ...newDeployment, description: e.target.value })}
+                  placeholder="Describe the purpose of this deployment..."
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Voice Agent Name *</label>
+                  <input
+                    type="text"
+                    className="input w-full"
+                    value={newDeployment.voiceAgentName}
+                    onChange={(e) => setNewDeployment({ ...newDeployment, voiceAgentName: e.target.value })}
+                    placeholder="e.g., Sarah - Sales Agent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-1">Environment *</label>
+                  <select
+                    className="input w-full"
+                    value={newDeployment.environment}
+                    onChange={(e) => setNewDeployment({ ...newDeployment, environment: e.target.value as any })}
+                  >
+                    <option value="production">Production</option>
+                    <option value="staging">Staging</option>
+                    <option value="development">Development</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Phone Numbers</label>
+                <input
+                  type="text"
+                  className="input w-full"
+                  value={newDeployment.phoneNumbers}
+                  onChange={(e) => setNewDeployment({ ...newDeployment, phoneNumbers: e.target.value })}
+                  placeholder="+1-555-0123, +1-555-0124"
+                />
+                <p className="text-xs text-muted-foreground mt-1">Separate multiple numbers with commas</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Webhook URL</label>
+                <input
+                  type="url"
+                  className="input w-full"
+                  value={newDeployment.webhookUrl}
+                  onChange={(e) => setNewDeployment({ ...newDeployment, webhookUrl: e.target.value })}
+                  placeholder="https://api.gohighlevel.com/webhooks/voice-ai"
+                />
+              </div>
+            </div>
+
+            <div className="p-6 border-t flex justify-end space-x-3">
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="btn btn-outline"
+                disabled={isDeploying}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateDeployment}
+                className="btn btn-primary"
+                disabled={isDeploying || !newDeployment.name.trim() || !newDeployment.voiceAgentName.trim()}
+              >
+                {isDeploying ? 'Deploying...' : 'Deploy Agent'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI Generation Modal */}
+      {showGenerateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-card rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b">
+              <h2 className="text-2xl font-bold">Generate Voice Agent with AI</h2>
+              <p className="text-muted-foreground mt-1">Describe your business and let AI create a custom voice agent</p>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Business Description *</label>
+                <textarea
+                  className="input w-full h-32 resize-y"
+                  value={aiGeneration.businessDescription}
+                  onChange={(e) => setAiGeneration({ ...aiGeneration, businessDescription: e.target.value })}
+                  placeholder="Describe your business, services, target customers, and what you want the voice agent to help with..."
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Be specific about your business type, services offered, and customer interactions
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Industry *</label>
+                  <select
+                    className="input w-full"
+                    value={aiGeneration.industry}
+                    onChange={(e) => setAiGeneration({ ...aiGeneration, industry: e.target.value })}
+                  >
+                    <option value="">Select Industry</option>
+                    <option value="fitness">Fitness & Wellness</option>
+                    <option value="restaurant">Restaurant & Food</option>
+                    <option value="healthcare">Healthcare</option>
+                    <option value="legal">Legal Services</option>
+                    <option value="real-estate">Real Estate</option>
+                    <option value="automotive">Automotive</option>
+                    <option value="education">Education</option>
+                    <option value="retail">Retail</option>
+                    <option value="professional-services">Professional Services</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-1">Business Type</label>
+                  <select
+                    className="input w-full"
+                    value={aiGeneration.businessType}
+                    onChange={(e) => setAiGeneration({ ...aiGeneration, businessType: e.target.value })}
+                  >
+                    <option value="service">Service Business</option>
+                    <option value="retail">Retail Store</option>
+                    <option value="restaurant">Restaurant</option>
+                    <option value="fitness-studio">Fitness Studio</option>
+                    <option value="professional">Professional Practice</option>
+                    <option value="ecommerce">E-commerce</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h4 className="font-medium text-blue-900 mb-2">What AI will generate:</h4>
+                <ul className="text-sm text-blue-800 space-y-1">
+                  <li>• Custom system prompt tailored to your business</li>
+                  <li>• Professional conversation scripts</li>
+                  <li>• Relevant intents and responses</li>
+                  <li>• Knowledge base with FAQs</li>
+                  <li>• Voice settings optimized for your industry</li>
+                  <li>• GHL integration configuration</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="p-6 border-t flex justify-end space-x-3">
+              <button
+                onClick={() => setShowGenerateModal(false)}
+                className="btn btn-outline"
+                disabled={isGenerating}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleGenerateWithAI}
+                className="btn btn-primary"
+                disabled={isGenerating || !aiGeneration.businessDescription.trim() || !aiGeneration.industry}
+              >
+                {isGenerating ? 'Generating...' : 'Generate Agent'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,0 +1,276 @@
+/**
+ * MCP Server Runtime
+ * Express router/endpoints exposing MCP primitives
+ * Chainlit integration layer
+ * MCP protocol handlers for runtime use
+ */
+
+const express = require('express');
+const router = express.Router();
+
+// Import all primitives
+const {
+  VoiceAgentPrimitive,
+  GHLPrimitive,
+  WebhookPrimitive,
+  ContactPrimitive,
+  ActionPrimitive,
+  AgentPrimitive,
+  IntegrationPrimitive,
+  AutoRecoveryPrimitive,
+  AnomalyDetectionPrimitive,
+  FeedbackLoopPrimitive,
+  ConfigDriftPrimitive,
+  LiveTracePrimitive,
+  AutoPatchPrimitive,
+  IncidentReportPrimitive
+} = require('./index');
+
+// Initialize primitives with config
+function initializePrimitives(config) {
+  const config_full = {
+    ...config,
+    baseUrl: process.env.GHL_BASE_URL || 'https://services.leadconnectorhq.com',
+    elevenlabsApiKey: process.env.ELEVENLABS_API_KEY,
+    openaiApiKey: process.env.OPENAI_API_KEY
+  };
+
+  return {
+    voiceAgent: new VoiceAgentPrimitive(config_full),
+    ghl: new GHLPrimitive(config_full),
+    webhook: new WebhookPrimitive(),
+    contact: new ContactPrimitive(config_full),
+    action: new ActionPrimitive(),
+    agent: new AgentPrimitive(config_full),
+    integration: new IntegrationPrimitive(),
+    autoRecovery: new AutoRecoveryPrimitive(),
+    anomalyDetection: new AnomalyDetectionPrimitive(),
+    feedbackLoop: new FeedbackLoopPrimitive(),
+    configDrift: new ConfigDriftPrimitive(),
+    liveTrace: new LiveTracePrimitive(),
+    autoPatch: new AutoPatchPrimitive(),
+    incidentReport: new IncidentReportPrimitive()
+  };
+}
+
+// Get or create primitives instance
+let primitives = null;
+
+function getPrimitives() {
+  if (!primitives) {
+    primitives = initializePrimitives({});
+  }
+  return primitives;
+}
+
+// MCP Endpoints - Core Primitives
+
+// Voice Agent endpoints
+router.post('/voiceAgent/call', async (req, res) => {
+  try {
+    const result = await getPrimitives().voiceAgent.call(req.body);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/voiceAgent/generatePrompt', async (req, res) => {
+  try {
+    const result = await getPrimitives().voiceAgent.generatePrompt(req.body);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// GHL endpoints
+router.post('/ghl/triggerWorkflow', async (req, res) => {
+  try {
+    const result = await getPrimitives().ghl.triggerWorkflow(req.body);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Webhook endpoints
+router.post('/webhook/onEvent', async (req, res) => {
+  try {
+    const result = await getPrimitives().webhook.onEvent(req.body);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/webhook/processEvent/:eventType', async (req, res) => {
+  try {
+    const result = await getPrimitives().webhook.processEvent(req.params.eventType, req.body);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Contact endpoints
+router.post('/contact/extractAndUpdate', async (req, res) => {
+  try {
+    const result = await getPrimitives().contact.extractAndUpdate(req.body);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Action endpoints
+router.post('/action/retryIfFail', async (req, res) => {
+  try {
+    const result = await getPrimitives().action.retryIfFail(req.body);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Agent endpoints
+router.post('/agent/log', async (req, res) => {
+  try {
+    const result = await getPrimitives().agent.log(req.body);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/agent/checkHealth', async (req, res) => {
+  try {
+    const result = await getPrimitives().agent.checkHealth(req.body);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/agent/saveState', async (req, res) => {
+  try {
+    const result = await getPrimitives().agent.saveState(req.body);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/agent/loadState', async (req, res) => {
+  try {
+    const result = await getPrimitives().agent.loadState(req.body);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Integration endpoints
+router.post('/integration/connect', async (req, res) => {
+  try {
+    const result = await getPrimitives().integration.connect(req.body);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Monitoring/Self-Healing endpoints
+router.post('/agent/autoRecovery', async (req, res) => {
+  try {
+    const result = await getPrimitives().autoRecovery.autoRecovery(req.body);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/agent/anomalyDetect', async (req, res) => {
+  try {
+    const result = await getPrimitives().anomalyDetection.anomalyDetect(req.body);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/agent/feedbackLoop', async (req, res) => {
+  try {
+    const result = await getPrimitives().feedbackLoop.feedbackLoop(req.body);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/configDrift/detect', async (req, res) => {
+  try {
+    const result = await getPrimitives().configDrift.detect(req.body);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/agent/liveTrace', async (req, res) => {
+  try {
+    const result = await getPrimitives().liveTrace.liveTrace(req.body);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/agent/getTrace/:traceId', async (req, res) => {
+  try {
+    const result = await getPrimitives().liveTrace.getTrace(req.params.traceId);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/autoPatch/deploy', async (req, res) => {
+  try {
+    const result = await getPrimitives().autoPatch.deploy(req.body);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/incidentReport/create', async (req, res) => {
+  try {
+    const result = await getPrimitives().incidentReport.create(req.body);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/incidentReport/getIncidents', async (req, res) => {
+  try {
+    const result = await getPrimitives().incidentReport.getIncidents(req.query);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Health check endpoint
+router.get('/health', async (req, res) => {
+  try {
+    const healthResult = await getPrimitives().agent.checkHealth({ agentId: 'system' });
+    res.json({ success: true, data: healthResult });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+module.exports = router;
+

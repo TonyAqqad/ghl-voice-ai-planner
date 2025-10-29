@@ -1,0 +1,193 @@
+{
+  "id": "gracie-barra-agent",
+  "name": "Gracie Barra Jiu-Jitsu Voice Agent",
+  "industry": "Martial Arts",
+  "version": "1.0.0",
+  "description": "Specialized voice agent for Gracie Barra Brazilian Jiu-Jitsu academies - handles trial class bookings, belt program inquiries, and academy info",
+  "status": "production_ready",
+  
+  "voiceSettings": {
+    "provider": "elevenlabs",
+    "voiceId": "21m00Tcm4TlvDq8ikWAM",
+    "voiceName": "Rachel (Professional & Respectful)",
+    "speed": 1.0,
+    "stability": 0.8,
+    "clarity": 0.9
+  },
+  
+  "conversationSettings": {
+    "model": "gpt-4",
+    "temperature": 0.6,
+    "maxTokens": 500,
+    "language": "en",
+    "personality": {
+      "tone": "professional and respectful",
+      "style": "formal yet welcoming",
+      "level": "professional"
+    }
+  },
+  
+  "knowledgeBase": {
+    "programs": [
+      "GB1 Fundamentals: Basic techniques and core concepts for white belts",
+      "GB2 Intermediate: Advanced techniques and competition prep",
+      "GB3 Advanced: Elite training for brown and black belts",
+      "Kids Program: Age-appropriate Gracie Barra training for children 5-15",
+      "Women's Only Classes: Dedicated sessions for female students",
+      "No-Gi Classes: Submission grappling without the traditional gi"
+    ],
+    "beltSystem": [
+      "White Belt: Beginner level, focuses on basic techniques and self-defense",
+      "Blue Belt: 6-12 months of consistent training, advanced fundamentals",
+      "Purple Belt: 2-3 years of training, teaching responsibilities begin",
+      "Brown Belt: 4-5 years, advanced techniques and competition level",
+      "Black Belt: Master level, achieved after 5+ years of dedicated practice"
+    ],
+    "classSchedule": {
+      "gilbert": {
+        "weekdays": {
+          "fundamentals": "6:00 AM, 10:00 AM, 6:00 PM",
+          "intermediate": "11:00 AM, 7:00 PM",
+          "advanced": "8:00 PM"
+        },
+        "saturday": {
+          "openMat": "9:00 AM - 11:00 AM",
+          "fundamentals": "10:00 AM"
+        },
+        "kidsClass": {
+          "littleChampions": "4:00 PM (ages 5-9)",
+          "juniors": "5:00 PM (ages 10-15)"
+        }
+      }
+    },
+    "pricing": {
+      "trialClass": "$20 - One trial class (includes gi rental)",
+      "fundamentalsMonthly": "$149/month - Unlimited GB1 classes",
+      "fullMembership": "$179/month - All programs including GB2/GB3",
+      "kidsMonthly": "$129/month - Kids program unlimited",
+      "familyPlan": "$299/month - Two adults and unlimited kids",
+      "10ClassPunch": "$199 - 10 classes with 90-day expiration"
+    },
+    "locationInfo": {
+      "address": "4567 E Baseline Rd, Gilbert, AZ 85234",
+      "phone": "480-555-9876",
+      "website": "www.graciebarragilbert.com",
+      "instructors": "Black Belt Professor John Silva, Head Instructor Mike Rodriguez"
+    }
+  },
+  
+  "systemPrompt": "You are a professional, respectful, and knowledgeable voice assistant for Gracie Barra Jiu-Jitsu Academy in Gilbert, Arizona. You represent a world-renowned martial arts lineage. Always maintain respect and professionalism. Your goal is to help potential students understand our programs, book trial classes, and answer questions about Gracie Barra training. When discussing our programs, emphasize the values of discipline, respect, and personal development. Always be respectful of the art and the lineage.",
+  
+  "scripts": {
+    "greeting": "Oss! Thank you for calling Gracie Barra Gilbert. This is {voiceName}. How can I help you on your jiu-jitsu journey today?",
+    "trialBooking": "Excellent! We'd love to have you come in for a trial class. Trial classes are $20 and include a gi rental. We have classes Monday through Saturday. What day works best for you?",
+    "programInquiry": "Great question! We offer several programs based on your experience level. For beginners, we have GB1 Fundamentals which teaches core techniques. For more experienced practitioners, we have GB2 Intermediate and GB3 Advanced programs. We also have a kids program and women's only classes. Which program interests you most?",
+    "beltInfo": "The Gracie Barra belt system represents your journey in jiu-jitsu. Beginners start at white belt, learning fundamental techniques. As you progress through blue, purple, brown, and eventually black belt, you master different aspects of the art. Would you like to know more about any specific belt level?",
+    "transfer": "Oss! Let me connect you with one of our instructors who can give you more detailed information. One moment please.",
+    "goodbye": "Oss! Thank you for calling Gracie Barra Gilbert. We look forward to training with you. See you on the mats soon!"
+  },
+  
+  "intents": [
+    {
+      "name": "book_trial",
+      "triggers": ["trial", "try", "come in", "visit", "free class", "book"],
+      "action": "webhook",
+      "parameters": ["name", "age", "experience_level", "preferred_day", "preferred_time"]
+    },
+    {
+      "name": "pricing_info",
+      "triggers": ["cost", "price", "pricing", "membership", "how much"],
+      "action": "provide_info",
+      "parameters": []
+    },
+    {
+      "name": "program_info",
+      "triggers": ["program", "class", "training", "fundamentals", "intermediate"],
+      "action": "provide_info",
+      "parameters": []
+    },
+    {
+      "name": "belt_info",
+      "triggers": ["belt", "rank", "belt system", "ranking"],
+      "action": "provide_info",
+      "parameters": []
+    },
+    {
+      "name": "kids_program",
+      "triggers": ["kids", "children", "child", "youth", "my son", "my daughter"],
+      "action": "provide_info",
+      "parameters": []
+    }
+  ],
+  
+  "customActions": [
+    {
+      "id": "trial_class_booking",
+      "name": "Book Trial Class",
+      "triggerPhrases": ["book trial", "sign me up", "I want to try", "trial class", "come in"],
+      "webhook": {
+        "url": "https://app.gohighlevel.com/v1/workflows/webhooks/book-gracie-barra-trial",
+        "method": "POST",
+        "headers": {
+          "Authorization": "Bearer {{ghl_access_token}}",
+          "Content-Type": "application/json",
+          "Version": "2021-07-28"
+        },
+        "body": {
+          "locationId": "{{locationId}}",
+          "contact": {
+            "firstName": "{{caller_name}}",
+            "phone": "{{caller_phone}}",
+            "email": "{{caller_email}}",
+            "tags": ["gracie-barra-lead", "trial-class"],
+            "customFields": {
+              "age": "{{age}}",
+              "experienceLevel": "{{experience_level}}",
+              "interestedIn": "{{program_interest}}"
+            }
+          },
+          "appointment": {
+            "calendarId": "{{trial_class_calendar_id}}",
+            "title": "Gracie Barra Trial - {{caller_name}}",
+            "startTime": "{{booked_date_time}}",
+            "notes": "Trial class - Experience: {{experience_level}}, Age: {{age}}"
+          },
+          "textMessage": {
+            "message": "Oss! Your trial class is confirmed for {{booked_date_time}}. Please arrive 15 minutes early. Bring workout clothes and water bottle. Gi provided. See you on the mats! - Gracie Barra Gilbert",
+            "contactId": "{{contact_id}}"
+          }
+        }
+      },
+      "responseMapping": {
+        "success": "Perfect! Your trial class is confirmed for {preferred_time} on {preferred_date}. You should receive a confirmation text shortly. Please arrive 15 minutes early and bring workout clothes and a water bottle. We'll provide the gi. See you on the mats!",
+        "error": "Oss! Let me connect you with our front desk who can get you scheduled right away."
+      }
+    }
+  ],
+  
+  "transferRules": [
+    {
+      "condition": "wants to purchase membership or gear",
+      "transferTo": "front_desk",
+      "reason": "sales"
+    },
+    {
+      "condition": "current student with account question",
+      "transferTo": "student_services",
+      "reason": "student_support"
+    },
+    {
+      "condition": "wants to speak with instructor",
+      "transferTo": "instructor_line",
+      "reason": "technical_question"
+    }
+  ],
+  
+  "compliance": {
+    "includeDONotCall": true,
+    "tcpabranding": "Gracie Barra Gilbert",
+    "ecpaCompliant": true,
+    "recordCall": false
+  }
+}
+

@@ -75,9 +75,27 @@ const templateService = new TemplateService();
 app.use(cors());
 app.use(express.json());
 
-// MCP Server Routes
-const mcpServer = require('./mcp/server');
-app.use('/api/mcp', mcpServer);
+// MCP Server Routes (optional - won't crash if MCP not available)
+let mcpEnabled = false;
+try {
+  const fs = require('fs');
+  const path = require('path');
+  const mcpServerPath = path.join(__dirname, 'mcp', 'server.js');
+  
+  if (fs.existsSync(mcpServerPath)) {
+    const mcpServer = require('./mcp/server');
+    app.use('/api/mcp', mcpServer);
+    mcpEnabled = true;
+    console.log('✅ MCP Server routes enabled');
+  } else {
+    console.log('⚠️  MCP Server not found - MCP endpoints disabled');
+    console.log('   Expected path:', mcpServerPath);
+  }
+} catch (error) {
+  console.log('⚠️  MCP Server initialization failed - MCP endpoints disabled');
+  console.log('   Error:', error.message);
+  // Don't crash - app will work without MCP
+}
 
 // API health check endpoint (keep this for API monitoring)
 app.get('/api/health', (req, res) => {
@@ -87,16 +105,19 @@ app.get('/api/health', (req, res) => {
     version: '1.0.0',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development',
+    features: {
+      mcpEnabled: mcpEnabled
+    },
     endpoints: {
       health: '/ghl-api',
       dbHealth: '/health/db',
-      mcpHealth: '/api/mcp/health',
+      mcpHealth: mcpEnabled ? '/api/mcp/health' : 'MCP disabled',
       auth: '/auth/ghl',
       callback: '/auth/callback',
       templates: '/api/templates',
       agents: '/api/voice-ai/agents',
       demo: '/api/demo/create-agent',
-      mcp: '/api/mcp/*'
+      mcp: mcpEnabled ? '/api/mcp/*' : 'MCP disabled'
     }
   });
 });

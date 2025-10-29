@@ -3,7 +3,6 @@ import {
   Megaphone, 
   Play, 
   Pause, 
-  Stop, 
   Settings, 
   Plus, 
   Trash2, 

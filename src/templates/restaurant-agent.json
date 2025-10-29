@@ -1,0 +1,234 @@
+{
+  "id": "restaurant-agent",
+  "name": "Restaurant Voice Agent",
+  "industry": "Food & Restaurant",
+  "version": "1.0.0",
+  "description": "Smart restaurant voice agent for handling reservations, orders, delivery, and customer service with live menu integration",
+  "status": "production_ready",
+  
+  "voiceSettings": {
+    "provider": "elevenlabs",
+    "voiceId": "EXAVITQu4vr4xnSDxMaL",
+    "voiceName": "Bella (Warm & Friendly)",
+    "speed": 1.0,
+    "stability": 0.85,
+    "clarity": 0.9
+  },
+  
+  "conversationSettings": {
+    "model": "gpt-4",
+    "temperature": 0.8,
+    "maxTokens": 500,
+    "language": "en",
+    "personality": {
+      "tone": "warm and friendly",
+      "style": "conversational and helpful",
+      "level": "friendly"
+    }
+  },
+  
+  "knowledgeBase": {
+    "restaurantName": "The Urban Kitchen",
+    "cuisine": "Modern American with Global Influences",
+    "specialties": [
+      "Wood-fired artisan pizzas",
+      "Farm-to-table seasonal salads",
+      "House-made pasta dishes",
+      "Premium craft burgers",
+      "Handcrafted cocktails",
+      "Wine selection curated by our sommelier"
+    ],
+    "hours": {
+      "monday_thursday": "11:00 AM - 10:00 PM",
+      "friday_saturday": "11:00 AM - 11:00 PM",
+      "sunday": "11:00 AM - 9:00 PM",
+      "happyHour": "Monday-Friday 3:00 PM - 6:00 PM"
+    },
+    "menu": {
+      "appetizers": [
+        {"name": "Truffle Bruschetta", "price": "$12", "description": "Crispy bread with truffle oil, ricotta, and herbs"},
+        {"name": "Loaded Nachos", "price": "$14", "description": "Crispy tortilla chips, pulled pork, jalapeños, cheese"},
+        {"name": "Ahi Tuna Tartare", "price": "$16", "description": "Fresh sashimi-grade tuna, avocado, cucumber"}
+      ],
+      "entrees": [
+        {"name": "Margherita Pizza", "price": "$15", "description": "Fresh mozzarella, basil, tomato sauce"},
+        {"name": "Carbonara Risotto", "price": "$22", "description": "Creamy risotto with pancetta and pecorino"},
+        {"name": "The Urban Burger", "price": "$18", "description": "8oz wagyu beef, truffle aioli, aged cheddar"}
+      ]
+    },
+    "reservations": {
+      "partySizes": "2-20 guests",
+      "largePartyContact": "For parties over 20, please call during business hours"
+    },
+    "location": {
+      "address": "789 Main Street, Downtown, AZ 85001",
+      "phone": "602-555-3456",
+      "website": "www.theurbankitchen.com"
+    }
+  },
+  
+  "systemPrompt": "You are a warm, friendly, and helpful voice assistant for The Urban Kitchen, a modern American restaurant. Your goal is to help customers with reservations, take orders for pickup and delivery, answer menu questions, and provide excellent customer service. Always be enthusiastic about our food. When taking orders, be sure to confirm all items and get delivery addresses or pickup times. Be knowledgeable about our menu items, ingredients, and dietary restrictions. If someone asks about something not on the menu, suggest similar items we offer.",
+  
+  "scripts": {
+    "greeting": "Hi there! Thanks for calling The Urban Kitchen. This is {voiceName}, and I'm excited to help you today! Are you looking to make a reservation, place an order, or maybe have a question about our menu?",
+    "reservationGreeting": "Great! I'd love to help you make a reservation. For what date and time? And how many people will be in your party?",
+    "orderGreeting": "Perfect! I'm here to take your order. Would you like pickup or delivery? And what would you like to start with?",
+    "menuInquiry": "I'd be happy to tell you about our menu! We specialize in wood-fired pizzas, handmade pasta, craft burgers, and seasonal dishes. What type of food are you in the mood for today?",
+    "transfer": "No problem! Let me get you connected with one of our team members who can help you with that right away.",
+    "goodbye": "Thank you so much for calling The Urban Kitchen! We can't wait to serve you! Have a wonderful day!"
+  },
+  
+  "intents": [
+    {
+      "name": "make_reservation",
+      "triggers": ["reservation", "book", "table", "dinner", "lunch", "reserve"],
+      "action": "webhook",
+      "parameters": ["party_size", "date", "time", "special_requests"]
+    },
+    {
+      "name": "place_order",
+      "triggers": ["order", "pickup", "delivery", "take out", "I want"],
+      "action": "webhook",
+      "parameters": ["items", "delivery_address", "delivery_time", "special_instructions"]
+    },
+    {
+      "name": "menu_inquiry",
+      "triggers": ["menu", "what do you have", "what's on the menu", "specialties"],
+      "action": "provide_info",
+      "parameters": []
+    },
+    {
+      "name": "hours_inquiry",
+      "triggers": ["hours", "when are you open", "what time", "open"],
+      "action": "provide_info",
+      "parameters": []
+    },
+    {
+      "name": "location_inquiry",
+      "triggers": ["where", "location", "address", "directions"],
+      "action": "provide_info",
+      "parameters": []
+    }
+  ],
+  
+  "customActions": [
+    {
+      "id": "order_placement",
+      "name": "Place Order",
+      "triggerPhrases": ["I want to order", "place an order", "take my order", "I'd like to order"],
+      "webhook": {
+        "url": "https://app.gohighlevel.com/v1/workflows/webhooks/restaurant-order",
+        "method": "POST",
+        "headers": {
+          "Authorization": "Bearer {{ghl_access_token}}",
+          "Content-Type": "application/json",
+          "Version": "2021-07-28"
+        },
+        "body": {
+          "locationId": "{{locationId}}",
+          "orderType": "{{order_type}}",
+          "customer": {
+            "name": "{{caller_name}}",
+            "phone": "{{caller_phone}}",
+            "email": "{{caller_email}}",
+            "address": "{{delivery_address}}"
+          },
+          "order": {
+            "items": "{{order_items}}",
+            "subtotal": "{{order_subtotal}}",
+            "tax": "{{tax}}",
+            "total": "{{order_total}}",
+            "specialInstructions": "{{special_instructions}}",
+            "estimatedTime": "{{estimated_time}}"
+          },
+          "tags": ["restaurant-order", "{{order_type}}"],
+          "customFields": {
+            "orderNumber": "{{order_number}}",
+            "orderTime": "{{timestamp}}",
+            "estimatedReadyTime": "{{ready_time}}"
+          }
+        }
+      },
+      "responseMapping": {
+        "success": "Perfect! I've got your order for {item_count} items. Your order total comes to ${total} including tax. Your order will be ready for {order_type} in approximately {estimated_time} minutes. Your order number is {order_number}. We'll send you a confirmation text shortly!",
+        "error": "Let me transfer you to our kitchen so they can take your order directly."
+      }
+    },
+    {
+      "id": "live_menu_lookup",
+      "name": "Live Menu Lookup",
+      "triggerPhrases": ["what do you have", "menu item", "tell me about", "describe", "what's in"],
+      "webhook": {
+        "url": "https://app.gohighlevel.com/v1/custom-objects/restaurant-menu",
+        "method": "GET",
+        "headers": {
+          "Authorization": "Bearer {{ghl_access_token}}",
+          "Version": "2021-07-28"
+        }
+      },
+      "responseMapping": {
+        "menuItemFound": "Great choice! Our {item_name} is {description} and it's priced at {price}. Would you like to add that to your order?",
+        "alternative": "We don't have that exact item, but we do have {alternative_item} which is similar. Would you like to hear more about that?"
+      }
+    },
+    {
+      "id": "reservation_booking",
+      "name": "Book Reservation",
+      "triggerPhrases": ["make a reservation", "book a table", "reserve", "dinner reservation"],
+      "webhook": {
+        "url": "https://app.gohighlevel.com/v1/workflows/webhooks/restaurant-reservation",
+        "method": "POST",
+        "headers": {
+          "Authorization": "Bearer {{ghl_access_token}}",
+          "Content-Type": "application/json",
+          "Version": "2021-07-28"
+        },
+        "body": {
+          "locationId": "{{locationId}}",
+          "contact": {
+            "firstName": "{{caller_name}}",
+            "phone": "{{caller_phone}}",
+            "email": "{{caller_email}}",
+            "tags": ["restaurant-reservation"]
+          },
+          "appointment": {
+            "calendarId": "{{reservations_calendar_id}}",
+            "title": "Reservation - {caller_name} - {party_size} guests",
+            "startTime": "{{reservation_date_time}}",
+            "notes": "Party size: {party_size}, Special requests: {special_requests}"
+          }
+        }
+      },
+      "responseMapping": {
+        "success": "Perfect! I've got you down for {party_size} people on {date} at {time}. We can't wait to serve you! You'll receive a confirmation text shortly.",
+        "error": "That time might be full. Let me check what we have available and transfer you to our host."
+      }
+    }
+  ],
+  
+  "transferRules": [
+    {
+      "condition": "complex dietary restrictions or allergies",
+      "transferTo": "chef_line",
+      "reason": "menu_question"
+    },
+    {
+      "condition": "wants to modify existing order",
+      "transferTo": "kitchen_manager",
+      "reason": "order_modification"
+    },
+    {
+      "condition": "complaint or issue with previous visit",
+      "transferTo": "manager_line",
+      "reason": "customer_relations"
+    }
+  ],
+  
+  "compliance": {
+    "includeDONotCall": true,
+    "tcpabranding": "The Urban Kitchen",
+    "ecpaCompliant": true,
+    "recordCall": false
+  }
+}
+

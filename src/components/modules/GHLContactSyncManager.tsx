@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { 
   Users, 
   RefreshCw, 
-  Download, 
+  Download,
+  FileText, 
   Upload, 
   Filter, 
   Search, 
@@ -263,8 +264,26 @@ const GHLContactSyncManager: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterSource, setFilterSource] = useState('all');
 
-  // Sample data
+  // Load contacts from GHL API
   useEffect(() => {
+    loadContacts();
+  }, []);
+
+  const loadContacts = async () => {
+    try {
+      const response = await fetch('https://ghlvoiceai.captureclient.com/api/ghl/contacts');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.contacts) {
+          setContacts(data.contacts);
+          return;
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load contacts from API:', error);
+    }
+    
+    // Fallback to sample data if API fails
     setContacts([
       {
         id: '1',
@@ -319,7 +338,10 @@ const GHLContactSyncManager: React.FC = () => {
         updatedAt: '2024-01-14T14:20:00Z'
       }
     ]);
+  };
 
+  // Initialize sample sync rules
+  useEffect(() => {
     setSyncRules([
       {
         id: '1',

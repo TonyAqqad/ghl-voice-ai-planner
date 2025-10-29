@@ -33,16 +33,25 @@ import {
   Heart,
   Mic,
   Cpu,
-  Megaphone
+  Megaphone,
+  MessageSquare,
+  Gauge
 } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import clsx from 'clsx';
 
         const navigation = [
+          { name: 'Expert Templates', href: '/template-importer', icon: Sparkles, description: 'Import F45, Gracie Barra, Restaurant', color: 'text-purple-500' },
+          { name: 'Template Library', href: '/templates', icon: BookOpen, description: 'Browse all templates', color: 'text-indigo-400' },
           { name: 'Voice Agents', href: '/voice-agents', icon: Bot, description: 'Configure AI agents', color: 'text-blue-400' },
+          { name: 'Voice Testing', href: '/voice-testing', icon: Mic, description: 'Test and preview voices', color: 'text-green-400' },
+          { name: 'Agent Dashboard', href: '/agent-dashboard', icon: Activity, description: 'Monitor deployed agents', color: 'text-orange-400' },
+          { name: 'Call Analytics', href: '/call-analytics', icon: BarChart3, description: 'Detailed call performance', color: 'text-cyan-400' },
+          { name: 'Webhook Config', href: '/webhook-config', icon: Webhook, description: 'Manage webhooks', color: 'text-indigo-400' },
           { name: 'Advanced Agents', href: '/advanced-agents', icon: Bot, description: 'Industry-specific templates', color: 'text-purple-400' },
           { name: 'Automation Engine', href: '/automation', icon: Brain, description: 'AI-powered automation', color: 'text-orange-400' },
           { name: 'Live Monitoring', href: '/monitoring', icon: Activity, description: 'Real-time performance', color: 'text-green-400' },
+          { name: 'Performance Monitor', href: '/performance', icon: Gauge, description: 'System performance metrics', color: 'text-blue-400' },
           { name: 'AI Optimization', href: '/optimization', icon: Lightbulb, description: 'AI-powered suggestions', color: 'text-yellow-400' },
           { name: 'Automated Testing', href: '/testing', icon: TestTube, description: 'Test & validation system', color: 'text-purple-400' },
           { name: 'One-Click Deploy', href: '/deployment', icon: Rocket, description: 'Deploy to any environment', color: 'text-orange-400' },
@@ -52,6 +61,7 @@ import clsx from 'clsx';
           { name: 'Security & Compliance', href: '/security', icon: Shield, description: 'Security monitoring & compliance', color: 'text-red-400' },
           { name: 'Agent Marketplace', href: '/marketplace', icon: Store, description: 'Discover & share agents', color: 'text-emerald-400' },
           { name: 'Webhook & API', href: '/webhook-api', icon: Webhook, description: 'Advanced webhook & API management', color: 'text-cyan-400' },
+          { name: 'Training Hub', href: '/training', icon: BookOpen, description: 'Prompts, Knowledge, Q&A sync to GHL', color: 'text-emerald-400' },
           { name: 'Team Collaboration', href: '/team', icon: Users, description: 'Real-time team collaboration', color: 'text-indigo-400' },
           { name: 'Business Intelligence', href: '/business-intelligence', icon: BarChart3, description: 'Advanced reporting & analytics', color: 'text-purple-400' },
           { name: 'AI Template Generator', href: '/ai-template-generator', icon: Sparkles, description: 'AI-powered template generation', color: 'text-pink-400' },
@@ -87,6 +97,7 @@ import clsx from 'clsx';
   { name: 'GHL Workflows', href: '/ghl-workflows', icon: Workflow, description: 'Create GHL workflow automations', color: 'text-purple-500' },
   { name: 'GHL API Connector', href: '/ghl-api', icon: Database, description: 'Connect to GHL API & sync data', color: 'text-green-500' },
   { name: 'GHL Contact Sync', href: '/ghl-contact-sync', icon: Users, description: 'Advanced contact synchronization', color: 'text-orange-500' },
+  { name: 'SMS Messaging', href: '/sms-messaging', icon: MessageSquare, description: 'Send and manage SMS messages', color: 'text-blue-500' },
   { name: 'GHL Campaigns', href: '/ghl-campaigns', icon: Megaphone, description: 'Voice AI campaign management', color: 'text-pink-500' },
   { name: 'GHL Analytics', href: '/ghl-analytics', icon: BarChart3, description: 'Advanced analytics & reporting', color: 'text-cyan-500' },
       { name: 'GHL Deployer', href: '/ghl-deployer', icon: Rocket, description: 'Deploy & manage Voice AI agents', color: 'text-red-500' },

@@ -1,15 +1,20 @@
 import React from 'react';
-import { Menu, Bell, Settings, User, Zap, Sun, Moon } from 'lucide-react';
+import { Menu, Bell, Settings, User, Zap, Sun, Moon, Command } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import clsx from 'clsx';
+// import SearchBar from '../ui/SearchBar';
+// import CommandPalette from '../ui/CommandPalette';
 
 const Header: React.FC = () => {
   const { sidebarOpen, toggleSidebar, notifications, darkMode, toggleDarkMode } = useStore();
+  const [commandPaletteOpen, setCommandPaletteOpen] = React.useState(false);
   const unreadNotifications = notifications.filter(n => !n.read).length;
 
   return (
-    <header className="bg-card/80 backdrop-blur-md border-b border-border px-6 py-4 sticky top-0 z-40">
-      <div className="flex items-center justify-between">
+    <>
+      {/* <CommandPalette isOpen={commandPaletteOpen} setIsOpen={setCommandPaletteOpen} /> */}
+      <header className="bg-card/80 backdrop-blur-md border-b border-border px-6 py-4 sticky top-0 z-40">
+        <div className="flex items-center justify-between">
         {/* Left side */}
         <div className="flex items-center space-x-4">
           <button
@@ -34,8 +39,23 @@ const Header: React.FC = () => {
           </div>
         </div>
         
+        {/* Center - Search Bar */}
+        {/* <div className="flex-1 mx-8 hidden md:block">
+          <SearchBar />
+        </div> */}
+
         {/* Right side */}
         <div className="flex items-center space-x-2">
+          {/* Command Palette */}
+          <button
+            onClick={() => setCommandPaletteOpen(true)}
+            className="hidden lg:flex items-center space-x-2 px-3 py-1.5 rounded-md border border-border hover:bg-accent transition-all duration-200 text-sm"
+            title="Open command palette (Ctrl+P)"
+          >
+            <Command className="w-4 h-4" />
+            <span className="text-xs text-muted-foreground">Ctrl+P</span>
+          </button>
+          
           {/* Dark mode toggle */}
           <button
             onClick={toggleDarkMode}
@@ -69,6 +89,7 @@ const Header: React.FC = () => {
         </div>
       </div>
     </header>
+    </>
   );
 };
 

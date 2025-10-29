@@ -378,9 +378,58 @@ const GHLVoiceAgentBuilder: React.FC = () => {
     setIsTesting(true);
   };
 
-  const handleDeployAgent = (agent: GHLVoiceAgent) => {
-    // Implementation for deploying agent to GHL
-    console.log('Deploying agent:', agent.name);
+  const handleDeployAgent = async (agent: GHLVoiceAgent) => {
+    try {
+      console.log('Deploying agent:', agent.name);
+      
+      // Get tokens from backend
+      const response = await fetch('https://ghlvoiceai.captureclient.com/api/tokens/latest');
+      const tokens = await response.json();
+      
+      if (!tokens || tokens.expired) {
+        alert('Please connect to GHL first via the GHL API Connector');
+        return;
+      }
+
+      // Prepare deployment payload
+      const deploymentPayload = {
+        name: agent.name,
+        description: agent.description,
+        voiceSettings: agent.voiceSettings,
+        conversationSettings: agent.conversationSettings,
+        ghlIntegration: agent.ghlIntegration,
+        scripts: agent.scripts,
+        intents: agent.intents,
+        transferRules: agent.transferRules,
+        compliance: agent.compliance,
+        access_token: tokens.access_token,
+        locationId: tokens.locationId
+      };
+
+      // Deploy via backend API
+      const deployResponse = await fetch('https://ghlvoiceai.captureclient.com/api/voice-ai/deploy', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(deploymentPayload)
+      });
+
+      if (!deployResponse.ok) {
+        throw new Error('Failed to deploy agent');
+      }
+
+      const result = await deployResponse.json();
+      alert(`Agent deployed successfully! Deployment ID: ${result.deploymentId}`);
+      
+      // Refresh agent status
+      setAgents(prev => prev.map(a => 
+        a.id === agent.id ? { ...a, status: 'active' } : a
+      ));
+    } catch (error: any) {
+      console.error('Deployment error:', error);
+      alert(`Failed to deploy agent: ${error.message}`);
+    }
   };
 
   return (

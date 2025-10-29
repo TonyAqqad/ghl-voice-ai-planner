@@ -1,0 +1,164 @@
+{
+  "id": "f45-training-agent",
+  "name": "F45 Training Voice Agent",
+  "industry": "Fitness",
+  "version": "1.0.0",
+  "description": "Specialized voice agent for F45 Training fitness studios - handles class bookings, membership inquiries, and membership sales",
+  "status": "production_ready",
+  
+  "voiceSettings": {
+    "provider": "elevenlabs",
+    "voiceId": "pNInz6obpgDQGcFmaJgB",
+    "voiceName": "Adam (Energetic & Motivational)",
+    "speed": 1.1,
+    "stability": 0.75,
+    "clarity": 0.85
+  },
+  
+  "conversationSettings": {
+    "model": "gpt-4",
+    "temperature": 0.7,
+    "maxTokens": 500,
+    "language": "en",
+    "personality": {
+      "tone": "energetic and motivating",
+      "style": "friendly and supportive",
+      "level": "conversational"
+    }
+  },
+  
+  "knowledgeBase": {
+    "trainingStyles": [
+      "Functional Training: Our flagship 45-minute workouts combining functional movement, HIIT, and circuit training",
+      "F45 Challenge: 45-day transformation programs with meal planning and workout tracking",
+      "Hybrid Training: Strength and cardio combined in one high-intensity session"
+    ],
+    "classSchedule": {
+      "peoria": {
+        "monday": "6:00 AM, 7:00 AM, 9:00 AM, 12:00 PM, 4:30 PM, 5:30 PM, 6:30 PM",
+        "tuesday": "6:00 AM, 7:00 AM, 9:00 AM, 12:00 PM, 4:30 PM, 5:30 PM, 6:30 PM",
+        "wednesday": "6:00 AM, 7:00 AM, 9:00 AM, 12:00 PM, 4:30 PM, 5:30 PM, 6:30 PM",
+        "thursday": "6:00 AM, 7:00 AM, 9:00 AM, 12:00 PM, 4:30 PM, 5:30 PM, 6:30 PM",
+        "friday": "6:00 AM, 7:00 AM, 9:00 AM, 12:00 PM, 4:30 PM, 5:30 PM",
+        "saturday": "7:00 AM, 8:00 AM, 9:00 AM, 10:00 AM",
+        "sunday": "8:00 AM, 9:00 AM, 10:00 AM"
+      }
+    },
+    "pricing": {
+      "foundationTrial": "$49 - 7-day trial",
+      "monthlyUnlimited": "$179/month - unlimited classes",
+      "monthly8Classes": "$149/month - 8 classes",
+      "monthly4Classes": "$99/month - 4 classes",
+      "f45Challenge": "$299 - 45-day program with meal planning"
+    },
+    "locationInfo": {
+      "address": "12345 N 83rd Ave, Peoria, AZ 85381",
+      "phone": "602-555-0123",
+      "website": "www.f45training.com/peoria"
+    }
+  },
+  
+  "systemPrompt": "You are a friendly, energetic, and motivating voice assistant for F45 Training Peoria. Your goal is to help potential members discover F45, answer questions about our workouts, and book trial classes. Always maintain a positive, fitness-focused energy. Encourage people to start their fitness journey with us. When booking classes, always confirm the time and provide them with the address and what to bring.",
+  
+  "scripts": {
+    "greeting": "Hey! Thanks for calling F45 Training Peoria! This is {voiceName}. Are you ready to transform your fitness journey? I'd love to help you get started today!",
+    "classBooking": "Awesome! I can definitely help you book a class. What day and time works best for you? We have classes running Monday through Saturday with multiple times throughout the day.",
+    "membershipInquiry": "Great question! We offer flexible membership options. Our most popular is our unlimited classes for $179 a month. We also have a 7-day foundation trial for just $49 if you want to try us out first. Which option sounds most interesting to you?",
+    "transfer": "You know what, let me connect you with one of our trainers who can give you even more details about our programs. Hold on just a second!",
+    "goodbye": "Perfect! Looking forward to seeing you at F45 Peoria! Remember to bring a water bottle and wear comfortable workout clothes. See you soon!"
+  },
+  
+  "intents": [
+    {
+      "name": "book_class",
+      "triggers": ["book", "sign up", "schedule", "register", "reserve", "join"],
+      "action": "webhook",
+      "parameters": ["preferred_date", "preferred_time", "contact_name", "phone_number"]
+    },
+    {
+      "name": "membership_info",
+      "triggers": ["pricing", "cost", "price", "membership", "membership options"],
+      "action": "provide_info",
+      "parameters": []
+    },
+    {
+      "name": "class_schedule",
+      "triggers": ["schedule", "times", "when", "what time", "hours"],
+      "action": "provide_schedule",
+      "parameters": []
+    },
+    {
+      "name": "location_info",
+      "triggers": ["where", "location", "address", "find you", "come in"],
+      "action": "provide_location",
+      "parameters": []
+    }
+  ],
+  
+  "customActions": [
+    {
+      "id": "class_booking_webhook",
+      "name": "Book F45 Class",
+      "triggerPhrases": ["book a class", "sign me up", "reserve me a spot", "I want to try a class"],
+      "webhook": {
+        "url": "https://app.gohighlevel.com/v1/workflows/webhooks/book-f45-class",
+        "method": "POST",
+        "headers": {
+          "Authorization": "Bearer {{ghl_access_token}}",
+          "Content-Type": "application/json",
+          "Version": "2021-07-28"
+        },
+        "body": {
+          "locationId": "{{locationId}}",
+          "contact": {
+            "firstName": "{{caller_name}}",
+            "phone": "{{caller_phone}}",
+            "email": "{{caller_email}}",
+            "tags": ["f45-lead", "class-booking"],
+            "customFields": {
+              "preferredDate": "{{preferred_date}}",
+              "preferredTime": "{{preferred_time}}",
+              "interestLevel": "{{interest_level}}"
+            }
+          },
+          "appointment": {
+            "calendarId": "{{f45_class_calendar_id}}",
+            "title": "F45 Trial Class - {{caller_name}}",
+            "startTime": "{{booked_date_time}}",
+            "notes": "F45 Trial Class Booking"
+          }
+        }
+      },
+      "responseMapping": {
+        "success": "Great! I've reserved your spot for {preferred_time} on {preferred_date}. You should receive a confirmation text shortly!",
+        "error": "Hmm, let me get someone on the phone who can help you book that right away."
+      }
+    }
+  ],
+  
+  "transferRules": [
+    {
+      "condition": "wants to pay or purchase membership",
+      "transferTo": "sales_team",
+      "reason": "membership_sales"
+    },
+    {
+      "condition": "wants to speak to a trainer",
+      "transferTo": "trainer_line",
+      "reason": "technical_question"
+    },
+    {
+      "condition": "current member with account issue",
+      "transferTo": "member_services",
+      "reason": "membership_support"
+    }
+  ],
+  
+  "compliance": {
+    "includeDONotCall": true,
+    "tcpabranding": "F45 Training Peoria",
+    "ecpaCompliant": true,
+    "recordCall": false
+  }
+}
+

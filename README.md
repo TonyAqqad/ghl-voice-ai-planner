@@ -1,256 +1,265 @@
-# GHL Voice AI Agent Planner
+# 🎤 **GHL Voice AI Planner**
 
-A comprehensive web application for planning, configuring, and deploying GoHighLevel Voice AI agents. Built with React, TypeScript, and modern web technologies.
+A comprehensive platform for building, deploying, and managing Voice AI agents for GoHighLevel.
 
-## 🚀 Features
+---
 
-### Core Modules
-- **Voice AI Configuration Builder** - Configure AI agents with personas, scripts, and behavior settings
-- **Workflow Automation Designer** - Drag-and-drop workflow builder for call flows
-- **Phone System Manager** - Manage phone numbers, IVR menus, and call routing
-- **Custom Fields & Values Manager** - Define custom data fields for contacts and opportunities
-- **Integration Setup** - Connect external services (OpenAI, ElevenLabs, Twilio, etc.)
-- **Compliance & Risk Checker** - Ensure regulatory compliance (TCPA, GDPR, DNC)
-- **Testing Simulator** - Test voice agents before deployment
-- **Template Library** - Pre-built templates for different industries
-- **Analytics & Costing** - Track performance and calculate costs
-- **Export Center** - Export configurations in JSON and Markdown formats
-
-### Technical Features
-- **Modern UI/UX** - Clean, responsive design with dark mode support
-- **Type Safety** - Full TypeScript implementation
-- **State Management** - Zustand for efficient state management
-- **Local Storage** - Persistent data storage
-- **Modular Architecture** - Component-based design
-- **Real-time Updates** - Live configuration updates
-
-## 🛠️ Tech Stack
-
-- **Frontend**: React 18, TypeScript, Vite
-- **Styling**: CSS3 with CSS Variables for theming
-- **State Management**: Zustand
-- **Routing**: React Router DOM
-- **Icons**: Lucide React
-- **Notifications**: React Hot Toast
-- **Build Tool**: Vite
-
-## 🚀 Getting Started
-
-### Prerequisites
-- Node.js 16+ 
-- npm or yarn
-
-### Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd ghl-voice-ai-planner
-   ```
-
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
-
-3. **Start development server**
-   ```bash
-   npm run dev
-   ```
-
-4. **Open in browser**
-   Navigate to `http://localhost:3000`
-
-### Building for Production
+## 🚀 **Quick Start**
 
 ```bash
-npm run build
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
+
+# Start backend API
+cd server && npm install && npm run dev
 ```
 
-The built files will be in the `dist` directory.
+Visit: http://localhost:3001
 
-## 📁 Project Structure
+---
 
+## 📋 **Features**
+
+### **Voice AI**
+- 🤖 **Voice Agent Builder** - Create intelligent voice agents
+- 🎙️ **Voice Testing Studio** - Test ElevenLabs & OpenAI voices
+- 🚀 **Agent Deployment** - Deploy to production with one click
+- 📊 **Analytics Dashboard** - Track performance and metrics
+- 🔧 **Advanced Configuration** - Fine-tune every aspect
+
+### **GHL Integration**
+- 🔗 **OAuth Authentication** - Secure API connection
+- 📱 **Contact Management** - Sync and manage contacts
+- 💬 **SMS Messaging** - Send and track messages
+- 🔔 **Webhook Handling** - Real-time event processing
+- 🎯 **Workflow Integration** - Automate complex flows
+
+### **Advanced Tools**
+- 🎨 **Workflow Designer** - Visual workflow creation
+- ✅ **Compliance Checker** - TCPA, GDPR compliance
+- 📚 **Template Library** - Pre-built agent templates
+- 📤 **Export Center** - Export configurations
+- 📈 **Performance Monitor** - Real-time metrics
+
+---
+
+## 🛠️ **Tech Stack**
+
+- **Frontend:** React 18, TypeScript, Vite
+- **Styling:** Tailwind CSS
+- **State:** Zustand with persistence
+- **Routing:** React Router DOM
+- **Backend:** Express.js, SQLite
+- **APIs:** GoHighLevel, ElevenLabs, OpenAI
+
+---
+
+## 📦 **Installation**
+
+```bash
+# Clone repository
+git clone <repository-url>
+cd ghl-voice-ai-planner
+
+# Install dependencies
+npm install
+
+# Configure environment
+cp .env.example .env
+# Edit .env with your credentials
+
+# Start development
+npm run dev
 ```
-src/
-├── components/
-│   ├── layout/
-│   │   ├── Sidebar.tsx
-│   │   └── Header.tsx
-│   └── modules/
-│       ├── VoiceAgentBuilder.tsx
-│       ├── WorkflowDesigner.tsx
-│       ├── PhoneSystemManager.tsx
-│       ├── CustomFieldsManager.tsx
-│       ├── IntegrationSetup.tsx
-│       ├── ComplianceChecker.tsx
-│       ├── TestingSimulator.tsx
-│       ├── TemplateLibrary.tsx
-│       ├── AnalyticsDashboard.tsx
-│       └── ExportCenter.tsx
-├── store/
-│   └── useStore.ts
-├── types/
-│   └── index.ts
-├── styles/
-│   └── globals.css
-├── App.tsx
-└── main.tsx
-```
 
-## 🎯 Usage
+---
 
-### Creating a Voice Agent
+## 🔧 **Configuration**
 
-1. Navigate to the "Voice Agents" module
-2. Click "New Agent" to create a new voice agent
-3. Configure the agent's persona, voice provider, and scripts
-4. Save the configuration
+### **Environment Variables**
 
-### Designing Workflows
-
-1. Go to the "Workflows" module
-2. Create a new workflow or select an existing one
-3. Add nodes from the palette to build your call flow
-4. Connect nodes to create the workflow logic
-
-### Managing Phone System
-
-1. Access the "Phone System" module
-2. Add phone numbers and configure routing rules
-3. Set up IVR menus and business hours
-4. Configure call handling preferences
-
-### Custom Fields
-
-1. Navigate to "Custom Fields" module
-2. Define custom fields for contacts, opportunities, or companies
-3. Set up custom values and groups
-4. Configure field validation rules
-
-### Integrations
-
-1. Go to "Integrations" module
-2. Connect external services (OpenAI, ElevenLabs, etc.)
-3. Configure API keys and settings
-4. Test connections
-
-### Compliance
-
-1. Access "Compliance" module
-2. Review TCPA, GDPR, and DNC compliance status
-3. Configure consent scripts
-4. Set up compliance monitoring
-
-### Testing
-
-1. Navigate to "Testing" module
-2. Select a voice agent and workflow
-3. Start a test call simulation
-4. Review performance metrics
-
-### Analytics
-
-1. Go to "Analytics" module
-2. View performance metrics and costs
-3. Track call volumes and success rates
-4. Monitor ROI and efficiency
-
-### Export
-
-1. Access "Export Center"
-2. Choose export format (JSON, Markdown)
-3. Select data to include
-4. Download or share configurations
-
-## 🔧 Configuration
-
-### Environment Variables
-
-Create a `.env` file in the root directory:
+Create a `.env` file:
 
 ```env
-VITE_APP_NAME=GHL Voice AI Agent Planner
-VITE_APP_VERSION=1.0.0
+# GHL OAuth
+GHL_CLIENT_ID=your_client_id
+GHL_CLIENT_SECRET=your_client_secret
+GHL_REDIRECT_URI=http://localhost:10000/auth/callback
+
+# API Keys (Optional)
+VITE_ELEVENLABS_API_KEY=your_key
+VITE_OPENAI_API_KEY=your_key
+
+# Backend
+PORT=10000
+FRONTEND_URL=http://localhost:3001
 ```
 
-### Customization
+### **GHL Setup**
 
-The application uses CSS variables for theming. You can customize colors in `src/styles/globals.css`:
+1. Create a GoHighLevel app
+2. Configure OAuth redirect URI
+3. Get client ID and secret
+4. Add to `.env` file
 
-```css
-:root {
-  --primary: #3b82f6;
-  --secondary: #f1f5f9;
-  /* ... other variables */
-}
+---
+
+## 📚 **Documentation**
+
+- [Production Deployment Guide](./PRODUCTION_DEPLOYMENT_GUIDE.md)
+- [API Documentation](./API_DOCUMENTATION.md)
+- [Feature List](./ULTRA_DEVELOPMENT_COMPLETE.md)
+
+---
+
+## 🎯 **Usage**
+
+### **1. Connect to GHL**
+
+Navigate to `/ghl-api` and connect your GoHighLevel account.
+
+### **2. Build an Agent**
+
+Use the Voice Agent Builder to create a new agent:
+- Configure voice settings
+- Write conversation scripts
+- Set up intents and transfer rules
+- Enable compliance features
+
+### **3. Test Voice**
+
+Go to Voice Testing Studio (`/voice-testing`):
+- Select voice provider
+- Choose a voice
+- Enter test text
+- Generate and play audio
+
+### **4. Deploy**
+
+Click "Deploy" on your agent:
+- Agent deploys to GHL
+- Phone routing configured
+- Webhooks set up
+- Status updated in real-time
+
+### **5. Monitor**
+
+View analytics and performance:
+- Call analytics
+- Performance metrics
+- Cost tracking
+- Conversion rates
+
+---
+
+## 📊 **Project Structure**
+
+```
+ghl-voice-ai-planner/
+├── src/
+│   ├── components/
+│   │   ├── modules/        # 40+ feature modules
+│   │   ├── layout/        # Header, Sidebar
+│   │   ├── auth/          # OAuth handling
+│   │   └── webhooks/      # Webhook handlers
+│   ├── utils/             # API utilities
+│   ├── store/             # State management
+│   ├── types/             # TypeScript types
+│   └── styles/            # CSS
+├── server/                # Backend API
+└── public/               # Static assets
 ```
 
-## 📊 Data Models
+---
 
-The application uses comprehensive TypeScript interfaces for data modeling:
+## 🔗 **API Endpoints**
 
-- `VoiceAgent` - Voice agent configuration
-- `Workflow` - Workflow definitions with nodes and edges
-- `PhoneNumber` - Phone number and routing configuration
-- `CustomField` - Custom field definitions
-- `Integration` - External service integrations
-- `ComplianceSettings` - Compliance and risk settings
-- `Template` - Pre-built templates
-- `AnalyticsSnapshot` - Performance metrics
+### **Authentication**
+- `GET /auth/ghl` - Start OAuth
+- `GET /auth/callback` - OAuth callback
+- `GET /api/tokens/latest` - Get tokens
 
-## 🚀 Deployment
+### **Voice AI**
+- `POST /api/voice-ai/deploy` - Deploy agent
+- `GET /api/voice-ai/agents` - List agents
+- `GET /api/voice-ai/agents/:id` - Get agent
+- `PUT /api/voice-ai/agents/:id` - Update agent
+- `DELETE /api/voice-ai/agents/:id` - Delete agent
 
-### Vercel
+### **Contacts & Messaging**
+- `GET /api/ghl/contacts` - Get contacts
+- `POST /api/ghl/contacts/upsert` - Upsert contact
+- `POST /api/ghl/conversations/messages` - Send SMS
+- `GET /api/ghl/conversations` - Get conversations
+
+### **Webhooks**
+- `POST /api/webhooks/voice-ai` - Voice events
+- `POST /api/webhooks/agent` - Agent events
+
+---
+
+## 🎨 **UI Modules**
+
+| Module | Route | Description |
+|--------|-------|-------------|
+| Voice Agents | `/voice-agents` | Configure AI agents |
+| Voice Testing | `/voice-testing` | Test voices |
+| Agent Dashboard | `/agent-dashboard` | Monitor agents |
+| Call Analytics | `/call-analytics` | Performance metrics |
+| SMS Messaging | `/sms-messaging` | Send SMS |
+| Contact Sync | `/ghl-contact-sync` | Manage contacts |
+| Webhook Config | `/webhook-config` | Manage webhooks |
+| Performance | `/performance` | System metrics |
+| Export Center | `/export` | Export data |
+| GHL API | `/ghl-api` | Connect to GHL |
+
+---
+
+## 🚀 **Deployment**
+
+See [PRODUCTION_DEPLOYMENT_GUIDE.md](./PRODUCTION_DEPLOYMENT_GUIDE.md) for detailed deployment instructions.
+
+### **Quick Deploy**
+
 ```bash
+# Build for production
 npm run build
-# Deploy dist folder to Vercel
+
+# Deploy to Render/Vercel
+# Follow deployment guide
 ```
 
-### Netlify
-```bash
-npm run build
-# Deploy dist folder to Netlify
-```
+---
 
-### Docker
-```dockerfile
-FROM node:18-alpine
-WORKDIR /app
-COPY package*.json ./
-RUN npm install
-COPY . .
-RUN npm run build
-EXPOSE 3000
-CMD ["npm", "run", "preview"]
-```
-
-## 🤝 Contributing
+## 🤝 **Contributing**
 
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
-
-## 📝 License
-
-This project is licensed under the MIT License.
-
-## 🆘 Support
-
-For support and questions:
-- Create an issue in the repository
-- Contact the development team
-- Check the documentation
-
-## 🔄 Version History
-
-- **v1.0.0** - Initial release with core modules
-- **v1.1.0** - Added advanced workflow designer
-- **v1.2.0** - Enhanced analytics and reporting
-- **v1.3.0** - Added template library and compliance checker
+4. Submit a pull request
 
 ---
 
-Built with ❤️ for GoHighLevel Voice AI Agent development
+## 📄 **License**
+
+MIT License - See LICENSE file for details
+
+---
+
+## 🆘 **Support**
+
+For issues and questions:
+- Check [documentation](./PRODUCTION_DEPLOYMENT_GUIDE.md)
+- Review [API docs](./API_DOCUMENTATION.md)
+- Open an issue on GitHub
+
+---
+
+## 🎉 **Status**
+
+✅ **Production Ready** - All features implemented and tested
+
+**Built with ❤️ for GoHighLevel Voice AI**
