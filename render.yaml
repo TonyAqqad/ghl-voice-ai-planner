@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: ghl-oauth-api
+    name: ghlvoiceai
     env: node
     rootDir: .
     buildCommand: |

@@ -1752,21 +1752,18 @@ const PORT = process.env.PORT || 10000;
     // ---- Serve built frontend (Vite) in production ----
     const fs = require('fs');
     const path = require('path');
-    function resolveDist() {
-      // Prefer explicit env path if set
-      const fromEnv = process.env.FRONTEND_DIST_PATH;
-      const candidates = [
-        fromEnv && path.resolve(fromEnv),
-        path.resolve('/opt/render/project/dist'),          // Vite root build on Render
-        path.resolve(__dirname, '..', 'dist'),            // repo-root/dist if cwd is /server
-        path.resolve(__dirname, 'dist')                    // fallback
-      ].filter(Boolean);
-      for (const p of candidates) {
-        if (fs.existsSync(p) && fs.existsSync(path.join(p, 'index.html'))) return p;
-      }
-      return null;
-    }
-    const distDir = resolveDist();
+    
+    // Prefer explicit env path if set
+    const distFromEnv = process.env.FRONTEND_DIST_PATH;
+    const candidates = [
+      distFromEnv && path.resolve(distFromEnv),
+      path.resolve('/opt/render/project/dist'),
+      path.resolve(__dirname, '..', 'dist'),
+      path.resolve(__dirname, 'dist')
+    ].filter(Boolean);
+    
+    const distDir = candidates.find(p => fs.existsSync(p) && fs.existsSync(path.join(p, 'index.html')));
+    
     if (distDir) {
       app.use(express.static(distDir));
       app.get(/^(?!\/api\/|\/auth\/|\/health|\/ghl-api).*/, (_req, res) => {
@@ -1775,6 +1772,7 @@ const PORT = process.env.PORT || 10000;
       console.log('🎨 Serving SPA from:', distDir);
     } else {
       console.warn('⚠️  Frontend dist not found; API-only mode.');
+      console.warn('   Checked paths:', candidates.map(p => p || '(undefined)').join(', '));
     }
     
     // List all registered routes for debugging
