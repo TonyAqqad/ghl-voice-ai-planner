@@ -92,29 +92,16 @@ async function initializeDatabase() {
       
       console.log('✅ Database connection established');
       
-      // Check if tables already exist
-      const tablesResult = await client.query(`
-        SELECT table_name 
-        FROM information_schema.tables 
-        WHERE table_schema = 'public'
-      `);
-      
-      console.log(`📊 Found ${tablesResult.rows.length} existing tables`);
-      
-      if (tablesResult.rows.length === 0) {
-        console.log('📝 Creating database schema...');
-        const schemaPath = path.join(__dirname, 'schema.sql');
-        
-        if (!fs.existsSync(schemaPath)) {
-          throw new Error(`Schema file not found: ${schemaPath}`);
-        }
-        
-        const schema = fs.readFileSync(schemaPath, 'utf8');
-        await client.query(schema);
-        console.log('✅ Database schema created successfully');
-      } else {
-        console.log('✅ Database schema already exists');
+      // Always run idempotent schema to ensure new tables are created
+      // All statements use IF NOT EXISTS, so re-running is safe
+      const schemaPath = path.join(__dirname, 'schema.sql');
+      if (!fs.existsSync(schemaPath)) {
+        throw new Error(`Schema file not found: ${schemaPath}`);
       }
+      const schema = fs.readFileSync(schemaPath, 'utf8');
+      console.log('📝 Applying idempotent schema migrations...');
+      await client.query(schema);
+      console.log('✅ Schema ensured (tables and indexes present)');
       
       client.release();
       console.log('✅ Database initialization completed');
