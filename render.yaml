@@ -21,25 +21,44 @@ services:
       }
       echo ""
       echo "=== STEP 3: Building frontend ==="
-      echo "Running: npm run build"
       echo "Working directory: $(pwd)"
+      echo "Using npx to run vite (fixes permission issues)"
       echo ""
-      # Use our build script for better error handling
-      chmod +x scripts/build-and-verify.sh 2>/dev/null || true
-      bash scripts/build-and-verify.sh || {
+      # Use npx to ensure vite has proper permissions
+      npx vite build --mode production 2>&1 || {
         echo ""
-        echo "❌ Build script failed, trying direct build..."
+        echo "❌ Build failed!"
+        echo "Error details above"
+        echo ""
+        echo "Checking node_modules:"
+        ls -la node_modules/.bin/vite 2>/dev/null || echo "vite not found in node_modules/.bin"
+        echo ""
+        echo "Trying alternative: npm run build"
         npm run build 2>&1 || {
           echo ""
-          echo "❌ Direct build also failed!"
-          echo "Checking what exists:"
-          ls -la
+          echo "❌ Alternative build method also failed!"
+          echo "Directory contents:"
+          ls -la | head -20
           exit 1
         }
-        # Verify after direct build
-        test -d dist || (echo "❌ dist still missing after build!" && exit 1)
-        test -f dist/index.html || (echo "❌ dist/index.html still missing!" && exit 1)
       }
+      # Verify dist was created
+      if [ ! -d "dist" ]; then
+        echo ""
+        echo "❌ CRITICAL: dist folder was NOT created after build!"
+        echo "Directory contents:"
+        ls -la
+        exit 1
+      fi
+      if [ ! -f "dist/index.html" ]; then
+        echo ""
+        echo "❌ CRITICAL: dist/index.html NOT found!"
+        echo "Dist contents:"
+        ls -la dist/ || echo "Cannot list dist"
+        exit 1
+      fi
+      echo ""
+      echo "✅ Build completed successfully!"
       echo ""
       echo "=== STEP 4: Final verification ==="
       echo "Dist location: $(pwd)/dist"
