@@ -16,6 +16,7 @@
     "build:force": "NODE_ENV=production vite build --force",
     "preview": "vite preview",
     "start:server": "node server/ghl-express-api.js",
+    "test-connection": "node scripts/test-connection.js",
     "test": "vitest",
     "webhook:dev": "nodemon webhook-server.cjs",
     "webhook:start": "node webhook-server.cjs",
