@@ -12,3 +12,25 @@ build/
 *.swp
 *.swo
 *~
+
+# Documentation files (keep but don't index)
+*.md
+!README.md
+
+# Cleanup files
+cleanup-files.bat
+CLEANUP_PLAN.md
+CLEANUP_COMPLETE.md
+
+# Large data files
+package-lock.json
+api_call_map.json
+
+# Solar appointment agent (reference only)
+solar-appointment-agent/
+
+# Deployment scripts (keep but don't index)
+deploy-to-github.bat
+*.bat
+# Allow build scripts needed for deployment
+!scripts/*.sh
