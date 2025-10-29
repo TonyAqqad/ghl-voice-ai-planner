@@ -5,17 +5,45 @@ const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
 
-// Create connection pool
+// Create connection pool with IPv4 and proper SSL configuration
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  host: 'db.wkmnikcqijqboxwwfxle.supabase.co',
+  port: 5432,
+  user: 'postgres',
+  password: 'Sharmoota19!',
+  database: 'postgres',
   ssl: {
     rejectUnauthorized: false // Required for Supabase
-  }
+  },
+  // Connection timeout settings
+  connectionTimeoutMillis: 10000,
+  idleTimeoutMillis: 30000,
+  max: 10
 });
+
+// Test database connection
+async function testConnection() {
+  try {
+    const client = await pool.connect();
+    await client.query('SELECT NOW()');
+    client.release();
+    console.log('✅ Database connection test successful');
+    return true;
+  } catch (error) {
+    console.error('❌ Database connection test failed:', error.message);
+    return false;
+  }
+}
 
 // Initialize database tables
 async function initializeDatabase() {
   try {
+    // Test connection first
+    const connected = await testConnection();
+    if (!connected) {
+      throw new Error('Database connection failed');
+    }
+
     const schemaPath = path.join(__dirname, 'schema.sql');
     const schema = fs.readFileSync(schemaPath, 'utf8');
     
