@@ -4,36 +4,40 @@ services:
     runtime: node
     buildCommand: |
       set -e
-      echo "=== STEP 1: Pre-build verification ==="
+      echo "=== STEP 1: Environment Setup ==="
       echo "Current directory: $(pwd)"
       echo "Node version: $(node -v)"
       echo "NPM version: $(npm -v)"
       echo ""
-      echo "Checking required files:"
-      test -f package.json && echo "✅ package.json found" || (echo "❌ package.json missing!" && exit 1)
-      test -f vite.config.ts && echo "✅ vite.config.ts found" || (echo "❌ vite.config.ts missing!" && exit 1)
-      test -d src && echo "✅ src directory found" || (echo "❌ src directory missing!" && exit 1)
-      echo ""
       echo "=== STEP 2: Installing root dependencies ==="
-      npm install --production=false || {
-        echo "❌ npm install failed!"
-        exit 1
+      npm ci || {
+        echo "❌ npm ci failed! Trying npm install..."
+        npm install --production=false || exit 1
       }
       echo ""
-      echo "=== STEP 3: Building frontend with CI build script ==="
-      echo "Working directory: $(pwd)"
-      echo "Using npm run build (calls scripts/ci-build.js with multi-method fallback)"
-      echo ""
-      # The ci-build.js script handles permissions, multiple build methods, and verification
-      npm run build 2>&1 || {
-        echo ""
-        echo "❌ Build failed! Check logs above for details."
-        exit 1
+      echo "=== STEP 3: Building frontend with Vite ==="
+      npx vite build --mode production || {
+        echo "❌ Vite build failed! Trying npm run build:actual..."
+        npm run build:actual || exit 1
       }
       echo ""
-      echo "=== STEP 4: Installing server dependencies ==="
-      cd server && npm install
-    startCommand: cd server && node ghl-express-api.js
+      echo "=== STEP 4: Verifying build output ==="
+      if [ ! -d "dist" ]; then
+        echo "❌ CRITICAL: dist folder was NOT created after build!"
+        exit 1
+      fi
+      if [ ! -f "dist/index.html" ]; then
+        echo "❌ CRITICAL: dist/index.html NOT found!"
+        echo "Dist contents:"
+        ls -la dist/ | head -10
+        exit 1
+      fi
+      echo "✅ Build verification passed! dist/index.html exists"
+      echo ""
+      echo "=== STEP 5: Installing server dependencies ==="
+      cd server && npm ci || npm install
+      cd ..
+    startCommand: node server/ghl-express-api.js
     envVars:
       # NOTE: Set these in Render Dashboard Environment tab - NEVER commit secrets here!
       # - key: GHL_CLIENT_ID
@@ -42,6 +46,8 @@ services:
       #   value: YOUR_CLIENT_SECRET
       # - key: GHL_SHARED_SECRET
       #   value: YOUR_SHARED_SECRET
+      - key: NODE_VERSION
+        value: "20.17.0"
       - key: GHL_REDIRECT_URI
         value: https://ghlvoiceai.captureclient.com/auth/callback
       - key: PORT

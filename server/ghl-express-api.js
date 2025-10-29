@@ -75,6 +75,10 @@ const templateService = new TemplateService();
 app.use(cors());
 app.use(express.json());
 
+// MCP Server Routes
+const mcpServer = require('./mcp/server');
+app.use('/api/mcp', mcpServer);
+
 // API health check endpoint (keep this for API monitoring)
 app.get('/api/health', (req, res) => {
   res.json({
@@ -86,11 +90,13 @@ app.get('/api/health', (req, res) => {
     endpoints: {
       health: '/ghl-api',
       dbHealth: '/health/db',
+      mcpHealth: '/api/mcp/health',
       auth: '/auth/ghl',
       callback: '/auth/callback',
       templates: '/api/templates',
       agents: '/api/voice-ai/agents',
-      demo: '/api/demo/create-agent'
+      demo: '/api/demo/create-agent',
+      mcp: '/api/mcp/*'
     }
   });
 });
@@ -1834,18 +1840,16 @@ const PORT = process.env.PORT || 10000;
     console.log(`📁 Parent directory: ${parentDir}`);
     console.log(`📁 Checking if parent directory exists: ${fs.existsSync(parentDir)}`);
     
-    let parentContents = [];
     try {
-      parentContents = fs.readdirSync(parentDir);
+      const parentContents = fs.readdirSync(parentDir);
       console.log(`📁 Parent directory contents (${parentContents.length} items):`);
       parentContents.forEach((item, idx) => {
         try {
           const itemPath = path.join(parentDir, item);
-          const stats = fs.statSync(itemPath);
-          const isDir = stats.isDirectory();
-          const size = isDir ? '[DIR]' : `${(stats.size / 1024).toFixed(2)} KB`;
+          const isDir = fs.statSync(itemPath).isDirectory();
+          const size = fs.statSync(itemPath).size;
           const marker = item === 'dist' ? ' ← LOOKING FOR THIS!' : '';
-          console.log(`   ${idx + 1}. ${item} ${size}${marker}`);
+          console.log(`   ${idx + 1}. ${item}${isDir ? ' [DIR]' : ` [${size} bytes]`}${marker}`);
         } catch (e) {
           console.log(`   ${idx + 1}. ${item} [ERROR: ${e.message}]`);
         }
@@ -1853,96 +1857,21 @@ const PORT = process.env.PORT || 10000;
     } catch (e) {
       console.log(`⚠️  Could not read parent directory: ${e.message}`);
       console.log(`   Parent dir exists: ${fs.existsSync(parentDir)}`);
-      if (fs.existsSync(parentDir)) {
-        try {
-          const stats = fs.statSync(parentDir);
-          console.log(`   Parent dir is directory: ${stats.isDirectory()}`);
-        } catch (e2) {
-          console.log(`   Could not stat parent dir: ${e2.message}`);
-        }
-      }
+      console.log(`   Parent dir is directory: ${fs.existsSync(parentDir) ? fs.statSync(parentDir).isDirectory() : 'N/A'}`);
     }
     
-    // Check if dist exists in parent directory
-    const distInParent = parentContents.includes('dist');
-    if (!distInParent) {
-      console.log(`\n⚠️  dist folder NOT found in parent directory listing!`);
-      console.log(`🔍 Checking build logs - dist should have been created during buildCommand`);
-      console.log(`💡 If dist folder exists in build logs but not at runtime, this is a Render deployment issue`);
-      
-      // Check if build marker exists (created during buildCommand)
-      const buildMarker = path.join(parentDir, 'dist', '.render-build-complete');
-      const distPath = path.join(parentDir, 'dist');
-      
-      if (fs.existsSync(buildMarker)) {
-        console.log(`✅ Found build marker file - dist was created during build!`);
-        console.log(`   Marker path: ${buildMarker}`);
-        // Try to read timestamp
-        try {
-          const timestamp = fs.readFileSync(path.join(parentDir, 'dist', '.render-build-timestamp'), 'utf8');
-          console.log(`   Build timestamp: ${timestamp}`);
-        } catch (e) {}
-      } else if (fs.existsSync(distPath)) {
-        console.log(`✅ Found dist folder but no marker - build may have completed`);
-      } else {
-        console.log(`❌ No dist folder and no build marker found`);
-        console.log(`   This indicates the buildCommand did NOT create dist successfully`);
-        console.log(`   Attempting runtime build as fallback...`);
-        
-        // Runtime build fallback - build frontend now if it wasn't built during deploy
-        try {
-          const rootPackageJson = path.join(parentDir, 'package.json');
-          if (fs.existsSync(rootPackageJson)) {
-            console.log(`📦 Building frontend at runtime (this may take 2-3 minutes)...`);
-            const { execSync } = require('child_process');
-            
-            // Change to root directory for build
-            const originalCwd = process.cwd();
-            process.chdir(parentDir);
-            
-            try {
-              execSync('npm run build', {
-                stdio: 'inherit',
-                timeout: 300000, // 5 minutes max
-                env: { ...process.env, NODE_ENV: 'production' }
-              });
-              
-              console.log(`✅ Runtime build completed successfully!`);
-              // Refresh parent contents after build
-              parentContents = fs.readdirSync(parentDir);
-              
-              if (parentContents.includes('dist')) {
-                console.log(`✅ dist folder now exists after runtime build`);
-              } else {
-                console.log(`⚠️  Build completed but dist folder still not found`);
-              }
-            } catch (buildError) {
-              console.log(`❌ Runtime build failed: ${buildError.message}`);
-              console.log(`   Server will continue in API-only mode`);
-            } finally {
-              process.chdir(originalCwd);
-            }
-          } else {
-            console.log(`⚠️  Cannot build - package.json not found in parent directory`);
-          }
-        } catch (e) {
-          console.log(`⚠️  Could not attempt runtime build: ${e.message}`);
-        }
-      }
-    } else {
-      console.log(`✅ dist folder found in parent directory!`);
-    }
-    
-    // Build list of possible paths to check (in order of likelihood)
+    // Build list of possible paths to check (in order of likelihood for Render)
+    // Most likely: dist is one level up from server directory
     const possiblePaths = [
       path.join(__dirname, '..', 'dist'),        // Standard: ../dist from server (/opt/render/project/src/dist)
-      path.join(parentDir, 'dist'),              // Explicit parent/dist  
-      path.join(process.cwd(), '..', 'dist'),   // One level up from CWD
-      '/opt/render/project/src/dist',           // Absolute Render path
+      path.join(parentDir, 'dist'),              // Explicit parent/dist (same as above, redundant but safe)
+      '/opt/render/project/src/dist',           // Absolute Render path (most common)
       '/opt/render/project/dist',               // Alternative Render path (if build runs from different location)
       path.join(process.cwd(), 'dist'),         // From current working directory
+      path.join(process.cwd(), '..', 'dist'),   // One level up from CWD (if CWD is in server/)
       path.resolve(__dirname, '../../dist'),    // Two levels up (fallback)
-    ];
+      process.env.FRONTEND_DIST_PATH,           // Explicit env var override (if set)
+    ].filter(Boolean); // Remove any undefined/null entries
     
     // Remove duplicates and normalize all paths
     const uniquePaths = [...new Set(possiblePaths.map(p => path.resolve(p)))];
