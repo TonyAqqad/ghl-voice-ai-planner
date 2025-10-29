@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "build:check": "tsc && vite build",
+    "build:force": "NODE_ENV=production vite build --force",
     "preview": "vite preview",
     "test": "vitest",
     "webhook:dev": "nodemon webhook-server.cjs",

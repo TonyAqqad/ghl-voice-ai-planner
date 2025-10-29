@@ -2,7 +2,7 @@ services:
   - type: web
     name: ghl-oauth-api
     runtime: node
-    buildCommand: npm install && npm run build && test -d dist && cd server && npm install
+    buildCommand: echo "=== Installing root dependencies ===" && npm install && echo "=== Current directory: $(pwd) ===" && echo "=== Building frontend ===" && npm run build || (echo "❌ Build failed - check errors above" && exit 1) && echo "=== Listing root directory after build ===" && ls -la | grep -E "(dist|node_modules|server)" && echo "=== Verifying dist folder ===" && if [ -d dist ]; then echo "✅ dist folder exists at $(pwd)/dist" && ls -la dist/ | head -10; else echo "❌ dist folder missing at $(pwd)/dist" && echo "Available directories:" && ls -la | head -20 && exit 1; fi && echo "=== Installing server dependencies ===" && cd server && npm install
     startCommand: cd server && node ghl-express-api.js
     envVars:
       # NOTE: Set these in Render Dashboard Environment tab - NEVER commit secrets here!

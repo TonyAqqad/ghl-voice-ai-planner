@@ -13,7 +13,10 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       outDir: 'dist',
-      sourcemap: true
+      sourcemap: false, // Disable sourcemaps for production to speed up build
+      emptyOutDir: true, // Clear dist folder before building
+      minify: 'esbuild', // Use esbuild (built-in, faster than terser)
+      chunkSizeWarningLimit: 1000
     },
     define: {
       // Vite requires VITE_ prefix for client-side env vars
