@@ -16,6 +16,19 @@ interface TrainingPayload {
 
 const defaultQnA = [{ q: 'What are your hours?', a: 'We are open Monday–Friday 9am–6pm.' }];
 
+const fallbackNiches = [
+  { value: 'fitness_gym', label: 'F45 Training / Fitness Gym' },
+  { value: 'martial_arts', label: 'Martial Arts' },
+  { value: 'roofing', label: 'Roofing & Contractors' },
+  { value: 'medspa', label: 'Medical Spa' },
+  { value: 'dental', label: 'Dental Practice' },
+  { value: 'legal', label: 'Legal Services' },
+  { value: 'solar', label: 'Solar Installation' },
+  { value: 'plumbing', label: 'Plumbing Services' },
+  { value: 'real_estate', label: 'Real Estate' },
+  { value: 'saas_onboarding', label: 'SaaS Onboarding' }
+];
+
 const TrainingHub: React.FC = () => {
   const { voiceAgents } = useStore();
   const [selectedId, setSelectedId] = useState<string>('');
@@ -28,7 +41,7 @@ const TrainingHub: React.FC = () => {
 
   // New composer state
   const [selectedNiche, setSelectedNiche] = useState<string>('generic');
-  const [availableNiches, setAvailableNiches] = useState<Array<{ value: string; label: string }>>([]);
+  const [availableNiches, setAvailableNiches] = useState<Array<{ value: string; label: string }>>(fallbackNiches);
   const [composedPrompt, setComposedPrompt] = useState<any>(null);
   const [showPreview, setShowPreview] = useState(false);
 
@@ -58,12 +71,17 @@ const TrainingHub: React.FC = () => {
     const loadNiches = async () => {
       try {
         const response = await fetch('/api/mcp/prompt/niches');
+        if (!response.ok) {
+          throw new Error(`Status ${response.status}`);
+        }
         const data = await response.json();
         if (data.ok && data.niches) {
           setAvailableNiches(data.niches);
         }
       } catch (error) {
         console.error('Failed to load niches:', error);
+        toast.error('Failed to load niches from server, using fallback list.');
+        setAvailableNiches(fallbackNiches);
       }
     };
     loadNiches();
