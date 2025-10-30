@@ -340,7 +340,13 @@ CREATE TABLE IF NOT EXISTS agent_prompt_reviews (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Add reviewed_at column if it doesn't exist (migration for existing tables)
+-- ============================================
+-- Column Migrations for Existing Tables
+-- ============================================
+-- These migrations add new columns to tables that may have been created
+-- in earlier deployments without these columns.
+
+-- Add reviewed_at column to agent_call_logs if it doesn't exist
 DO $$ 
 BEGIN
   IF NOT EXISTS (
@@ -351,7 +357,7 @@ BEGIN
   END IF;
 END $$;
 
--- Add review_id column if it doesn't exist (migration for existing tables)
+-- Add review_id column to agent_call_logs if it doesn't exist
 DO $$ 
 BEGIN
   IF NOT EXISTS (
@@ -359,6 +365,72 @@ BEGIN
     WHERE table_name = 'agent_call_logs' AND column_name = 'review_id'
   ) THEN
     ALTER TABLE agent_call_logs ADD COLUMN review_id UUID;
+  END IF;
+END $$;
+
+-- Add call_log_id column to agent_prompt_reviews if it doesn't exist
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'agent_prompt_reviews' AND column_name = 'call_log_id'
+  ) THEN
+    ALTER TABLE agent_prompt_reviews ADD COLUMN call_log_id UUID REFERENCES agent_call_logs(id);
+  END IF;
+END $$;
+
+-- Add confidence_score column to agent_prompt_reviews if it doesn't exist
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'agent_prompt_reviews' AND column_name = 'confidence_score'
+  ) THEN
+    ALTER TABLE agent_prompt_reviews ADD COLUMN confidence_score DECIMAL(3,2);
+  END IF;
+END $$;
+
+-- Add suggested_patch column to agent_prompt_reviews if it doesn't exist
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'agent_prompt_reviews' AND column_name = 'suggested_patch'
+  ) THEN
+    ALTER TABLE agent_prompt_reviews ADD COLUMN suggested_patch JSONB;
+  END IF;
+END $$;
+
+-- Add kb_suggestion column to agent_prompt_reviews if it doesn't exist
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'agent_prompt_reviews' AND column_name = 'kb_suggestion'
+  ) THEN
+    ALTER TABLE agent_prompt_reviews ADD COLUMN kb_suggestion JSONB;
+  END IF;
+END $$;
+
+-- Add patch_applied column to agent_prompt_reviews if it doesn't exist
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'agent_prompt_reviews' AND column_name = 'patch_applied'
+  ) THEN
+    ALTER TABLE agent_prompt_reviews ADD COLUMN patch_applied BOOLEAN DEFAULT false;
+  END IF;
+END $$;
+
+-- Add applied_at column to agent_prompt_reviews if it doesn't exist
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'agent_prompt_reviews' AND column_name = 'applied_at'
+  ) THEN
+    ALTER TABLE agent_prompt_reviews ADD COLUMN applied_at TIMESTAMPTZ;
   END IF;
 END $$;
 
