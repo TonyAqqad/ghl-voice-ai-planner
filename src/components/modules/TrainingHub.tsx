@@ -578,8 +578,8 @@ const TrainingHub: React.FC = () => {
         <div className="card p-4">
           <div className="flex items-center justify-between mb-3">
             <div>
-              <h2 className="font-semibold">Conversation Simulator</h2>
-              <p className="text-xs text-muted-foreground">SMS/Text mode - Simulates text-based conversation</p>
+              <h2 className="font-semibold">Call Simulator</h2>
+              <p className="text-xs text-muted-foreground">Testing agent call responses via text (pre-deployment)</p>
             </div>
             <div className="flex items-center gap-2">
               {/* Evaluation Toggle */}
