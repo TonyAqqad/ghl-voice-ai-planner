@@ -304,3 +304,26 @@ DROP POLICY IF EXISTS "Enable all for service role" ON agent_prompts;
 CREATE POLICY "Enable all for service role" ON agent_prompts
   FOR ALL USING (true);
 
+-- ============================================
+-- Seed Test Agents for Development
+-- ============================================
+
+-- Insert test F45 agent for dry-run testing
+INSERT INTO agents (agent_id, name, description, system_prompt, voice_id, config)
+VALUES (
+  '1',
+  'F45 Test Agent',
+  'Test agent for F45 Training prompt composition and dry-run testing',
+  'You are a voice receptionist for F45 Training. You help callers book trial classes and answer questions about F45 fitness programs.',
+  'default',
+  '{"niche": "fitness_gym", "tone": "professional", "businessHours": {"open": "6 AM", "close": "8 PM"}}'::jsonb
+)
+ON CONFLICT (agent_id) 
+DO UPDATE SET
+  name = EXCLUDED.name,
+  description = EXCLUDED.description,
+  system_prompt = EXCLUDED.system_prompt,
+  voice_id = EXCLUDED.voice_id,
+  config = EXCLUDED.config,
+  updated_at = CURRENT_TIMESTAMP;
+
