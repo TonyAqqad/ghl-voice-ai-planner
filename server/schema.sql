@@ -159,6 +159,8 @@ CREATE INDEX IF NOT EXISTS idx_mcp_traces_trace_id ON mcp_traces(trace_id);
 CREATE INDEX IF NOT EXISTS idx_mcp_traces_agent_id ON mcp_traces(agent_id);
 CREATE INDEX IF NOT EXISTS idx_mcp_action_retries_action_id ON mcp_action_retries(action_id);
 
+-- Note: Evaluation table indexes are created after the tables below
+
 -- ============================================
 -- Row Level Security (RLS) Policies
 -- ============================================
