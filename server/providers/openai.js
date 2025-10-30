@@ -25,6 +25,16 @@ class OpenAIProvider {
    * Generate completion using GPT models
    */
   async generateCompletion(prompt, options = {}) {
+    // Validate API key format
+    if (!this.apiKey) {
+      throw new Error('OpenAI API key not configured');
+    }
+    
+    // Check if API key format looks valid (should start with sk-)
+    if (!this.apiKey.startsWith('sk-') && !this.apiKey.startsWith('sk-proj-')) {
+      console.warn('⚠️  OpenAI API key format may be invalid. Expected format: sk-... or sk-proj-...');
+    }
+    
     try {
       const response = await axios.post(
         `${this.baseUrl}/chat/completions`,
@@ -53,7 +63,28 @@ class OpenAIProvider {
 
       return response.data;
     } catch (error) {
-      console.error('OpenAI generateCompletion error:', error.response?.data || error.message);
+      const errorData = error.response?.data || {};
+      const statusCode = error.response?.status;
+      
+      // Provide helpful error messages
+      if (statusCode === 401) {
+        const errorMessage = errorData.error?.message || 'Unauthorized';
+        console.error('❌ OpenAI API Authentication Error (401):');
+        console.error(`   ${errorMessage}`);
+        console.error('   Check that your OPENAI_API_KEY environment variable is set correctly.');
+        console.error('   Valid keys start with "sk-" or "sk-proj-"');
+        throw new Error(`OpenAI API authentication failed: ${errorMessage}. Please check your OPENAI_API_KEY in Render environment variables.`);
+      } else if (statusCode === 429) {
+        console.error('❌ OpenAI API Rate Limit Error (429):');
+        console.error('   Rate limit exceeded. Please wait before retrying.');
+        throw new Error('OpenAI API rate limit exceeded. Please try again later.');
+      } else if (statusCode === 500 || statusCode === 502 || statusCode === 503) {
+        console.error(`❌ OpenAI API Server Error (${statusCode}):`);
+        console.error('   OpenAI service may be temporarily unavailable.');
+        throw new Error(`OpenAI API server error (${statusCode}). Please try again later.`);
+      }
+      
+      console.error('OpenAI generateCompletion error:', errorData || error.message);
       throw error;
     }
   }

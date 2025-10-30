@@ -232,14 +232,27 @@ class VoiceAgentPrimitive {
 
           const enhancedContent = enhanced.choices?.[0]?.message?.content || enhanced;
           if (enhancedContent && typeof enhancedContent === 'string' && enhancedContent.trim().length > 0) {
+            console.log('✅ OpenAI enhancement successful');
             return enhancedContent;
           }
         } catch (enhanceError) {
-          console.warn('OpenAI enhancement failed, using base prompt:', enhanceError.message);
-          // Fall through to return base prompt
+          // Log the specific error but continue with base prompt
+          const errorMsg = enhanceError.message || 'Unknown error';
+          console.warn('⚠️  OpenAI enhancement failed, using base prompt without AI enhancement:');
+          console.warn(`   Error: ${errorMsg}`);
+          
+          // If it's an auth error, log helpful message
+          if (errorMsg.includes('authentication') || errorMsg.includes('401')) {
+            console.warn('   💡 Tip: Set OPENAI_API_KEY in Render environment variables to enable AI enhancement.');
+            console.warn('   The base prompt will still work without enhancement.');
+          }
+          
+          // Fall through to return base prompt - don't fail the entire operation
         }
       } else if (enhance && !this.openai.apiKey) {
-        console.warn('Enhancement requested but OpenAI API key not configured. Using base prompt.');
+        console.warn('⚠️  Enhancement requested but OpenAI API key not configured.');
+        console.warn('   Using base prompt without AI enhancement.');
+        console.warn('   💡 Tip: Set OPENAI_API_KEY in Render environment variables to enable enhancement.');
       }
 
       return finalPrompt;
