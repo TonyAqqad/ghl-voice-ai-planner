@@ -60,8 +60,19 @@ const GHL_CONFIG = {
   client_id: process.env.GHL_CLIENT_ID || '',
   client_secret: process.env.GHL_CLIENT_SECRET || '',
   redirect_uri: process.env.GHL_REDIRECT_URI || 'https://ghlvoiceai.captureclient.com/auth/callback',
-  webhook_secret: process.env.GHL_WEBHOOK_SECRET || ''
+  webhook_secret: process.env.GHL_WEBHOOK_SECRET || '',
+  
+  // 🔒 KILL SWITCH: Set GHL_API_ENABLED=true to enable GHL API calls
+  // Default is FALSE for safety - prevents accidental 429 errors
+  enabled: process.env.GHL_API_ENABLED === 'true'
 };
+
+// Log GHL API status on startup
+console.log('🔌 GHL API Status:', GHL_CONFIG.enabled ? '✅ ENABLED' : '🔒 DISABLED (Sandbox Mode)');
+if (!GHL_CONFIG.enabled) {
+  console.log('   💡 Set GHL_API_ENABLED=true in environment to enable GHL features');
+  console.log('   📦 Running in sandbox mode - all GHL endpoints will return 503');
+}
 
 const app = express();
 
@@ -73,6 +84,11 @@ const webhookHandler = new VoiceAIWebhookHandler(process.env.GHL_WEBHOOK_SECRET)
 const costingService = new CostingService();
 const templateService = new TemplateService();
 
+// Import protection utilities
+const rateLimit = require('express-rate-limit');
+const ghlQueue = require('./utils/ghlRequestQueue');
+const ghlCircuitBreaker = require('./utils/circuitBreaker');
+
 // Middleware - Security and Performance
 app.use(compression());
 app.use(helmet({ contentSecurityPolicy: false })); // Disable CSP for SPA, can customize later
@@ -81,6 +97,62 @@ app.use(cors({
   credentials: true 
 }));
 app.use(express.json());
+
+// ============================================
+// 🛡️ LAYER 1: GHL API Kill Switch Guard
+// ============================================
+const ghlApiGuard = (req, res, next) => {
+  if (!GHL_CONFIG.enabled) {
+    return res.status(503).json({
+      error: 'GHL API integration is currently disabled',
+      message: 'The application is running in sandbox mode. GHL features are not available.',
+      sandbox: true,
+      tip: 'Set GHL_API_ENABLED=true in environment variables to enable GHL features'
+    });
+  }
+  next();
+};
+
+// ============================================
+// 🛡️ LAYER 2: Rate Limiting
+// ============================================
+
+// Global rate limiter (less strict - for all API endpoints)
+const globalRateLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 300, // 300 requests per minute per IP
+  message: {
+    error: 'Too many requests',
+    message: 'Please slow down and try again later',
+    retryAfter: '1 minute'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.path.includes('/health') || req.path.includes('/monitoring')
+});
+
+// Strict rate limiter for GHL API endpoints
+const ghlRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Max 100 requests per 15 minutes per IP
+  message: {
+    error: 'Too many GHL API requests',
+    message: 'You are making too many requests to GoHighLevel endpoints',
+    retryAfter: '15 minutes',
+    tip: 'Please slow down to avoid rate limits and potential account suspension'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.path.includes('/health')
+});
+
+// Apply global rate limiter
+app.use(globalRateLimiter);
+
+// Apply GHL protection to specific routes
+app.use('/api/ghl/*', ghlApiGuard, ghlRateLimiter);
+app.use('/auth/ghl', ghlApiGuard, ghlRateLimiter);
+app.use('/auth/callback', ghlApiGuard, ghlRateLimiter);
 
 // Error handlers
 process.on('unhandledRejection', (e) => {
@@ -281,6 +353,177 @@ app.get('/api/health', (req, res) => {
       mcp: mcpEnabled ? '/api/mcp/*' : 'MCP disabled'
     }
   });
+});
+
+// ============================================
+// 🛡️ LAYER 5: GHL API Protection Monitoring Dashboard
+// ============================================
+app.get('/api/monitoring/ghl-status', (req, res) => {
+  const circuitState = ghlCircuitBreaker.getState();
+  const queueMetrics = ghlQueue.getMetrics();
+  
+  // Overall health determination
+  let overallHealth = 'healthy';
+  let healthReasons = [];
+  
+  if (!GHL_CONFIG.enabled) {
+    overallHealth = 'disabled';
+    healthReasons.push('GHL API is disabled (sandbox mode)');
+  } else if (circuitState.state === 'OPEN') {
+    overallHealth = 'unhealthy';
+    healthReasons.push(`Circuit breaker is OPEN: ${circuitState.message}`);
+  } else if (circuitState.state === 'HALF_OPEN') {
+    overallHealth = 'recovering';
+    healthReasons.push('Circuit breaker is testing recovery');
+  } else if (queueMetrics.rateLimitHits > 0) {
+    overallHealth = 'degraded';
+    healthReasons.push(`${queueMetrics.rateLimitHits} rate limit hits detected`);
+  }
+  
+  const canMakeRequests = GHL_CONFIG.enabled && circuitState.state !== 'OPEN';
+  
+  res.json({
+    timestamp: new Date().toISOString(),
+    overall_health: overallHealth,
+    can_make_requests: canMakeRequests,
+    health_reasons: healthReasons,
+    
+    // Layer 1: Kill Switch Status
+    kill_switch: {
+      enabled: GHL_CONFIG.enabled,
+      env_var: 'GHL_API_ENABLED',
+      current_value: process.env.GHL_API_ENABLED || 'not set (defaults to false)'
+    },
+    
+    // Layer 2: Rate Limiting (configured via express-rate-limit)
+    rate_limiting: {
+      global: {
+        window: '1 minute',
+        max_requests: 300,
+        per: 'IP address'
+      },
+      ghl_endpoints: {
+        window: '15 minutes',
+        max_requests: 100,
+        per: 'IP address'
+      }
+    },
+    
+    // Layer 3: Request Queue Metrics
+    request_queue: queueMetrics,
+    
+    // Layer 4: Circuit Breaker State
+    circuit_breaker: circuitState,
+    
+    // Recommendations
+    recommendations: generateRecommendations(circuitState, queueMetrics, GHL_CONFIG.enabled)
+  });
+});
+
+// Helper function to generate actionable recommendations
+function generateRecommendations(circuitState, queueMetrics, apiEnabled) {
+  const recommendations = [];
+  
+  if (!apiEnabled) {
+    recommendations.push({
+      level: 'info',
+      message: 'GHL API is currently disabled',
+      action: 'Set GHL_API_ENABLED=true in Render environment variables to enable'
+    });
+  }
+  
+  if (circuitState.state === 'OPEN') {
+    recommendations.push({
+      level: 'critical',
+      message: 'Circuit breaker is OPEN - API calls are blocked',
+      action: `Wait ${circuitState.retryIn} or check recent errors and fix underlying issues`
+    });
+  }
+  
+  if (queueMetrics.rateLimitHits > 5) {
+    recommendations.push({
+      level: 'warning',
+      message: `${queueMetrics.rateLimitHits} rate limit hits detected`,
+      action: 'Reduce GHL_REQUESTS_PER_SECOND or implement request batching'
+    });
+  }
+  
+  if (queueMetrics.queueLength > 10) {
+    recommendations.push({
+      level: 'warning',
+      message: `Queue is building up (${queueMetrics.queueLength} pending requests)`,
+      action: 'Consider increasing GHL_REQUESTS_PER_SECOND if API allows'
+    });
+  }
+  
+  const successRate = parseFloat(queueMetrics.successRate);
+  if (successRate < 90 && queueMetrics.totalRequests > 10) {
+    recommendations.push({
+      level: 'warning',
+      message: `Low success rate: ${queueMetrics.successRate}`,
+      action: 'Check GHL API credentials and network connectivity'
+    });
+  }
+  
+  if (recommendations.length === 0 && apiEnabled) {
+    recommendations.push({
+      level: 'success',
+      message: 'All systems operational',
+      action: 'No action needed - continue monitoring'
+    });
+  }
+  
+  return recommendations;
+}
+
+// Advanced monitoring: Circuit breaker manual controls (admin only)
+app.post('/api/monitoring/ghl-circuit/reset', (req, res) => {
+  try {
+    ghlCircuitBreaker.reset();
+    res.json({
+      success: true,
+      message: 'Circuit breaker manually reset to CLOSED state',
+      new_state: ghlCircuitBreaker.getState()
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.post('/api/monitoring/ghl-circuit/emergency-open', (req, res) => {
+  try {
+    const reason = req.body.reason || 'Manual intervention';
+    ghlCircuitBreaker.emergencyOpen(reason);
+    res.json({
+      success: true,
+      message: 'Circuit breaker manually opened (emergency stop)',
+      new_state: ghlCircuitBreaker.getState()
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+app.post('/api/monitoring/ghl-queue/clear', (req, res) => {
+  try {
+    const clearedCount = ghlQueue.clear();
+    res.json({
+      success: true,
+      message: `Cleared ${clearedCount} pending requests from queue`,
+      metrics: ghlQueue.getMetrics()
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
 });
 
 // API routes - Place BEFORE static file serving
