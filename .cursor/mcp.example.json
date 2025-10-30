@@ -1,0 +1,14 @@
+{
+  "servers": {
+    "ghl-openapi": {
+      "type": "openapi",
+      "url": "https://ghlvoiceai.captureclient.com/openapi.json",
+      "headers": {
+        "Authorization": "Bearer {{ env.GHL_API_TOKEN }}",
+        "X-Company": "CaptureClient"
+      }
+    }
+  }
+}
+
+
