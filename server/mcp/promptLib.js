@@ -14,45 +14,77 @@ const OpenAIProvider = require('../providers/openai');
 // STANDARD KIT - Voice AI Best Practices
 // ==============================================
 
+// ==============================================
+// MASTER PROMPT TEMPLATE
+// ==============================================
+
+const masterPromptTemplate = `You are a voice receptionist for {{COMPANY_NAME}}. Speak in a {{TONE}} tone: natural, concise, helpful, and professional. Ask exactly one question per turn and keep responses short and easy to say out loud.
+
+Primary goals:
+1) Identify the caller's intent.
+2) Capture required contact fields IN ORDER: {{REQUIRED_FIELDS_ORDER}}.
+3) If booking is permitted and fields are complete, propose a specific date/time and confirm.
+4) If booking is not possible (outside hours or caller not ready), capture callback info and set expectations.
+5) Escalate to a human when necessary.
+
+Hard rules:
+- Never skip or assume any required field; repeat phone numbers; spell emails.
+- Use specific date/time suggestions, not generic "sometime".
+- Obey business hours: {{BUSINESS_HOURS}}. If closed, capture callback and inform when the studio reopens.
+- Follow compliance flags: {{COMPLIANCE_FLAGS}}.
+- Follow niche overlay guardrails (blocked phrases and preconditions).
+- Never mention backend systems (GHL, CRMs, Capture Client). You are an employee of {{COMPANY_NAME}}.
+
+Niche: {{NICHE}}
+Top goals: {{GOALS}}
+Opening line (suggested): {{OPENING_LINE}}
+
+If the caller refuses to provide information, politely explain why each field is needed and offer to continue or arrange a call back.`;
+
 const baseStandard = {
   name: 'voice-ai-standard-v1',
   version: '1.0',
+  masterTemplate: masterPromptTemplate,
   principles: [
-    "Be concise. 1–2 sentences per turn.",
-    "Ask exactly 1 question at a time.",
-    "Always confirm name + phone + intent.",
-    "If booking is available, offer it.",
-    "If business is closed, capture callback."
+    "Concise turns: one question at a time",
+    "Confirm name + phone + intent",
+    "If booking available, offer; if closed, capture callback",
+    "Never invent facts",
+    "Follow disallowed/required phrase rules from overlay",
+    "Use specific dates/times; repeat phone; spell email",
+    "Escalate when stuck"
   ],
   structure: {
     opening: true,
     qualification: true,
+    collection: true,
     booking: true,
     escalation: true,
     fallback: true
   },
+  globalGuardrails: [
+    "No medical/financial/legal advice unless niche explicitly allows",
+    "Respect compliance flags",
+    "Keep sentences speakable",
+    "Avoid robotic tone",
+    "Never expose backend systems (GHL is backend only; agent is employee of client company, not Capture Client)"
+  ],
   coreGuidelines: [
-    "Speak naturally and conversationally, as if talking to a friend",
+    "Speak naturally and conversationally",
     "Keep responses concise (2-3 sentences max per turn)",
-    "Use active listening: acknowledge what the caller said before responding",
+    "Use active listening: acknowledge what the caller said",
     "Ask one question at a time",
     "Use the caller's name when you learn it",
     "Sound empathetic and understanding, not robotic"
   ],
-  ghlCapabilities: [
-    "Capture and update contact information in GoHighLevel",
-    "Schedule appointments and add to calendars",
-    "Answer questions about products/services",
-    "Qualify leads and gather information",
-    "Transfer to human agent if requested or if situation requires it"
-  ],
   conversationFlow: [
+    "Opening → Qualification → Collection → Booking → Escalation → Fallback",
     "Greet warmly and introduce yourself",
-    "Ask how you can help",
-    "Listen actively and take notes on key information",
-    "Ask clarifying questions when needed",
-    "Provide helpful information or complete requested actions",
-    "Confirm next steps before ending the call"
+    "Identify caller's intent",
+    "Capture required contact fields in order",
+    "Offer scheduling if permitted",
+    "Provide clear next steps",
+    "Escalate to human when appropriate"
   ],
   endCallProtocol: [
     "Summarize what was discussed",
@@ -67,33 +99,107 @@ const baseStandard = {
 // ==============================================
 
 const nicheOverlays = {
+  // F45 Training - Comprehensive overlay with strict field collection rules
   fitness_gym: {
-    name: 'fitness_gym',
-    displayName: 'Fitness Gym',
-    mustAskFirst: [
-      "What's your fitness goal right now?",
-      "Have you ever done group training before?"
+    name: "fitness_gym",
+    displayName: "F45 Training / Fitness Gym",
+    required_fields_order: [
+      "contact.first_name",
+      "contact.last_name",
+      "contact.unique_phone_number",
+      "contact.email"
     ],
-    ctaPhrases: [
-      "We can get you in for a free class",
+    booking_block_until_fields_complete: true,
+    blocked_booking_phrases: [
+      "Let me book you",
+      "I'll get you scheduled",
+      "What day works for you",
+      "What time works",
+      "You're all set",
+      "Great! To book your class"
+    ],
+    must_ask_first: [
+      "Are you looking to book a trial class, or do you have questions about F45?"
+    ],
+    cta_phrases: [
+      "We can get you in for a trial class",
       "We have openings this week"
     ],
-    appointmentRules: {
+    qualification: [
+      "Is this your first time trying F45?",
+      "Do you prefer morning or evening classes?"
+    ],
+    appointment_rules: {
+      schedule_type: "trial_class",
       requires_name: true,
       requires_phone: true,
-      source_tag: "fitness_gym_inquiry",
-      schedule_type: "free_trial_class"
+      requires_email: true,
+      use_specific_datetime_suggestions: true,
+      class_times_variable: "{{ custom_values.class_times }}"
     },
-    qualificationQuestions: [
-      "Current fitness level",
-      "Any injuries or limitations",
-      "Preferred training times",
-      "Previous gym membership experience"
+    kb_suggestions: [
+      {
+        title: "Trial Class — What to Expect",
+        outline: [
+          "Arrive 10–15 minutes early",
+          "Coach-led warm-up & guidance",
+          "Bring water and towel",
+          "Wear athletic shoes",
+          "How to reschedule/cancel"
+        ]
+      },
+      {
+        title: "Studio Info & Hours",
+        outline: [
+          "Address: {{ custom_values.location_address }}",
+          "Hours: {{ BUSINESS_HOURS }}",
+          "Contact methods"
+        ]
+      }
     ],
-    complianceNotes: [
-      "Mention liability waivers for trial classes",
-      "Ask about any health conditions that might affect training"
-    ]
+    custom_actions_templates: [
+      {
+        name: "ghl_upsert_contact",
+        description: "Create/Update contact using mandatory four fields",
+        endpoint: "/api/ghl/contacts/upsert",
+        params_schema: {
+          type: "object",
+          properties: {
+            "contact.first_name": { type: "string" },
+            "contact.last_name": { type: "string" },
+            "contact.unique_phone_number": { type: "string" },
+            "contact.email": { type: "string" }
+          },
+          required: [
+            "contact.first_name",
+            "contact.last_name",
+            "contact.unique_phone_number",
+            "contact.email"
+          ]
+        }
+      },
+      {
+        name: "schedule_trial_class",
+        description: "Schedule trial class after mandatory fields confirmed",
+        endpoint: "/api/workflows",
+        params_schema: {
+          type: "object",
+          properties: {
+            "contact.class_date": { type: "string" },
+            "contact.class_time": { type: "string" }
+          },
+          required: ["contact.class_date", "contact.class_time"]
+        }
+      }
+    ],
+    eval_rubric: [
+      "Collected all four fields in the correct order",
+      "No booking language before all fields were collected",
+      "One question per turn; short and speakable",
+      "Phone repeated; email spelled out",
+      "Specific date/time offered and confirmed"
+    ],
+    opening_line: "Hi! This is {{ custom_values.agent_name }} from {{ custom_values.location_name }}. Thanks for calling! Are you looking to book a trial class, or do you have questions about F45?"
   },
   
   martial_arts: {
@@ -452,7 +558,7 @@ function renderPrompt({
 }
 
 /**
- * Build system prompt text
+ * Build system prompt text using Master Prompt template
  */
 function buildSystemPrompt({ 
   standard, 
@@ -463,147 +569,127 @@ function buildSystemPrompt({
   clientContext, 
   compliance 
 }) {
-  let parts = [];
+  // Start with Master Prompt template
+  let masterPrompt = standard.masterTemplate || masterPromptTemplate;
   
-  // Header
-  parts.push('You are an expert Voice AI agent for GoHighLevel (GHL).');
-  parts.push('');
+  // Inject values into template
+  const companyName = clientContext?.businessName || clientContext?.companyName || '{{COMPANY_NAME}}';
+  const niche = overlay?.displayName || overlay?.name || 'General';
+  const requiredFieldsOrder = overlay?.required_fields_order ? overlay.required_fields_order.join(', ') : 'name, phone, email';
+  const businessHoursStr = businessHours ? `${businessHours.open} to ${businessHours.close}` : '9 AM to 5 PM';
+  const complianceStr = (compliance && compliance.length > 0) ? compliance.join('; ') : 'None';
+  const goalsStr = (goals && goals.length > 0) ? goals.map((g, i) => `${i+1}) ${g}`).join(', ') : 'Assist the caller';
+  const openingLine = overlay?.opening_line || 'Hi! How can I help you today?';
   
-  // Core principles
-  if (standard?.coreGuidelines) {
-    parts.push('CORE PRINCIPLES:');
-    standard.coreGuidelines.forEach(guideline => {
-      parts.push(`- ${guideline}`);
+  masterPrompt = masterPrompt
+    .replace(/\{\{COMPANY_NAME\}\}/g, companyName)
+    .replace(/\{\{TONE\}\}/g, tone || 'professional')
+    .replace(/\{\{REQUIRED_FIELDS_ORDER\}\}/g, requiredFieldsOrder)
+    .replace(/\{\{BUSINESS_HOURS\}\}/g, businessHoursStr)
+    .replace(/\{\{COMPLIANCE_FLAGS\}\}/g, complianceStr)
+    .replace(/\{\{NICHE\}\}/g, niche)
+    .replace(/\{\{GOALS\}\}/g, goalsStr)
+    .replace(/\{\{OPENING_LINE\}\}/g, openingLine);
+  
+  // Add F45-specific hard rules if this is fitness_gym overlay
+  if (overlay?.booking_block_until_fields_complete) {
+    masterPrompt += '\n\n--- CRITICAL BOOKING RULES (F45 Specific) ---';
+    masterPrompt += '\n\nBOOKING BLOCKED until all four mandatory fields are collected:';
+    overlay.required_fields_order.forEach((field, idx) => {
+      masterPrompt += `\n  ${idx + 1}. ${field}`;
     });
-    parts.push('');
-  }
-  
-  // Niche-specific intro
-  if (overlay?.displayName) {
-    parts.push(`INDUSTRY CONTEXT: ${overlay.displayName}`);
-    parts.push('');
-  }
-  
-  // Goals
-  if (goals && goals.length > 0) {
-    parts.push('YOUR PRIMARY GOALS:');
-    goals.forEach((goal, index) => {
-      parts.push(`${index + 1}. ${goal}`);
+    
+    masterPrompt += '\n\nDO NOT use these booking phrases until all four fields are confirmed:';
+    overlay.blocked_booking_phrases.forEach(phrase => {
+      masterPrompt += `\n  - "${phrase}"`;
     });
-    parts.push('');
-  }
-  
-  // Business hours
-  if (businessHours) {
-    parts.push('BUSINESS OPERATIONS:');
-    parts.push(`- Business hours: ${businessHours.open} to ${businessHours.close}`);
-    parts.push('- If caller contacts outside business hours, offer to: schedule a callback, leave a message, or direct them to 24/7 resources');
-    parts.push('');
-  }
-  
-  // Niche-specific must-ask questions
-  if (overlay?.mustAskFirst && overlay.mustAskFirst.length > 0) {
-    parts.push('CRITICAL QUESTIONS TO ASK:');
-    overlay.mustAskFirst.forEach(question => {
-      parts.push(`- ${question}`);
+    
+    masterPrompt += '\n\nMUST ASK FIRST:';
+    overlay.must_ask_first.forEach(q => {
+      masterPrompt += `\n  - ${q}`;
     });
-    parts.push('');
+    
+    if (overlay.qualification && overlay.qualification.length > 0) {
+      masterPrompt += '\n\nQUALIFICATION QUESTIONS (ask during collection):';
+      overlay.qualification.forEach(q => {
+        masterPrompt += `\n  - ${q}`;
+      });
+    }
   }
   
-  // Qualification questions
-  if (overlay?.qualificationQuestions && overlay.qualificationQuestions.length > 0) {
-    parts.push('QUALIFICATION INFORMATION TO GATHER:');
-    overlay.qualificationQuestions.forEach(question => {
-      parts.push(`- ${question}`);
-    });
-    parts.push('');
-  }
-  
-  // CTA phrases
-  if (overlay?.ctaPhrases && overlay.ctaPhrases.length > 0) {
-    parts.push('CALL-TO-ACTION PHRASES:');
-    overlay.ctaPhrases.forEach(phrase => {
-      parts.push(`- "${phrase}"`);
-    });
-    parts.push('');
-  }
-  
-  // Compliance and disclaimers
+  // Add compliance notes if present
   if (overlay?.complianceNotes && overlay.complianceNotes.length > 0) {
-    parts.push('COMPLIANCE & LEGAL:');
+    masterPrompt += '\n\nCOMPLIANCE & LEGAL:';
     overlay.complianceNotes.forEach(note => {
-      parts.push(`- ${note}`);
+      masterPrompt += `\n  - ${note}`;
     });
-    parts.push('');
   }
   
+  // Add disallowed claims if present
   if (overlay?.disallowedClaims && overlay.disallowedClaims.length > 0) {
-    parts.push('IMPORTANT RESTRICTIONS:');
+    masterPrompt += '\n\nIMPORTANT RESTRICTIONS:';
     overlay.disallowedClaims.forEach(claim => {
-      parts.push(`- ${claim}`);
+      masterPrompt += `\n  - ${claim}`;
     });
-    parts.push('');
   }
   
-  // Additional compliance
-  if (compliance && compliance.length > 0) {
-    parts.push('ADDITIONAL COMPLIANCE REQUIREMENTS:');
-    compliance.forEach(req => {
-      parts.push(`- ${req}`);
-    });
-    parts.push('');
-  }
-  
-  // Client context
+  // Add client context details
   if (clientContext && Object.keys(clientContext).length > 0) {
-    parts.push('CLIENT-SPECIFIC INFORMATION:');
+    masterPrompt += '\n\nCLIENT CONTEXT:';
     Object.entries(clientContext).forEach(([key, value]) => {
-      parts.push(`- ${key}: ${value}`);
-    });
-    parts.push('');
-  }
-  
-  // GHL capabilities
-  if (standard?.ghlCapabilities) {
-    parts.push('YOUR CAPABILITIES:');
-    standard.ghlCapabilities.forEach(capability => {
-      parts.push(`- ${capability}`);
-    });
-    parts.push('');
-  }
-  
-  // Conversation flow
-  if (standard?.conversationFlow) {
-    parts.push('CONVERSATION FLOW:');
-    standard.conversationFlow.forEach((step, index) => {
-      parts.push(`${index + 1}. ${step}`);
-    });
-    parts.push('');
-  }
-  
-  // End call protocol
-  if (standard?.endCallProtocol) {
-    parts.push('END CALL PROTOCOL:');
-    standard.endCallProtocol.forEach(step => {
-      parts.push(`- ${step}`);
+      if (key !== 'businessName' && key !== 'companyName') {
+        masterPrompt += `\n  - ${key}: ${value}`;
+      }
     });
   }
   
-  // Tone guidance
-  parts.push('');
-  parts.push('COMMUNICATION STYLE:');
-  parts.push(getToneGuidance(tone));
-  
-  return parts.join('\n');
+  return masterPrompt;
 }
 
 /**
- * Build KB stubs
+ * Build KB stubs - prioritize overlay kb_suggestions for F45
  */
 function buildKbStubs({ overlay, businessHours, clientContext }) {
   const stubs = [];
   
-  // Business hours KB
+  // If overlay has kb_suggestions (F45 style), use those first
+  if (overlay?.kb_suggestions && overlay.kb_suggestions.length > 0) {
+    overlay.kb_suggestions.forEach(suggestion => {
+      // Inject business hours and client context into the outline
+      const processedOutline = suggestion.outline.map(item => {
+        let processed = item;
+        if (businessHours) {
+          processed = processed.replace(/\{\{ BUSINESS_HOURS \}\}/g, `${businessHours.open} to ${businessHours.close}`);
+        }
+        if (clientContext?.location_address) {
+          processed = processed.replace(/\{\{ custom_values\.location_address \}\}/g, clientContext.location_address);
+        }
+        return processed;
+      });
+      
+      stubs.push({
+        title: suggestion.title,
+        outline: processedOutline
+      });
+    });
+    
+    // Add standard stubs if not already covered
+    if (!overlay.kb_suggestions.some(s => s.title.toLowerCase().includes('pricing'))) {
+      stubs.push({
+        title: 'Pricing Policy',
+        outline: [
+          'Contact for current pricing',
+          'Membership options available',
+          'Trial class policy',
+          'Cancellation policy'
+        ]
+      });
+    }
+    
+    return stubs;
+  }
+  
+  // Fallback: Business hours KB
   if (businessHours) {
     stubs.push({
       title: 'Business Hours & Contact',
@@ -616,7 +702,7 @@ function buildKbStubs({ overlay, businessHours, clientContext }) {
     });
   }
   
-  // Niche-specific FAQs
+  // Fallback: Niche-specific FAQs
   if (overlay?.name) {
     switch (overlay.name) {
       case 'fitness_gym':
@@ -746,12 +832,25 @@ function buildKbStubs({ overlay, businessHours, clientContext }) {
 }
 
 /**
- * Build custom actions
+ * Build custom actions - prioritize overlay custom_actions_templates for F45
  */
 function buildCustomActions({ overlay, clientContext }) {
   const actions = [];
   
-  // Contact upsert action (universal)
+  // If overlay has custom_actions_templates (F45 style), use those
+  if (overlay?.custom_actions_templates && overlay.custom_actions_templates.length > 0) {
+    overlay.custom_actions_templates.forEach(template => {
+      actions.push({
+        name: template.name,
+        description: template.description,
+        endpoint: template.endpoint,
+        params_schema: template.params_schema
+      });
+    });
+    return actions;
+  }
+  
+  // Fallback: Universal contact upsert action
   actions.push({
     name: 'create_ghl_contact',
     description: 'Create or update a contact in GoHighLevel with collected information',
@@ -770,11 +869,12 @@ function buildCustomActions({ overlay, clientContext }) {
     }
   });
   
-  // Appointment scheduling action
-  if (overlay?.appointmentRules) {
+  // Fallback: Appointment scheduling action
+  if (overlay?.appointmentRules || overlay?.appointment_rules) {
+    const rules = overlay.appointmentRules || overlay.appointment_rules;
     actions.push({
       name: 'schedule_appointment',
-      description: `Schedule a ${overlay.appointmentRules.schedule_type || 'appointment'} in the calendar`,
+      description: `Schedule a ${rules.schedule_type || 'appointment'} in the calendar`,
       endpoint: '/api/ghl/appointments',
       params_schema: {
         type: 'object',
@@ -810,12 +910,29 @@ function buildCustomActions({ overlay, clientContext }) {
 }
 
 /**
- * Build eval rubric
+ * Build eval rubric - merge standard + overlay rubric for F45
  */
 function buildEvalRubric({ standard, overlay }) {
   const rubric = [];
   
-  // Standard checks
+  // If overlay has eval_rubric (F45 style), use it as the primary rubric
+  if (overlay?.eval_rubric && overlay.eval_rubric.length > 0) {
+    overlay.eval_rubric.forEach(item => {
+      rubric.push(item);
+    });
+    
+    // Add a few standard checks if not already covered
+    if (!overlay.eval_rubric.some(r => r.toLowerCase().includes('greet'))) {
+      rubric.push('Greeted the caller and identified the business');
+    }
+    if (!overlay.eval_rubric.some(r => r.toLowerCase().includes('next steps'))) {
+      rubric.push('Ended with clear next steps and thanked the caller');
+    }
+    
+    return rubric;
+  }
+  
+  // Fallback: Standard checks
   rubric.push('Greet the caller and identify the business');
   rubric.push('Capture name + phone + intent');
   
@@ -827,8 +944,9 @@ function buildEvalRubric({ standard, overlay }) {
   }
   
   // Appointment/booking check
-  if (overlay?.appointmentRules) {
-    rubric.push(`Offer to ${overlay.appointmentRules.schedule_type || 'schedule appointment'}`);
+  if (overlay?.appointmentRules || overlay?.appointment_rules) {
+    const rules = overlay.appointmentRules || overlay.appointment_rules;
+    rubric.push(`Offer to ${rules.schedule_type || 'schedule appointment'}`);
   } else {
     rubric.push('Offer to book / schedule (if applicable)');
   }
