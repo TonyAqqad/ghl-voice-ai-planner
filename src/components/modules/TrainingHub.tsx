@@ -312,22 +312,30 @@ const TrainingHub: React.FC = () => {
     try {
       const transcript = conv.map(m => `${m.speaker === 'user' ? 'Caller' : 'Agent'}: ${m.text}`).join('\n');
       
-      const response = await fetch('/api/mcp/agent/evaluateTranscript?mode=light', {
+      // Note: Evaluation endpoint is part of autonomous system (may not be deployed yet)
+      // This will gracefully handle 404 if endpoint doesn't exist
+      const response = await fetch('/api/mcp/agent/ingestTranscript', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           agentId: selectedAgent.id,
           transcript,
-          promptId: null
+          promptId: null,
+          summary: 'Live evaluation from conversation simulator',
+          tags: ['live_eval', 'conversation_test'],
+          metrics: { messageCount: conv.length }
         })
       });
       
-      const data = await response.json();
-      if (data.ok) {
-        setCurrentEvaluation(data.evaluation);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.ok && data.evaluation) {
+          setCurrentEvaluation(data.evaluation);
+        }
       }
     } catch (e: any) {
       console.error('Evaluation failed:', e);
+      // Silently fail - evaluation is optional
     } finally {
       setEvaluationLoading(false);
     }

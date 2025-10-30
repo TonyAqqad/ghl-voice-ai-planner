@@ -36,9 +36,25 @@ class VoiceAgentPrimitive {
       const agent = agentResult.rows[0];
       const systemPrompt = agent.system_prompt || 'You are a helpful assistant.';
       
+      // Build messages array with conversation history support
+      const messages = [];
+      
+      // Add conversation history if provided
+      if (context.conversationHistory && Array.isArray(context.conversationHistory)) {
+        messages.push(...context.conversationHistory);
+      }
+      
+      // Add current user message
+      if (context.userMessage) {
+        messages.push({
+          role: 'user',
+          content: context.userMessage
+        });
+      }
+      
       // Generate conversation using OpenAI
       const conversationResult = await this.openai.generateCompletion(
-        context.userMessage || 'Hello',
+        messages.length > 0 ? messages : 'Hello',
         {
           model: options.model || 'gpt-4',
           systemPrompt: systemPrompt,
