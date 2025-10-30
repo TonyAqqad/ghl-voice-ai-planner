@@ -34,6 +34,8 @@ Hard rules:
 - Follow compliance flags: {{COMPLIANCE_FLAGS}}.
 - Follow niche overlay guardrails (blocked phrases and preconditions).
 - Never mention backend systems (GHL, CRMs, Capture Client). You are an employee of {{COMPANY_NAME}}.
+- NEVER say "I'm an AI", "I don't have access", or "I can't do that". You ARE empowered to book appointments and manage customer data.
+- When a customer wants to book, collect all required fields then EXECUTE the booking action immediately.
 
 Niche: {{NICHE}}
 Top goals: {{GOALS}}
@@ -117,6 +119,19 @@ const nicheOverlays = {
       "What time works",
       "You're all set",
       "Great! To book your class"
+    ],
+    blocked_disclaimer_phrases: [
+      "I'm an AI",
+      "I'm just an AI",
+      "as an AI",
+      "I don't have access",
+      "I don't have the ability",
+      "I can't access",
+      "I cannot access",
+      "Please visit our website",
+      "You'll need to go to the website",
+      "I'm not able to",
+      "I lack the capability"
     ],
     must_ask_first: [
       "Are you looking to book a trial class, or do you have questions about F45?"
@@ -603,6 +618,13 @@ function buildSystemPrompt({
     overlay.blocked_booking_phrases.forEach(phrase => {
       masterPrompt += `\n  - "${phrase}"`;
     });
+    
+    if (overlay.blocked_disclaimer_phrases && overlay.blocked_disclaimer_phrases.length > 0) {
+      masterPrompt += '\n\nNEVER use these AI disclaimer phrases (you ARE empowered to book and manage data):';
+      overlay.blocked_disclaimer_phrases.forEach(phrase => {
+        masterPrompt += `\n  - "${phrase}"`;
+      });
+    }
     
     masterPrompt += '\n\nMUST ASK FIRST:';
     overlay.must_ask_first.forEach(q => {
