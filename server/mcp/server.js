@@ -283,5 +283,25 @@ router.get('/health', async (req, res) => {
   }
 });
 
+// ============================================
+// Prompt Composer Endpoints (Layer 2)
+// ============================================
+const promptComposer = require('./promptComposer');
+
+// Compose a new Voice AI prompt
+router.post('/prompt/compose', promptComposer.composePrompt);
+
+// Get list of available niches
+router.get('/prompt/niches', promptComposer.listNiches);
+
+// Get latest prompt for an agent
+router.get('/prompt/:agentId', promptComposer.getPrompt);
+
+// Get prompt history for an agent
+router.get('/prompt/:agentId/history', promptComposer.getPromptHistory);
+
+// Validate a prompt structure
+router.post('/prompt/validate', promptComposer.validatePromptEndpoint);
+
 module.exports = router;
 

@@ -92,7 +92,7 @@ Your Supabase now has these tables:
 ### If OAuth still fails:
 1. Check GHL redirect URI: `https://ghlvoiceai.captureclient.com/auth/callback`
 2. Verify GHL client credentials in Render environment
-3. Test locally first: `http://localhost:10000/auth/ghl`
+3. Test ly first: `http://localhost:10000/auth/ghl`
 
 ## 🎉 Success Indicators
 
@@ -116,4 +116,4 @@ Your platform is now **production-ready** with persistent database storage! 🎉
 
 ---
 
-**Need help?** Check the logs in Render dashboard or test locally first.
+**Need help?** Check the logs in Render dashboard or test ly first.

@@ -232,3 +232,64 @@ DROP POLICY IF EXISTS "Enable all for service role" ON mcp_action_retries;
 CREATE POLICY "Enable all for service role" ON mcp_action_retries
   FOR ALL USING (true);
 
+-- ============================================
+-- Prompt Composer Tables (Layer 1 Spec Storage)
+-- ============================================
+
+-- Master prompt kits table
+CREATE TABLE IF NOT EXISTS prompt_kits (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  version TEXT NOT NULL DEFAULT '1.0',
+  schema JSONB NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  UNIQUE(name, version)
+);
+
+-- Niche overlays for prompt kits
+CREATE TABLE IF NOT EXISTS prompt_kits_niche_overlays (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  kit_id UUID NOT NULL REFERENCES prompt_kits(id) ON DELETE CASCADE,
+  niche TEXT NOT NULL,
+  overlay_json JSONB NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  UNIQUE(kit_id, niche)
+);
+
+-- Final, materialized prompts per agent
+CREATE TABLE IF NOT EXISTS agent_prompts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  agent_id TEXT,
+  kit_id UUID REFERENCES prompt_kits(id),
+  niche TEXT,
+  system_prompt TEXT NOT NULL,
+  kb_refs JSONB,
+  actions JSONB,
+  version TEXT NOT NULL DEFAULT '1.0',
+  prompt_hash TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- Index for agent prompt lookups
+CREATE INDEX IF NOT EXISTS idx_agent_prompts_agent_id ON agent_prompts(agent_id);
+CREATE INDEX IF NOT EXISTS idx_agent_prompts_niche ON agent_prompts(niche);
+CREATE INDEX IF NOT EXISTS idx_prompt_kits_name ON prompt_kits(name);
+
+-- Enable RLS on prompt_kits table
+ALTER TABLE prompt_kits ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Enable all for service role" ON prompt_kits;
+CREATE POLICY "Enable all for service role" ON prompt_kits
+  FOR ALL USING (true);
+
+-- Enable RLS on prompt_kits_niche_overlays table
+ALTER TABLE prompt_kits_niche_overlays ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Enable all for service role" ON prompt_kits_niche_overlays;
+CREATE POLICY "Enable all for service role" ON prompt_kits_niche_overlays
+  FOR ALL USING (true);
+
+-- Enable RLS on agent_prompts table
+ALTER TABLE agent_prompts ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Enable all for service role" ON agent_prompts;
+CREATE POLICY "Enable all for service role" ON agent_prompts
+  FOR ALL USING (true);
+

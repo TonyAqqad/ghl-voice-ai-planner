@@ -26,6 +26,12 @@ const TrainingHub: React.FC = () => {
   const [syncing, setSyncing] = useState(false);
   const [genLoading, setGenLoading] = useState(false);
 
+  // New composer state
+  const [selectedNiche, setSelectedNiche] = useState<string>('generic');
+  const [availableNiches, setAvailableNiches] = useState<Array<{ value: string; label: string }>>([]);
+  const [composedPrompt, setComposedPrompt] = useState<any>(null);
+  const [showPreview, setShowPreview] = useState(false);
+
   const mcp = useMCP();
   // Inline test panel state
   const [testMessage, setTestMessage] = useState<string>('Hello');
@@ -40,6 +46,22 @@ const TrainingHub: React.FC = () => {
       setSelectedId(voiceAgents[0].id);
     }
   }, [selectedAgent, voiceAgents]);
+
+  // Load available niches on mount
+  useEffect(() => {
+    const loadNiches = async () => {
+      try {
+        const response = await fetch('/api/mcp/prompt/niches');
+        const data = await response.json();
+        if (data.ok && data.niches) {
+          setAvailableNiches(data.niches);
+        }
+      } catch (error) {
+        console.error('Failed to load niches:', error);
+      }
+    };
+    loadNiches();
+  }, []);
 
   useEffect(() => {
     if (!selectedAgent) return;
@@ -97,34 +119,45 @@ const TrainingHub: React.FC = () => {
     if (!selectedAgent) return;
     setGenLoading(true);
     try {
-      const result = await mcp.voiceAgentGeneratePrompt({
-        template: systemPrompt || 'You are a sales assistant. Gather customer needs and book appointments.',
-        businessHours: { open: '9 AM', close: '5 PM' },
-        clientContext: { industry: 'sales' },
-        enhance: true,
-        industry: 'sales',
-        goals: [
-          'Qualify leads and understand customer needs',
-          'Schedule appointments with appropriate team members',
-          'Capture accurate contact and preference information'
-        ],
-        tone: 'professional'
-      }, {
-        showToast: false // We'll handle toast manually
+      // Use new compose endpoint
+      const response = await fetch('/api/mcp/prompt/compose', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          niche: selectedNiche,
+          goals: [
+            'Qualify leads and understand customer needs',
+            'Schedule appointments with appropriate team members',
+            'Capture accurate contact and preference information'
+          ],
+          tone: 'professional',
+          businessHours: { open: '9 AM', close: '5 PM' },
+          clientContext: { 
+            businessName: selectedAgent.name || 'Your Business',
+            industry: selectedNiche
+          },
+          compliance: [],
+          enhance: true,
+          agentId: selectedAgent.id,
+          saveToDb: true
+        })
       });
+
+      const data = await response.json();
       
-      if (result?.success && result.data) {
-        const prompt = result.data as string;
-        setSystemPrompt(prompt);
-        toast.success('Prompt generated successfully!');
+      if (data.ok && data.prompt) {
+        setComposedPrompt(data.prompt);
+        setSystemPrompt(data.prompt.system_prompt);
+        setShowPreview(true);
+        toast.success('Prompt composed successfully!');
       } else {
-        const errorMsg = result?.error || 'Prompt generation failed';
+        const errorMsg = data.error || 'Prompt composition failed';
         toast.error(errorMsg);
       }
     } catch (e: any) {
-      const errorMsg = e.response?.data?.error || e.message || 'Prompt generation failed';
+      const errorMsg = e.response?.data?.error || e.message || 'Prompt composition failed';
       toast.error(errorMsg);
-      console.error('Prompt generation error:', e);
+      console.error('Prompt composition error:', e);
     } finally {
       setGenLoading(false);
     }
@@ -251,6 +284,14 @@ const TrainingHub: React.FC = () => {
             ))}
           </select>
 
+          <label className="text-sm mb-2 block mt-4">Industry / Niche</label>
+          <select value={selectedNiche} onChange={(e) => setSelectedNiche(e.target.value)} className="w-full px-3 py-2 border border-border rounded-md bg-input">
+            <option value="generic">Generic</option>
+            {availableNiches.map(n => (
+              <option key={n.value} value={n.value}>{n.label}</option>
+            ))}
+          </select>
+
           <div className="mt-4 p-3 rounded bg-muted/30 text-sm">
             <div className="flex items-center gap-2">
               <Database className="w-4 h-4" />
@@ -296,6 +337,78 @@ const TrainingHub: React.FC = () => {
           ))}
         </div>
       </div>
+
+      {/* Prompt Composer Preview */}
+      {showPreview && composedPrompt && (
+        <div className="mt-6 card p-4">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold text-lg">Composed Prompt Preview</h2>
+            <Button variant="outline" size="sm" onClick={() => setShowPreview(false)}>
+              Close
+            </Button>
+          </div>
+
+          <div className="space-y-4">
+            {/* KB Stubs */}
+            {composedPrompt.kb_stubs && composedPrompt.kb_stubs.length > 0 && (
+              <div>
+                <h3 className="font-medium text-sm mb-2 flex items-center gap-2">
+                  <BookOpen className="w-4 h-4" />
+                  Knowledge Base Stubs
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {composedPrompt.kb_stubs.map((stub: any, idx: number) => (
+                    <div key={idx} className="p-3 rounded border border-border bg-muted/30">
+                      <div className="font-medium text-sm mb-1">{stub.title}</div>
+                      <ul className="text-xs text-muted-foreground space-y-1">
+                        {stub.outline.map((item: string, i: number) => (
+                          <li key={i}>• {item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Custom Actions */}
+            {composedPrompt.custom_actions && composedPrompt.custom_actions.length > 0 && (
+              <div>
+                <h3 className="font-medium text-sm mb-2 flex items-center gap-2">
+                  <Link2 className="w-4 h-4" />
+                  Custom Actions
+                </h3>
+                <div className="grid grid-cols-1 gap-2">
+                  {composedPrompt.custom_actions.map((action: any, idx: number) => (
+                    <div key={idx} className="p-3 rounded border border-border bg-muted/30 text-xs">
+                      <div className="font-medium">{action.name}</div>
+                      <div className="text-muted-foreground">{action.description}</div>
+                      <div className="text-muted-foreground mt-1">Endpoint: {action.endpoint}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Eval Rubric */}
+            {composedPrompt.eval_rubric && composedPrompt.eval_rubric.length > 0 && (
+              <div>
+                <h3 className="font-medium text-sm mb-2 flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4" />
+                  Evaluation Rubric
+                </h3>
+                <div className="p-3 rounded border border-border bg-muted/30">
+                  <ul className="text-xs text-muted-foreground space-y-1">
+                    {composedPrompt.eval_rubric.map((item: string, idx: number) => (
+                      <li key={idx}>✓ {item}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Inline Testing Panel */}
       <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
