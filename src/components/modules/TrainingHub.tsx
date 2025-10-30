@@ -105,7 +105,7 @@ const TrainingHub: React.FC = () => {
 
   const handleSyncToGHL = async () => {
     // DISABLED: Sandboxed mode - no GHL API calls
-    toast.info('GHL sync disabled in sandbox mode');
+    toast('GHL sync disabled in sandbox mode');
     return;
     
     /* Original code commented out to prevent 429 errors
@@ -202,7 +202,7 @@ const TrainingHub: React.FC = () => {
 
   const handleDeploy = async () => {
     // DISABLED: Sandboxed mode - no GHL API calls
-    toast.info('Agent deployment disabled in sandbox mode. Prompt is saved locally in database.');
+    toast('Agent deployment disabled in sandbox mode. Prompt is saved locally in database.');
     return;
     
     /* Original code commented out to prevent 429 errors
@@ -266,7 +266,7 @@ const TrainingHub: React.FC = () => {
     
     setSyncing(true);
     try {
-      const res = await mcp.voiceAgentCall({
+      const callResponse = await mcp.voiceAgentCall({
         agentId: selectedAgent.id,
         phoneNumber: '+10000000000',
         context: { 
@@ -277,17 +277,29 @@ const TrainingHub: React.FC = () => {
           }))
         },
         options: { textOnly: true }
-      });
-      
+      }, { showToast: false });
+
+      if (!callResponse.success || !callResponse.data) {
+        throw new Error(callResponse.error || 'Call simulation failed');
+      }
+
+      const agentPayload: any = callResponse.data.data ?? callResponse.data;
+
+      const agentText = (agentPayload?.transcript ?? agentPayload?.response ?? agentPayload?.message ?? '').trim();
+
+      if (!agentText) {
+        console.warn('⚠️  Agent returned empty response payload:', agentPayload);
+      }
+
       // Add agent response to conversation
       const agentMessage = {
         speaker: 'agent' as const,
-        text: res.transcript || res.response || 'No response',
+        text: agentText || 'No response',
         timestamp: Date.now()
       };
       const finalConversation = [...updatedConversation, agentMessage];
       setConversation(finalConversation);
-      setTestResult(res);
+      setTestResult(agentPayload);
       
       // Clear input
       setTestMessage('');
@@ -299,6 +311,7 @@ const TrainingHub: React.FC = () => {
       
       toast.success('Response generated');
     } catch (e: any) {
+      console.error('Call simulator error:', e);
       toast.error(e.message || 'Dry-run failed');
     } finally {
       setSyncing(false);
