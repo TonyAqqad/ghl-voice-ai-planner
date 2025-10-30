@@ -577,7 +577,10 @@ const TrainingHub: React.FC = () => {
 
         <div className="card p-4">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold">Conversation Simulator</h2>
+            <div>
+              <h2 className="font-semibold">Conversation Simulator</h2>
+              <p className="text-xs text-muted-foreground">SMS/Text mode - Simulates text-based conversation</p>
+            </div>
             <div className="flex items-center gap-2">
               {/* Evaluation Toggle */}
               <label className="flex items-center gap-1 text-xs cursor-pointer">

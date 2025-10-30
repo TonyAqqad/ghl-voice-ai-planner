@@ -23,6 +23,8 @@ class OpenAIProvider {
 
   /**
    * Generate completion using GPT models
+   * @param {string|Array} prompt - String prompt or array of message objects
+   * @param {Object} options - Configuration options
    */
   async generateCompletion(prompt, options = {}) {
     // Validate API key format
@@ -36,20 +38,37 @@ class OpenAIProvider {
     }
     
     try {
+      // Build messages array
+      let messages;
+      
+      if (Array.isArray(prompt)) {
+        // Prompt is already an array of messages (conversation history)
+        messages = [
+          {
+            role: 'system',
+            content: options.systemPrompt || 'You are a helpful AI assistant.'
+          },
+          ...prompt
+        ];
+      } else {
+        // Prompt is a string, use legacy format
+        messages = [
+          {
+            role: 'system',
+            content: options.systemPrompt || 'You are a helpful AI assistant.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ];
+      }
+      
       const response = await axios.post(
         `${this.baseUrl}/chat/completions`,
         {
           model: options.model || 'gpt-4',
-          messages: [
-            {
-              role: 'system',
-              content: options.systemPrompt || 'You are a helpful AI assistant.'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
+          messages,
           temperature: options.temperature || 0.7,
           max_tokens: options.maxTokens || 1000,
           top_p: options.topP || 1,
