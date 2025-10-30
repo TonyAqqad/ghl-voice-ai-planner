@@ -69,6 +69,7 @@ import RealTimeAgentMonitor from './components/modules/RealTimeAgentMonitor';
 import ErrorBoundary from './components/ui/ErrorBoundary';
 // import Breadcrumbs from './components/ui/Breadcrumbs';
 import './styles/globals.css';
+import NavBar from './components/ui/NavBar';
 
 function App() {
   const { darkMode, sidebarOpen } = useStore();
@@ -84,6 +85,7 @@ function App() {
 
   return (
         <div className={`min-h-screen bg-background ${darkMode ? 'dark' : ''}`}>
+          <NavBar />
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/auth/ghl/callback" element={<GHLOAuthCallback />} />
