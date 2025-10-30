@@ -305,6 +305,55 @@ CREATE POLICY "Enable all for service role" ON agent_prompts
   FOR ALL USING (true);
 
 -- ============================================
+-- Autonomous Evaluation Tables
+-- ============================================
+
+-- Call logs with transcripts and metrics
+CREATE TABLE IF NOT EXISTS agent_call_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  agent_id TEXT NOT NULL,
+  prompt_id UUID REFERENCES agent_prompts(id),
+  call_id TEXT,
+  transcript TEXT NOT NULL,
+  summary TEXT,
+  tags TEXT[],
+  metrics JSONB,
+  reviewed_at TIMESTAMPTZ,
+  review_id UUID,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Evaluation results and patch suggestions
+CREATE TABLE IF NOT EXISTS agent_prompt_reviews (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  agent_id TEXT NOT NULL,
+  call_log_id UUID REFERENCES agent_call_logs(id),
+  prompt_id UUID REFERENCES agent_prompts(id),
+  evaluation JSONB NOT NULL,
+  confidence_score DECIMAL(3,2),
+  suggested_patch JSONB,
+  kb_suggestion JSONB,
+  patch_applied BOOLEAN DEFAULT false,
+  applied_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Indexes for performance
+CREATE INDEX IF NOT EXISTS idx_call_logs_agent_id ON agent_call_logs(agent_id);
+CREATE INDEX IF NOT EXISTS idx_call_logs_reviewed_at ON agent_call_logs(reviewed_at);
+CREATE INDEX IF NOT EXISTS idx_prompt_reviews_agent_id ON agent_prompt_reviews(agent_id);
+CREATE INDEX IF NOT EXISTS idx_prompt_reviews_patch_applied ON agent_prompt_reviews(patch_applied);
+
+-- RLS policies
+ALTER TABLE agent_call_logs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Enable all for service role" ON agent_call_logs;
+CREATE POLICY "Enable all for service role" ON agent_call_logs FOR ALL USING (true);
+
+ALTER TABLE agent_prompt_reviews ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Enable all for service role" ON agent_prompt_reviews;
+CREATE POLICY "Enable all for service role" ON agent_prompt_reviews FOR ALL USING (true);
+
+-- ============================================
 -- Seed Test Agents for Development
 -- ============================================
 

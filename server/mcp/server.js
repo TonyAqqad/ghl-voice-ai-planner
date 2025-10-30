@@ -303,5 +303,25 @@ router.get('/prompt/:agentId/history', promptComposer.getPromptHistory);
 // Validate a prompt structure
 router.post('/prompt/validate', promptComposer.validatePromptEndpoint);
 
+// ============================================
+// Autonomous Evaluation Endpoints
+// ============================================
+const evaluationModule = require('./evaluation');
+
+// Ingest transcript and trigger evaluation
+router.post('/agent/ingestTranscript', evaluationModule.ingestTranscript);
+
+// Get review queue for manual approval
+router.get('/prompt/reviewQueue', evaluationModule.getReviewQueue);
+
+// Apply a suggested patch manually
+router.post('/prompt/applyPatch', evaluationModule.applyPatchEndpoint);
+
+// Rollback to previous prompt version
+router.post('/prompt/rollback', evaluationModule.rollbackPrompt);
+
+// Batch review missed transcripts
+router.post('/agent/batchReview', evaluationModule.batchReview);
+
 module.exports = router;
 
