@@ -98,6 +98,11 @@ const TrainingHub: React.FC = () => {
   };
 
   const handleSyncToGHL = async () => {
+    // DISABLED: Sandboxed mode - no GHL API calls
+    toast.info('GHL sync disabled in sandbox mode');
+    return;
+    
+    /* Original code commented out to prevent 429 errors
     if (!payload) return;
     setSyncing(true);
     try {
@@ -113,6 +118,7 @@ const TrainingHub: React.FC = () => {
     } finally {
       setSyncing(false);
     }
+    */
   };
 
   const handleGeneratePrompt = async () => {
@@ -189,6 +195,11 @@ const TrainingHub: React.FC = () => {
   };
 
   const handleDeploy = async () => {
+    // DISABLED: Sandboxed mode - no GHL API calls
+    toast.info('Agent deployment disabled in sandbox mode. Prompt is saved locally in database.');
+    return;
+    
+    /* Original code commented out to prevent 429 errors
     if (!payload || !selectedAgent) return;
     setSyncing(true);
     try {
@@ -218,6 +229,7 @@ const TrainingHub: React.FC = () => {
     } finally {
       setSyncing(false);
     }
+    */
   };
 
   // === Inline Testing (same tab) ===
@@ -257,7 +269,7 @@ const TrainingHub: React.FC = () => {
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold gradient-text">Training Hub</h1>
-          <p className="text-muted-foreground">Craft prompts, knowledge, and Q&A; sync directly with GHL</p>
+          <p className="text-muted-foreground">Craft prompts, knowledge, and Q&A (Sandboxed - No GHL API calls)</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={handleLocalSave} disabled={saving} loading={saving}>
@@ -295,7 +307,7 @@ const TrainingHub: React.FC = () => {
           <div className="mt-4 p-3 rounded bg-muted/30 text-sm">
             <div className="flex items-center gap-2">
               <Database className="w-4 h-4" />
-              <span>Source of truth: This app → Syncs to GHL</span>
+              <span>Sandboxed Mode: All data stored locally in database</span>
             </div>
           </div>
         </div>
@@ -436,7 +448,7 @@ const TrainingHub: React.FC = () => {
 
       <div className="mt-6 text-xs text-muted-foreground flex items-center gap-2">
         <Link2 className="w-3 h-3" />
-        <span>After syncing, content becomes available inside the GHL Voice AI dashboard.</span>
+        <span>Sandbox Mode: All prompts and data are stored locally. No external API calls to GHL.</span>
       </div>
     </div>
   );

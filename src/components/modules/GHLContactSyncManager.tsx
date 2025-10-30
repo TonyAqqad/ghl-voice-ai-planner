@@ -270,6 +270,10 @@ const GHLContactSyncManager: React.FC = () => {
   }, []);
 
   const loadContacts = async () => {
+    // DISABLED: Sandboxed mode - no GHL API calls to prevent 429 errors
+    console.log('GHL API calls disabled in sandbox mode');
+    
+    /* Original API call commented out
     try {
       const response = await fetch('https://ghlvoiceai.captureclient.com/api/ghl/contacts');
       if (response.ok) {
@@ -282,8 +286,9 @@ const GHLContactSyncManager: React.FC = () => {
     } catch (error) {
       console.error('Failed to load contacts from API:', error);
     }
+    */
     
-    // Fallback to sample data if API fails
+    // Using sample data in sandbox mode
     setContacts([
       {
         id: '1',

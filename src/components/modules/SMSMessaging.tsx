@@ -29,6 +29,11 @@ const SMSMessaging: React.FC = () => {
   }, []);
 
   const loadMessages = async () => {
+    // DISABLED: Sandboxed mode - no GHL API calls to prevent 429 errors
+    console.log('GHL API calls disabled in sandbox mode - using sample messages');
+    setIsLoading(false);
+    
+    /* Original API call commented out
     setIsLoading(true);
     try {
       const response = await fetch('https://ghlvoiceai.captureclient.com/api/ghl/conversations');
@@ -41,6 +46,7 @@ const SMSMessaging: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
+    */
   };
 
   const sendMessage = async () => {
@@ -49,6 +55,12 @@ const SMSMessaging: React.FC = () => {
       return;
     }
 
+    // DISABLED: Sandboxed mode - no GHL API calls to prevent 429 errors
+    toast.info('SMS sending disabled in sandbox mode');
+    setComposeData({ contact: '', phone: '', message: '' });
+    setComposeOpen(false);
+    
+    /* Original API call commented out
     try {
       const response = await fetch('https://ghlvoiceai.captureclient.com/api/ghl/conversations/messages', {
         method: 'POST',
@@ -72,6 +84,7 @@ const SMSMessaging: React.FC = () => {
     } catch (error) {
       toast.error('Error sending message');
     }
+    */
   };
 
   const filteredMessages = messages.filter(msg => {
