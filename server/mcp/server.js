@@ -77,10 +77,21 @@ router.post('/voiceAgent/call', async (req, res) => {
 
 router.post('/voiceAgent/generatePrompt', async (req, res) => {
   try {
+    console.log('📝 Generating prompt with params:', JSON.stringify(req.body, null, 2));
     const result = await getPrimitives().voiceAgent.generatePrompt(req.body);
-    res.json({ success: true, data: result });
+    
+    // Ensure result is a string
+    const promptText = typeof result === 'string' ? result : JSON.stringify(result);
+    
+    console.log('✅ Prompt generated successfully, length:', promptText.length);
+    res.json({ success: true, data: promptText });
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    console.error('❌ Error generating prompt:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Failed to generate prompt',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 

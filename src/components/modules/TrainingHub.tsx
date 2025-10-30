@@ -3,6 +3,7 @@ import { BookOpen, Save, Upload, RefreshCw, Database, Sparkles, CheckCircle, Lin
 import { useStore } from '../../store/useStore';
 import { toast } from 'react-hot-toast';
 import { useMCP } from '../../hooks/useMCP';
+import Button from '../../components/ui/Button';
 import { getApiBaseUrl } from '../../utils/apiBase';
 
 interface TrainingPayload {
@@ -97,20 +98,33 @@ const TrainingHub: React.FC = () => {
     setGenLoading(true);
     try {
       const result = await mcp.voiceAgentGeneratePrompt({
-        template: 'You are a sales assistant. Gather needs and book calls.',
+        template: systemPrompt || 'You are a sales assistant. Gather customer needs and book appointments.',
         businessHours: { open: '9 AM', close: '5 PM' },
-        clientContext: { industry: 'general' },
-        enhance: true
+        clientContext: { industry: 'sales' },
+        enhance: true,
+        industry: 'sales',
+        goals: [
+          'Qualify leads and understand customer needs',
+          'Schedule appointments with appropriate team members',
+          'Capture accurate contact and preference information'
+        ],
+        tone: 'professional'
+      }, {
+        showToast: false // We'll handle toast manually
       });
-      if ((result as any)?.success && (result as any).data) {
-        const prompt = (result as any).data as string;
+      
+      if (result?.success && result.data) {
+        const prompt = result.data as string;
         setSystemPrompt(prompt);
-        toast.success('Prompt generated');
+        toast.success('Prompt generated successfully!');
       } else {
-        toast.error('Prompt generation failed');
+        const errorMsg = result?.error || 'Prompt generation failed';
+        toast.error(errorMsg);
       }
     } catch (e: any) {
-      toast.error(e.message || 'Prompt generation failed');
+      const errorMsg = e.response?.data?.error || e.message || 'Prompt generation failed';
+      toast.error(errorMsg);
+      console.error('Prompt generation error:', e);
     } finally {
       setGenLoading(false);
     }
@@ -213,20 +227,18 @@ const TrainingHub: React.FC = () => {
           <p className="text-muted-foreground">Craft prompts, knowledge, and Q&A; sync directly with GHL</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={handleLocalSave} disabled={saving} className="btn btn-outline">
+          <Button variant="outline" onClick={handleLocalSave} disabled={saving} loading={saving}>
             <Save className="w-4 h-4 mr-2" /> Save Local
-          </button>
-          <button onClick={handleGeneratePrompt} disabled={genLoading} className="btn btn-outline">
-            {genLoading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
-            Generate Prompt
-          </button>
-          <button onClick={handleSaveState} disabled={saving || !payload} className="btn btn-outline">
+          </Button>
+          <Button variant="outline" onClick={handleGeneratePrompt} disabled={genLoading} loading={genLoading}>
+            <Sparkles className="w-4 h-4 mr-2" /> Generate Prompt
+          </Button>
+          <Button variant="outline" onClick={handleSaveState} disabled={saving || !payload}>
             <Database className="w-4 h-4 mr-2" /> Save State
-          </button>
-          <button onClick={handleDeploy} disabled={syncing || !payload} className="btn btn-primary">
-            {syncing ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
-            Deploy Agent
-          </button>
+          </Button>
+          <Button onClick={handleDeploy} disabled={syncing || !payload} loading={syncing}>
+            <Upload className="w-4 h-4 mr-2" /> Deploy Agent
+          </Button>
         </div>
       </div>
 
@@ -290,9 +302,9 @@ const TrainingHub: React.FC = () => {
         <div className="card p-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold">Health & Connectivity</h2>
-            <button className="btn btn-outline btn-sm" onClick={handleHealthCheck} disabled={healthLoading}>
-              {healthLoading ? <RefreshCw className="w-4 h-4 mr-1 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-1" />} Check Health
-            </button>
+            <Button variant="outline" size="sm" onClick={handleHealthCheck} disabled={healthLoading} loading={healthLoading}>
+              <RefreshCw className="w-4 h-4 mr-1" /> Check Health
+            </Button>
           </div>
           <pre className="text-xs bg-muted/30 p-3 rounded overflow-auto max-h-48">{healthResult ? JSON.stringify(healthResult, null, 2) : 'No results yet.'}</pre>
         </div>
@@ -300,9 +312,9 @@ const TrainingHub: React.FC = () => {
         <div className="card p-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold">Dry-Run (Text → TTS)</h2>
-            <button className="btn btn-primary btn-sm" onClick={handleDryRun} disabled={!selectedAgent || syncing}>
-              {syncing ? <RefreshCw className="w-4 h-4 mr-1 animate-spin" /> : <Sparkles className="w-4 h-4 mr-1" />} Run
-            </button>
+            <Button size="sm" onClick={handleDryRun} disabled={!selectedAgent || syncing} loading={syncing}>
+              <Sparkles className="w-4 h-4 mr-1" /> Run
+            </Button>
           </div>
           <textarea value={testMessage} onChange={(e) => setTestMessage(e.target.value)} className="w-full px-3 py-2 border border-border rounded-md bg-input h-20 mb-3" placeholder="Type a message for the agent..." />
           <pre className="text-xs bg-muted/30 p-3 rounded overflow-auto max-h-48">{testResult ? JSON.stringify(testResult, null, 2) : 'No results yet.'}</pre>
