@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BookOpen, Save, Upload, RefreshCw, Database, Sparkles, CheckCircle, Link2 } from 'lucide-react';
+import { BookOpen, Save, Upload, RefreshCw, Database, Sparkles, CheckCircle, Link2, Copy } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { toast } from 'react-hot-toast';
 import { useMCP } from '../../hooks/useMCP';
@@ -38,6 +38,12 @@ const TrainingHub: React.FC = () => {
   const [testResult, setTestResult] = useState<any>(null);
   const [healthLoading, setHealthLoading] = useState(false);
   const [healthResult, setHealthResult] = useState<any>(null);
+  
+  // Conversation tracking
+  const [conversation, setConversation] = useState<Array<{ speaker: 'user' | 'agent', text: string, timestamp: number }>>([]);
+  const [showEvaluation, setShowEvaluation] = useState(false);
+  const [currentEvaluation, setCurrentEvaluation] = useState<any>(null);
+  const [evaluationLoading, setEvaluationLoading] = useState(false);
 
   const selectedAgent = useMemo(() => voiceAgents.find(a => a.id === selectedId), [voiceAgents, selectedId]);
 
@@ -247,22 +253,148 @@ const TrainingHub: React.FC = () => {
   };
 
   const handleDryRun = async () => {
-    if (!selectedAgent) return;
+    if (!selectedAgent || !testMessage.trim()) return;
+    
+    // Add user message to conversation
+    const userMessage = { 
+      speaker: 'user' as const, 
+      text: testMessage, 
+      timestamp: Date.now() 
+    };
+    const updatedConversation = [...conversation, userMessage];
+    setConversation(updatedConversation);
+    
     setSyncing(true);
     try {
       const res = await mcp.voiceAgentCall({
         agentId: selectedAgent.id,
         phoneNumber: '+10000000000',
-        context: { userMessage: testMessage },
-        options: { textOnly: true } // SMS/text mode - no voice generation
+        context: { 
+          userMessage: testMessage,
+          conversationHistory: conversation.map(m => ({
+            role: m.speaker === 'user' ? 'user' : 'assistant',
+            content: m.text
+          }))
+        },
+        options: { textOnly: true }
       });
+      
+      // Add agent response to conversation
+      const agentMessage = {
+        speaker: 'agent' as const,
+        text: res.transcript || res.response || 'No response',
+        timestamp: Date.now()
+      };
+      const finalConversation = [...updatedConversation, agentMessage];
+      setConversation(finalConversation);
       setTestResult(res);
-      toast.success('Text response generated (SMS mode)');
+      
+      // Clear input
+      setTestMessage('');
+      
+      // Auto-evaluate if enabled
+      if (showEvaluation) {
+        await evaluateConversation(finalConversation);
+      }
+      
+      toast.success('Response generated');
     } catch (e: any) {
       toast.error(e.message || 'Dry-run failed');
     } finally {
       setSyncing(false);
     }
+  };
+
+  const evaluateConversation = async (conv: typeof conversation) => {
+    if (!selectedAgent) return;
+    
+    setEvaluationLoading(true);
+    try {
+      const transcript = conv.map(m => `${m.speaker === 'user' ? 'Caller' : 'Agent'}: ${m.text}`).join('\n');
+      
+      const response = await fetch('/api/mcp/agent/evaluateTranscript?mode=light', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          agentId: selectedAgent.id,
+          transcript,
+          promptId: null
+        })
+      });
+      
+      const data = await response.json();
+      if (data.ok) {
+        setCurrentEvaluation(data.evaluation);
+      }
+    } catch (e: any) {
+      console.error('Evaluation failed:', e);
+    } finally {
+      setEvaluationLoading(false);
+    }
+  };
+
+  const handleSaveForTraining = async () => {
+    if (!selectedAgent || conversation.length === 0) {
+      toast.error('No conversation to save');
+      return;
+    }
+    
+    setSaving(true);
+    try {
+      const transcript = conversation.map(m => `${m.speaker === 'user' ? 'Caller' : 'Agent'}: ${m.text}`).join('\n');
+      const summary = `Manual training session with ${conversation.length} messages`;
+      
+      const response = await fetch('/api/mcp/agent/ingestTranscript', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          agentId: selectedAgent.id,
+          transcript,
+          summary,
+          tags: ['training', 'manual_review', 'dry_run'],
+          metrics: {
+            messageCount: conversation.length,
+            duration: conversation[conversation.length - 1].timestamp - conversation[0].timestamp
+          }
+        })
+      });
+      
+      const data = await response.json();
+      if (data.ok) {
+        toast.success('Conversation saved for training!');
+        // Reset conversation after successful save
+        setConversation([]);
+        setTestResult(null);
+        setCurrentEvaluation(null);
+      } else {
+        toast.error(data.error || 'Failed to save');
+      }
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to save conversation');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleResetConversation = () => {
+    if (conversation.length === 0) return;
+    
+    if (confirm('Reset conversation? All messages will be cleared.')) {
+      setConversation([]);
+      setTestResult(null);
+      setCurrentEvaluation(null);
+      setTestMessage('');
+      toast.success('Conversation reset');
+    }
+  };
+
+  const handleCopyTranscript = () => {
+    const transcript = conversation.map(m => 
+      `${m.speaker === 'user' ? 'Caller' : 'Agent'}: ${m.text}`
+    ).join('\n\n');
+    
+    navigator.clipboard.writeText(transcript);
+    toast.success('Transcript copied to clipboard');
   };
 
   return (
@@ -437,13 +569,138 @@ const TrainingHub: React.FC = () => {
 
         <div className="card p-4">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold">Dry-Run (Text → TTS)</h2>
-            <Button size="sm" onClick={handleDryRun} disabled={!selectedAgent || syncing} loading={syncing}>
-              <Sparkles className="w-4 h-4 mr-1" /> Run
+            <h2 className="font-semibold">Conversation Simulator</h2>
+            <div className="flex items-center gap-2">
+              {/* Evaluation Toggle */}
+              <label className="flex items-center gap-1 text-xs cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  checked={showEvaluation} 
+                  onChange={(e) => setShowEvaluation(e.target.checked)}
+                  className="rounded"
+                />
+                <span>Show Score</span>
+              </label>
+              
+              {/* Reset Button */}
+              {conversation.length > 0 && (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleResetConversation}
+                  className="text-xs"
+                >
+                  <RefreshCw className="w-3 h-3 mr-1" /> Reset
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Conversation Display */}
+          {conversation.length > 0 ? (
+            <div className="mb-3 space-y-2 max-h-64 overflow-y-auto p-3 bg-muted/30 rounded">
+              {conversation.map((msg, idx) => (
+                <div 
+                  key={idx} 
+                  className={`flex ${msg.speaker === 'user' ? 'justify-start' : 'justify-end'}`}
+                >
+                  <div 
+                    className={`max-w-[80%] px-3 py-2 rounded-lg text-sm ${
+                      msg.speaker === 'user' 
+                        ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-900 dark:text-blue-100' 
+                        : 'bg-green-100 dark:bg-green-900/30 text-green-900 dark:text-green-100'
+                    }`}
+                  >
+                    <div className="text-xs opacity-60 mb-1">
+                      {msg.speaker === 'user' ? 'Caller' : 'Agent'}
+                    </div>
+                    {msg.text}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="mb-3 p-6 bg-muted/30 rounded text-center text-muted-foreground text-sm">
+              Start a conversation by typing a message below
+            </div>
+          )}
+
+          {/* Evaluation Card */}
+          {showEvaluation && currentEvaluation && (
+            <div className="mb-3 p-3 rounded border border-border bg-muted/10">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium">Evaluation Score</span>
+                <span className="text-lg font-bold">{currentEvaluation.confidenceScore ? Math.round(currentEvaluation.confidenceScore * 100) : '--'}/100</span>
+              </div>
+              {currentEvaluation.rubricScores && (
+                <div className="flex flex-wrap gap-1">
+                  {Object.entries(currentEvaluation.rubricScores).map(([key, value]: [string, any]) => (
+                    <span 
+                      key={key} 
+                      className={`text-xs px-2 py-1 rounded ${
+                        value >= 4 ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' :
+                        value >= 2 ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300' :
+                        'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
+                      }`}
+                    >
+                      {value >= 4 ? '✅' : value >= 2 ? '⚠️' : '❌'} {key.replace(/([A-Z])/g, ' $1').trim()}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Message Input */}
+          <div className="flex gap-2 mb-3">
+            <input
+              type="text"
+              value={testMessage}
+              onChange={(e) => setTestMessage(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && !syncing && handleDryRun()}
+              className="flex-1 px-3 py-2 border border-border rounded-md bg-input text-sm"
+              placeholder="Type your message..."
+              disabled={syncing}
+            />
+            <Button 
+              size="sm" 
+              onClick={handleDryRun} 
+              disabled={!selectedAgent || !testMessage.trim() || syncing} 
+              loading={syncing}
+            >
+              Send
             </Button>
           </div>
-          <textarea value={testMessage} onChange={(e) => setTestMessage(e.target.value)} className="w-full px-3 py-2 border border-border rounded-md bg-input h-20 mb-3" placeholder="Type a message for the agent..." />
-          <pre className="text-xs bg-muted/30 p-3 rounded overflow-auto max-h-48">{testResult ? JSON.stringify(testResult, null, 2) : 'No results yet.'}</pre>
+
+          {/* Action Buttons */}
+          {conversation.length > 0 && (
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleCopyTranscript}
+                className="flex-1"
+              >
+                📋 Copy Transcript
+              </Button>
+              <Button 
+                size="sm" 
+                onClick={handleSaveForTraining}
+                disabled={saving}
+                loading={saving}
+                className="flex-1"
+              >
+                💾 Save for Training
+              </Button>
+            </div>
+          )}
+
+          {/* Message Counter */}
+          {conversation.length > 0 && (
+            <div className="mt-2 text-xs text-muted-foreground text-center">
+              {conversation.length} message{conversation.length !== 1 ? 's' : ''} in conversation
+            </div>
+          )}
         </div>
       </div>
 
