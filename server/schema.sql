@@ -270,6 +270,17 @@ CREATE TABLE IF NOT EXISTS agent_prompts (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
+-- Add prompt_hash column if it doesn't exist (migration for existing tables)
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'agent_prompts' AND column_name = 'prompt_hash'
+  ) THEN
+    ALTER TABLE agent_prompts ADD COLUMN prompt_hash TEXT;
+  END IF;
+END $$;
+
 -- Index for agent prompt lookups
 CREATE INDEX IF NOT EXISTS idx_agent_prompts_agent_id ON agent_prompts(agent_id);
 CREATE INDEX IF NOT EXISTS idx_agent_prompts_niche ON agent_prompts(niche);
