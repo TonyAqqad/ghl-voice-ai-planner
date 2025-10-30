@@ -49,16 +49,26 @@ class VoiceAgentPrimitive {
 
       const assistantMessage = conversationResult.choices?.[0]?.message?.content || conversationResult;
 
-      // Generate voice using ElevenLabs
-      const voiceId = agent.voice_id || options.voiceId || 'default';
-      const audioBuffer = await this.elevenlabs.generateSpeech(
-        assistantMessage,
-        voiceId,
-        {
-          stability: options.stability || 0.5,
-          similarityBoost: options.similarityBoost || 0.75
+      // Generate voice using ElevenLabs (skip if textOnly mode)
+      let audioBuffer = null;
+      const textOnly = options.textOnly !== undefined ? options.textOnly : true; // Default to text-only for dry-run
+      
+      if (!textOnly && this.elevenlabs.apiKey) {
+        try {
+          const voiceId = agent.voice_id || options.voiceId || 'default';
+          audioBuffer = await this.elevenlabs.generateSpeech(
+            assistantMessage,
+            voiceId,
+            {
+              stability: options.stability || 0.5,
+              similarityBoost: options.similarityBoost || 0.75
+            }
+          );
+        } catch (voiceError) {
+          console.warn('⚠️  Voice generation failed (continuing with text-only):', voiceError.message);
+          // Continue without audio - text response is sufficient
         }
-      );
+      }
 
       // Log the call
       await pool.query(
@@ -76,6 +86,7 @@ class VoiceAgentPrimitive {
         callId: `call_${Date.now()}`,
         status: 'success',
         transcript: assistantMessage,
+        mode: textOnly ? 'text' : 'voice',
         audioBuffer: audioBuffer ? Buffer.from(audioBuffer).toString('base64') : null,
         duration: 0 // Can be calculated from audio buffer length
       };

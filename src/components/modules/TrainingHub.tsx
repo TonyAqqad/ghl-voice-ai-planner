@@ -253,10 +253,11 @@ const TrainingHub: React.FC = () => {
       const res = await mcp.voiceAgentCall({
         agentId: selectedAgent.id,
         phoneNumber: '+10000000000',
-        context: { userMessage: testMessage }
+        context: { userMessage: testMessage },
+        options: { textOnly: true } // SMS/text mode - no voice generation
       });
       setTestResult(res);
-      toast.success('Dry-run completed');
+      toast.success('Text response generated (SMS mode)');
     } catch (e: any) {
       toast.error(e.message || 'Dry-run failed');
     } finally {
