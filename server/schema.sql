@@ -340,6 +340,28 @@ CREATE TABLE IF NOT EXISTS agent_prompt_reviews (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- Add reviewed_at column if it doesn't exist (migration for existing tables)
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'agent_call_logs' AND column_name = 'reviewed_at'
+  ) THEN
+    ALTER TABLE agent_call_logs ADD COLUMN reviewed_at TIMESTAMPTZ;
+  END IF;
+END $$;
+
+-- Add review_id column if it doesn't exist (migration for existing tables)
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'agent_call_logs' AND column_name = 'review_id'
+  ) THEN
+    ALTER TABLE agent_call_logs ADD COLUMN review_id UUID;
+  END IF;
+END $$;
+
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_call_logs_agent_id ON agent_call_logs(agent_id);
 CREATE INDEX IF NOT EXISTS idx_call_logs_reviewed_at ON agent_call_logs(reviewed_at);
