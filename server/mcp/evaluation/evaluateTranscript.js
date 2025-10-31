@@ -82,6 +82,20 @@ async function evaluateTranscript(transcript, promptSpec, overlay, options = {})
     evaluation.improvementNotes.push(...verificationScore.notes);
   }
 
+  // Rule 7: Check custom action triggers (if any actions are configured)
+  const actionScore = checkActionTriggers(transcript, overlay, metrics.actionTriggers || []);
+  if (actionScore) {
+    evaluation.rubricScores.actionTriggerTiming = actionScore.score;
+    evaluation.actionTriggers = actionScore.triggers;
+    if (actionScore.score < 4) {
+      evaluation.improvementNotes.push(...actionScore.notes);
+      evaluation.suggestedPromptPatch = {
+        ...evaluation.suggestedPromptPatch,
+        reinforceActionTriggers: actionScore.missingActions
+      };
+    }
+  }
+
   // Calculate confidence score (0.0 to 1.0)
   const scores = Object.values(evaluation.rubricScores);
   const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length;
@@ -350,6 +364,132 @@ function detectKbGaps(transcript, overlay) {
   }
   
   return null;
+}
+
+/**
+ * Check if custom actions were triggered at the right time
+ */
+function checkActionTriggers(transcript, overlay, actionTriggers = []) {
+  // If no custom actions configured, skip this check
+  const expectedActions = overlay?.custom_actions_templates || [];
+  if (expectedActions.length === 0) {
+    return null; // No actions to evaluate
+  }
+
+  const score = {
+    score: 5.0,
+    notes: [],
+    triggers: [],
+    missingActions: []
+  };
+
+  // Parse transcript to find conversation turns
+  const turns = transcript.split('\n').filter(line => line.trim());
+  const totalTurns = turns.length;
+
+  // Track which actions were triggered
+  const triggeredActionNames = new Set(actionTriggers.map(a => a.action_name));
+
+  // Check each expected action
+  expectedActions.forEach(expectedAction => {
+    const actionName = expectedAction.name;
+    const trigger = actionTriggers.find(t => t.action_name === actionName);
+
+    if (trigger) {
+      // Action was triggered - check if timing was correct
+      score.triggers.push({
+        name: actionName,
+        type: expectedAction.description || 'Custom Action',
+        turn: trigger.conversation_turn,
+        totalTurns: totalTurns,
+        timely: trigger.was_timely !== false,
+        success: trigger.success,
+        parameters: trigger.parameters
+      });
+
+      // Penalize if triggered too early
+      if (trigger.conversation_turn < 3 && actionName.includes('upsert') && !trigger.was_timely) {
+        score.score -= 0.5;
+        score.notes.push(`${actionName} triggered too early (turn ${trigger.conversation_turn}) - should wait for more info`);
+      }
+
+      // Penalize if triggered too late
+      if (trigger.conversation_turn > totalTurns * 0.8) {
+        score.score -= 0.5;
+        score.notes.push(`${actionName} triggered late (turn ${trigger.conversation_turn}/${totalTurns})`);
+      }
+
+      // Check if it failed
+      if (!trigger.success) {
+        score.score -= 1.0;
+        score.notes.push(`${actionName} failed: ${trigger.error_message || 'Unknown error'}`);
+      }
+    } else {
+      // Action was NOT triggered - check if it should have been
+      const shouldTrigger = shouldActionHaveTriggered(actionName, transcript, overlay);
+      
+      if (shouldTrigger.should) {
+        score.score -= 1.5;
+        score.notes.push(`Missing action trigger: ${actionName} should have been called ${shouldTrigger.reason}`);
+        score.missingActions.push(actionName);
+      }
+    }
+  });
+
+  // Cap score at 5.0 and floor at 0
+  score.score = Math.max(0, Math.min(5.0, score.score));
+
+  return score;
+}
+
+/**
+ * Determine if an action should have been triggered based on conversation
+ */
+function shouldActionHaveTriggered(actionName, transcript, overlay) {
+  const transcriptLower = transcript.toLowerCase();
+  
+  // Contact creation/upsert should happen if fields were collected
+  if (actionName.includes('upsert') || actionName.includes('contact')) {
+    const hasName = /(?:name|i'm|i am)\s+\w+/i.test(transcript);
+    const hasPhone = /\d{3}[-.\s]?\d{3}[-.\s]?\d{4}/.test(transcript);
+    const hasEmail = /[\w.-]+@[\w.-]+\.\w+/.test(transcript);
+    
+    if (hasName && hasPhone) {
+      return {
+        should: true,
+        reason: 'after collecting name and phone'
+      };
+    }
+  }
+
+  // Scheduling should happen if booking was discussed
+  if (actionName.includes('schedule') || actionName.includes('book')) {
+    const bookingKeywords = ['book', 'schedule', 'appointment', 'class', 'when can', 'what time'];
+    const hasBookingIntent = bookingKeywords.some(kw => transcriptLower.includes(kw));
+    
+    if (hasBookingIntent) {
+      return {
+        should: true,
+        reason: 'after booking intent was expressed'
+      };
+    }
+  }
+
+  // Workflow trigger should happen if specific conditions met
+  if (actionName.includes('workflow') || actionName.includes('trigger')) {
+    // Check for completion keywords
+    const completionKeywords = ['all set', 'confirmed', 'looking forward', 'see you'];
+    const hasCompletion = completionKeywords.some(kw => transcriptLower.includes(kw));
+    
+    if (hasCompletion) {
+      return {
+        should: true,
+        reason: 'at conversation completion'
+      };
+    }
+  }
+
+  return { should: false, reason: '' };
 }
 
 module.exports = { evaluateTranscript };

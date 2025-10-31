@@ -10,13 +10,16 @@ import {
   Sparkles,
   Pencil,
   Loader2,
-  Check
+  Check,
+  Zap,
+  Clock
 } from 'lucide-react';
 import { EvaluationResult, EvaluationScorecardProps } from '../../types/evaluation';
 
 const RUBRIC_LABELS: Record<string, string> = {
   fieldCollection: 'Field Collection',
   bookingRules: 'Booking Rules',
+  actionTriggerTiming: 'Action Trigger Timing',
   tone: 'Tone & Natural Language',
   objectionHandling: 'Objection Handling',
   questionCadence: 'Question Cadence',
@@ -337,6 +340,90 @@ const EvaluationScorecard: React.FC<EvaluationScorecardProps> = ({
                 </div>
               )}
             </section>
+
+            {/* Custom Action Triggers */}
+            {evaluation.actionTriggers && evaluation.actionTriggers.length > 0 && (
+              <section>
+                <div className="flex items-center gap-2 mb-3">
+                  <Zap className="w-4 h-4 text-primary" />
+                  <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">Custom Action Triggers</h3>
+                  <span className="text-xs text-muted-foreground">{evaluation.actionTriggers.length} triggered</span>
+                </div>
+                <div className="space-y-3">
+                  {evaluation.actionTriggers.map((trigger, idx) => (
+                    <div 
+                      key={idx} 
+                      className={`border rounded-lg p-4 ${
+                        trigger.success && trigger.timely 
+                          ? 'border-green-500/50 bg-green-50 dark:bg-green-900/10' 
+                          : 'border-amber-500/50 bg-amber-50 dark:bg-amber-900/10'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <div className={`p-1 rounded ${
+                            trigger.success && trigger.timely 
+                              ? 'bg-green-500 text-white' 
+                              : 'bg-amber-500 text-white'
+                          }`}>
+                            <Zap className="w-3 h-3" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-foreground">{trigger.name}</p>
+                            <p className="text-xs text-muted-foreground">{trigger.type}</p>
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end gap-1">
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${
+                            trigger.success 
+                              ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' 
+                              : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
+                          }`}>
+                            {trigger.success ? '✓ Success' : '✗ Failed'}
+                          </span>
+                          {trigger.timely !== undefined && (
+                            <span className={`px-2 py-1 rounded text-xs font-medium ${
+                              trigger.timely 
+                                ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300' 
+                                : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300'
+                            }`}>
+                              {trigger.timely ? 'Good Timing' : 'Off Timing'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground mt-2">
+                        <div className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          <span>Turn {trigger.turn} of {trigger.totalTurns}</span>
+                        </div>
+                        <div className="flex-1 bg-border/30 h-1.5 rounded-full overflow-hidden">
+                          <div 
+                            className={`h-full rounded-full ${
+                              trigger.timely ? 'bg-green-500' : 'bg-amber-500'
+                            }`}
+                            style={{ width: `${(trigger.turn / trigger.totalTurns) * 100}%` }}
+                          />
+                        </div>
+                        <span className="text-xs font-medium">
+                          {Math.round((trigger.turn / trigger.totalTurns) * 100)}% through
+                        </span>
+                      </div>
+                      {trigger.parameters && Object.keys(trigger.parameters).length > 0 && (
+                        <details className="mt-3">
+                          <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+                            View parameters
+                          </summary>
+                          <pre className="mt-2 text-xs bg-background p-2 rounded border border-border/60 overflow-x-auto">
+                            {JSON.stringify(trigger.parameters, null, 2)}
+                          </pre>
+                        </details>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
 
             {/* Conversation Transcript */}
             <section>

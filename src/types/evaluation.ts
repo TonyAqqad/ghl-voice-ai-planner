@@ -1,3 +1,13 @@
+export interface ActionTrigger {
+  name: string;
+  type: string;
+  turn: number;
+  totalTurns: number;
+  timely: boolean;
+  success: boolean;
+  parameters?: Record<string, unknown>;
+}
+
 export interface EvaluationResult {
   pass: boolean;
   rubricScores: Record<string, number>;
@@ -5,6 +15,7 @@ export interface EvaluationResult {
   confidenceScore: number;
   suggestedPromptPatch?: Record<string, unknown> | null;
   suggestedKbAddition?: Record<string, unknown> | null;
+  actionTriggers?: ActionTrigger[];
 }
 
 export type ConversationSpeaker = 'user' | 'agent' | string;
