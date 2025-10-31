@@ -78,9 +78,9 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ agentId }) => {
     const previous = perfData[1];
     const generatedInsights: MasterInsight[] = [];
 
-    // Analyze confidence score trend
-    const confidenceDelta = latest.avg_confidence - previous.avg_confidence;
-    if (Math.abs(confidenceDelta) > 0.05) {
+    // Analyze confidence score trend (with null checks)
+    const confidenceDelta = (latest.avg_confidence || 0) - (previous.avg_confidence || 0);
+    if (Math.abs(confidenceDelta) > 0.05 && latest.avg_confidence && previous.avg_confidence) {
       generatedInsights.push({
         type: confidenceDelta > 0 ? 'improvement' : 'degradation',
         message: confidenceDelta > 0
@@ -92,9 +92,9 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ agentId }) => {
       });
     }
 
-    // Analyze field collection
-    const fieldDelta = latest.avg_field_collection - previous.avg_field_collection;
-    if (Math.abs(fieldDelta) > 0.3) {
+    // Analyze field collection (with null checks)
+    const fieldDelta = (latest.avg_field_collection || 0) - (previous.avg_field_collection || 0);
+    if (Math.abs(fieldDelta) > 0.3 && latest.avg_field_collection && previous.avg_field_collection) {
       generatedInsights.push({
         type: fieldDelta > 0 ? 'improvement' : 'degradation',
         message: fieldDelta > 0
@@ -106,9 +106,9 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ agentId }) => {
       });
     }
 
-    // Analyze tone improvements
-    const toneDelta = latest.avg_tone - previous.avg_tone;
-    if (Math.abs(toneDelta) > 0.3) {
+    // Analyze tone improvements (with null checks)
+    const toneDelta = (latest.avg_tone || 0) - (previous.avg_tone || 0);
+    if (Math.abs(toneDelta) > 0.3 && latest.avg_tone && previous.avg_tone) {
       generatedInsights.push({
         type: toneDelta > 0 ? 'improvement' : 'degradation',
         message: toneDelta > 0
@@ -131,8 +131,8 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ agentId }) => {
       });
     }
 
-    // Master template readiness
-    if (latest.avg_confidence >= 0.85 && latest.call_count >= 10) {
+    // Master template readiness (with null checks)
+    if (latest.avg_confidence && latest.avg_confidence >= 0.85 && latest.call_count && latest.call_count >= 10) {
       generatedInsights.push({
         type: 'improvement',
         message: `🌟 Agent is performing well! Consider promoting to a Master Template for reuse across similar agents.`,
@@ -206,9 +206,11 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ agentId }) => {
               <span className="text-xs font-medium text-muted-foreground">Current Confidence</span>
               <BarChart3 className="w-4 h-4 text-blue-500" />
             </div>
-            <p className="text-2xl font-bold">{Math.round(performance[0].avg_confidence * 100)}%</p>
+            <p className="text-2xl font-bold">
+              {performance[0].avg_confidence ? Math.round(performance[0].avg_confidence * 100) : 0}%
+            </p>
             <p className="text-xs text-muted-foreground mt-1">
-              Version {performance[0].version} · {performance[0].call_count} calls
+              Version {performance[0].version} · {performance[0].call_count || 0} calls
             </p>
           </div>
           
@@ -217,9 +219,11 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ agentId }) => {
               <span className="text-xs font-medium text-muted-foreground">Field Collection</span>
               <CheckCircle2 className="w-4 h-4 text-green-500" />
             </div>
-            <p className="text-2xl font-bold">{performance[0].avg_field_collection.toFixed(1)}/5</p>
+            <p className="text-2xl font-bold">
+              {performance[0].avg_field_collection ? performance[0].avg_field_collection.toFixed(1) : '0.0'}/5
+            </p>
             <p className="text-xs text-muted-foreground mt-1">
-              {performance.length > 1 && (
+              {performance.length > 1 && performance[0].avg_field_collection && performance[1].avg_field_collection && (
                 <span className={performance[0].avg_field_collection > performance[1].avg_field_collection ? 'text-green-600' : 'text-red-600'}>
                   {performance[0].avg_field_collection > performance[1].avg_field_collection ? '↑' : '↓'} {Math.abs(performance[0].avg_field_collection - performance[1].avg_field_collection).toFixed(1)} from previous
                 </span>
@@ -232,7 +236,7 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ agentId }) => {
               <span className="text-xs font-medium text-muted-foreground">Corrections Applied</span>
               <TrendingUp className="w-4 h-4 text-purple-500" />
             </div>
-            <p className="text-2xl font-bold">{performance[0].correction_count}</p>
+            <p className="text-2xl font-bold">{performance[0].correction_count || 0}</p>
             <p className="text-xs text-muted-foreground mt-1">This version</p>
           </div>
         </div>
@@ -295,9 +299,13 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ agentId }) => {
                   {format(new Date(perf.created_at), 'MMM d, h:mm a')} · v{perf.version}
                 </span>
                 <div className="flex items-center gap-3">
-                  <span className="text-foreground">{Math.round(perf.avg_confidence * 100)}% conf</span>
-                  <span className="text-foreground">{perf.avg_field_collection.toFixed(1)} fields</span>
-                  <span className="text-muted-foreground">{perf.call_count} calls</span>
+                  <span className="text-foreground">
+                    {perf.avg_confidence ? Math.round(perf.avg_confidence * 100) : 0}% conf
+                  </span>
+                  <span className="text-foreground">
+                    {perf.avg_field_collection ? perf.avg_field_collection.toFixed(1) : '0.0'} fields
+                  </span>
+                  <span className="text-muted-foreground">{perf.call_count || 0} calls</span>
                 </div>
               </div>
             ))}
