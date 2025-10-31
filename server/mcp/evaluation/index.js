@@ -398,7 +398,8 @@ module.exports = {
   batchReview,
   saveCorrection: saveCorrectionEndpoint,
   getCorrectionsHistory,
-  getPromptVersions
+  getPromptVersions,
+  getAgentPerformance
 };
 
 /**
@@ -718,6 +719,57 @@ async function getPromptVersions(req, res) {
     });
   } catch (error) {
     console.error('Error fetching prompt versions:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+/**
+ * GET /api/mcp/agent/performance
+ * Fetch agent performance metrics over time grouped by prompt version
+ */
+async function getAgentPerformance(req, res) {
+  try {
+    const { agentId, limit = 10 } = req.query;
+
+    if (!agentId) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'agentId is required' 
+      });
+    }
+
+    // Get performance metrics aggregated by prompt version
+    const query = `
+      WITH version_stats AS (
+        SELECT
+          ap.version,
+          ap.created_at,
+          COUNT(DISTINCT acl.id) as call_count,
+          COUNT(DISTINCT arc.id) as correction_count,
+          AVG(apr.confidence_score) as avg_confidence,
+          AVG((apr.evaluation->'rubricScores'->>'fieldCollection')::float) as avg_field_collection,
+          AVG((apr.evaluation->'rubricScores'->>'tone')::float) as avg_tone,
+          AVG((apr.evaluation->'rubricScores'->>'bookingRules')::float) as avg_booking_rules
+        FROM agent_prompts ap
+        LEFT JOIN agent_call_logs acl ON acl.prompt_id = ap.id
+        LEFT JOIN agent_prompt_reviews apr ON apr.prompt_id = ap.id
+        LEFT JOIN agent_response_corrections arc ON arc.prompt_id = ap.id
+        WHERE ap.agent_id = $1
+        GROUP BY ap.version, ap.created_at
+        ORDER BY ap.created_at DESC
+        LIMIT $2
+      )
+      SELECT * FROM version_stats;
+    `;
+
+    const result = await pool.query(query, [agentId, limit]);
+
+    res.json({
+      success: true,
+      performance: result.rows
+    });
+  } catch (error) {
+    console.error('Error fetching agent performance:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 }

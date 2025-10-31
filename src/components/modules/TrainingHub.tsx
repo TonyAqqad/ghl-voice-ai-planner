@@ -6,6 +6,7 @@ import { useMCP } from '../../hooks/useMCP';
 import Button from '../../components/ui/Button';
 import { getApiBaseUrl } from '../../utils/apiBase';
 import EvaluationScorecard from './EvaluationScorecard';
+import MasterAIInsights from './MasterAIInsights';
 import { ConversationTurn, ManualCorrectionPayload } from '../../types/evaluation';
 
 interface TrainingPayload {
@@ -685,6 +686,11 @@ const TrainingHub: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Master AI Insights */}
+      <div className="mt-6">
+        <MasterAIInsights agentId={selectedAgent?.id} />
+      </div>
 
       {/* Inline Testing Panel */}
       <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">

@@ -332,5 +332,8 @@ router.get('/agent/corrections', evaluationModule.getCorrectionsHistory);
 // Get prompt version history
 router.get('/prompt/versions', evaluationModule.getPromptVersions);
 
+// Get agent performance metrics over time
+router.get('/agent/performance', evaluationModule.getAgentPerformance);
+
 module.exports = router;
 
