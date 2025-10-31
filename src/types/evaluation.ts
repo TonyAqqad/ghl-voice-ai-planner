@@ -8,6 +8,14 @@ export interface ActionTrigger {
   parameters?: Record<string, unknown>;
 }
 
+export interface CollectedField {
+  field: string;
+  label: string;
+  value: string | null;
+  collected: boolean;
+  icon: string;
+}
+
 export interface EvaluationResult {
   pass: boolean;
   rubricScores: Record<string, number>;
@@ -16,6 +24,7 @@ export interface EvaluationResult {
   suggestedPromptPatch?: Record<string, unknown> | null;
   suggestedKbAddition?: Record<string, unknown> | null;
   actionTriggers?: ActionTrigger[];
+  collectedFields?: CollectedField[];
 }
 
 export type ConversationSpeaker = 'user' | 'agent' | string;

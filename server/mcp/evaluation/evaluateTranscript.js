@@ -30,6 +30,7 @@ async function evaluateTranscript(transcript, promptSpec, overlay, options = {})
   // Rule 1: Check required fields order
   const fieldScore = checkFieldsOrder(transcript, overlay.required_fields_order || [], metrics);
   evaluation.rubricScores.fieldCollection = fieldScore.score;
+  evaluation.collectedFields = extractFieldValues(transcript, overlay.required_fields_order || [], metrics.fieldsCaptured || []);
   if (fieldScore.score < 4) {
     evaluation.pass = false;
     evaluation.improvementNotes.push(...fieldScore.notes);
@@ -490,6 +491,71 @@ function shouldActionHaveTriggered(actionName, transcript, overlay) {
   }
 
   return { should: false, reason: '' };
+}
+
+/**
+ * Extract actual field values from the transcript
+ */
+function extractFieldValues(transcript, requiredFields, fieldsCaptured) {
+  const fields = [];
+  
+  // Define expected fields and their extraction patterns
+  const fieldPatterns = {
+    'contact.first_name': {
+      label: 'First Name',
+      pattern: /(?:first name|my name is|i'm|i am|this is|call me)\s+([A-Z][a-z]+)/i,
+      icon: 'user'
+    },
+    'contact.last_name': {
+      label: 'Last Name',
+      pattern: /(?:last name|surname)\s+(?:is\s+)?([A-Z][a-z]+)|([A-Z][a-z]+)\s+is my last name/i,
+      icon: 'user'
+    },
+    'contact.unique_phone_number': {
+      label: 'Phone Number',
+      pattern: /(\d{3}[-.\s]?\d{3}[-.\s]?\d{4})/,
+      icon: 'phone'
+    },
+    'contact.phone': {
+      label: 'Phone Number',
+      pattern: /(\d{3}[-.\s]?\d{3}[-.\s]?\d{4})/,
+      icon: 'phone'
+    },
+    'contact.email': {
+      label: 'Email',
+      pattern: /([\w.-]+@[\w.-]+\.\w+)/i,
+      icon: 'mail'
+    }
+  };
+
+  // Check each required field
+  requiredFields.forEach(field => {
+    const pattern = fieldPatterns[field];
+    if (!pattern) {
+      // Unknown field type, just track if captured
+      fields.push({
+        field: field,
+        label: field.split('.').pop().replace(/_/g, ' '),
+        value: null,
+        collected: fieldsCaptured.includes(field),
+        icon: 'check'
+      });
+      return;
+    }
+
+    const match = transcript.match(pattern.pattern);
+    const value = match ? (match[1] || match[2] || match[0]).trim() : null;
+    
+    fields.push({
+      field: field,
+      label: pattern.label,
+      value: value,
+      collected: fieldsCaptured.includes(field) || (value !== null),
+      icon: pattern.icon
+    });
+  });
+
+  return fields;
 }
 
 module.exports = { evaluateTranscript };

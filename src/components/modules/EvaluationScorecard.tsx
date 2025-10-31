@@ -12,7 +12,10 @@ import {
   Loader2,
   Check,
   Zap,
-  Clock
+  Clock,
+  User,
+  Phone,
+  Mail
 } from 'lucide-react';
 import { EvaluationResult, EvaluationScorecardProps } from '../../types/evaluation';
 
@@ -306,6 +309,70 @@ const EvaluationScorecard: React.FC<EvaluationScorecardProps> = ({
                 )}
               </div>
             </section>
+
+            {/* Contact Fields Collected */}
+            {evaluation.collectedFields && evaluation.collectedFields.length > 0 && (
+              <section>
+                <div className="flex items-center gap-2 mb-3">
+                  <User className="w-4 h-4 text-primary" />
+                  <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">Contact Fields Collected</h3>
+                  <span className="text-xs text-muted-foreground">
+                    {evaluation.collectedFields.filter(f => f.collected).length} of {evaluation.collectedFields.length} fields
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {evaluation.collectedFields.map((field, idx) => {
+                    const IconComponent = 
+                      field.icon === 'user' ? User : 
+                      field.icon === 'phone' ? Phone : 
+                      field.icon === 'mail' ? Mail : 
+                      CheckCircle;
+                    
+                    return (
+                      <div
+                        key={idx}
+                        className={`border rounded-lg p-4 ${
+                          field.collected 
+                            ? 'border-green-500/50 bg-green-50 dark:bg-green-900/10' 
+                            : 'border-gray-300/50 bg-gray-50 dark:bg-gray-900/10'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <div className={`p-1.5 rounded ${
+                              field.collected 
+                                ? 'bg-green-500 text-white' 
+                                : 'bg-gray-400 text-white'
+                            }`}>
+                              <IconComponent className="w-3.5 h-3.5" />
+                            </div>
+                            <div>
+                              <p className="text-xs font-medium text-muted-foreground">{field.label}</p>
+                              {field.value ? (
+                                <p className="text-sm font-semibold text-foreground mt-0.5">{field.value}</p>
+                              ) : (
+                                <p className="text-sm text-muted-foreground italic mt-0.5">Not collected</p>
+                              )}
+                            </div>
+                          </div>
+                          <div className={`p-1 rounded-full ${
+                            field.collected 
+                              ? 'bg-green-500' 
+                              : 'bg-gray-400'
+                          }`}>
+                            {field.collected ? (
+                              <Check className="w-3 h-3 text-white" />
+                            ) : (
+                              <X className="w-3 h-3 text-white" />
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
 
             {/* Improvement Checklist */}
             <section>
