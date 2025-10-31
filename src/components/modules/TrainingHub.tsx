@@ -782,6 +782,34 @@ const TrainingHub: React.FC = () => {
                   ))}
                 </div>
               )}
+              
+              {/* Contact Fields Collected Summary */}
+              {currentEvaluation.collectedFields && currentEvaluation.collectedFields.length > 0 && (
+                <div className="mt-2 pt-2 border-t border-border/50">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-muted-foreground">Contact Fields</span>
+                    <span className="text-xs font-semibold text-foreground">
+                      {currentEvaluation.collectedFields.filter((f: any) => f.collected).length} of {currentEvaluation.collectedFields.length} collected
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {currentEvaluation.collectedFields.map((field: any, idx: number) => (
+                      <span 
+                        key={idx}
+                        className={`text-xs px-2 py-0.5 rounded ${
+                          field.collected 
+                            ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' 
+                            : 'bg-gray-100 dark:bg-gray-900/30 text-gray-500 dark:text-gray-400'
+                        }`}
+                        title={field.value || 'Not collected'}
+                      >
+                        {field.collected ? '✓' : '○'} {field.label}{field.value ? ': ' + field.value : ''}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
               <div className="mt-3 flex items-center justify-between">
                 <span className="text-xs text-muted-foreground">
                   {evaluationLoading ? 'Refreshing score...' : 'Click for detailed rubric & checklist'}
