@@ -396,7 +396,8 @@ module.exports = {
   applyPatchEndpoint,
   rollbackPrompt,
   batchReview,
-  saveCorrection: saveCorrectionEndpoint
+  saveCorrection: saveCorrectionEndpoint,
+  getCorrectionsHistory
 };
 
 /**
@@ -623,5 +624,60 @@ function truncateForOutline(text, maxLen = 160) {
   const singleLine = text.replace(/\s+/g, ' ').trim();
   if (singleLine.length <= maxLen) return singleLine;
   return `${singleLine.slice(0, maxLen - 1)}…`;
+}
+
+/**
+ * GET /api/mcp/agent/corrections
+ * Fetch all corrections with their impact
+ */
+async function getCorrectionsHistory(req, res) {
+  try {
+    const { agentId, limit = 50 } = req.query;
+    
+    let query = `
+      SELECT 
+        arc.*,
+        ap.version as prompt_version,
+        ap.system_prompt as current_prompt,
+        acl.transcript,
+        acl.created_at as call_date
+      FROM agent_response_corrections arc
+      LEFT JOIN agent_prompts ap ON arc.prompt_id = ap.id
+      LEFT JOIN agent_call_logs acl ON arc.call_log_id = acl.id
+    `;
+    
+    const params = [];
+    if (agentId) {
+      query += ' WHERE arc.agent_id = $1';
+      params.push(agentId);
+    }
+    
+    query += ' ORDER BY arc.created_at DESC LIMIT $' + (params.length + 1);
+    params.push(limit);
+    
+    const result = await pool.query(query, params);
+    
+    // Get stats
+    const statsQuery = `
+      SELECT 
+        COUNT(*) as total_corrections,
+        COUNT(DISTINCT agent_id) as agents_improved,
+        COUNT(CASE WHEN store_in = 'prompt' THEN 1 END) as prompt_updates,
+        COUNT(CASE WHEN store_in = 'kb' THEN 1 END) as kb_additions
+      FROM agent_response_corrections
+      ${agentId ? 'WHERE agent_id = $1' : ''}
+    `;
+    
+    const statsResult = await pool.query(statsQuery, agentId ? [agentId] : []);
+    
+    res.json({
+      success: true,
+      corrections: result.rows,
+      stats: statsResult.rows[0]
+    });
+  } catch (error) {
+    console.error('Error fetching corrections:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
 }
 
