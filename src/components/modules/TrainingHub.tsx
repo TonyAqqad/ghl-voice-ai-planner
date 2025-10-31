@@ -5,6 +5,7 @@ import { toast } from 'react-hot-toast';
 import { useMCP } from '../../hooks/useMCP';
 import Button from '../../components/ui/Button';
 import { getApiBaseUrl } from '../../utils/apiBase';
+import EvaluationScorecard from './EvaluationScorecard';
 
 interface TrainingPayload {
   agentId: string;
@@ -57,6 +58,7 @@ const TrainingHub: React.FC = () => {
   const [showEvaluation, setShowEvaluation] = useState(false);
   const [currentEvaluation, setCurrentEvaluation] = useState<any>(null);
   const [evaluationLoading, setEvaluationLoading] = useState(false);
+  const [scorecardOpen, setScorecardOpen] = useState(false);
 
   const selectedAgent = useMemo(() => voiceAgents.find(a => a.id === selectedId), [voiceAgents, selectedId]);
 
@@ -94,6 +96,14 @@ const TrainingHub: React.FC = () => {
     const kb = (selectedAgent as any).knowledgeBase as string[] | undefined;
     setKnowledge(kb?.join('\n') || '');
   }, [selectedAgent]);
+
+  useEffect(() => {
+    if (!showEvaluation) {
+      setScorecardOpen(false);
+    } else if (showEvaluation && currentEvaluation) {
+      setScorecardOpen(true);
+    }
+  }, [showEvaluation, currentEvaluation]);
 
   const payload: TrainingPayload | null = selectedAgent
     ? {
@@ -358,10 +368,15 @@ const TrainingHub: React.FC = () => {
         })
       });
       
-      if (response.ok) {
-        const data = await response.json();
-        if (data.ok && data.evaluation) {
-          setCurrentEvaluation(data.evaluation);
+      const data = await response.json().catch(() => null);
+
+      if (response.ok && data) {
+        const evaluationPayload = data.evaluation || null;
+        if ((data.ok || data.success) && evaluationPayload) {
+          setCurrentEvaluation(evaluationPayload);
+          if (showEvaluation) {
+            setScorecardOpen(true);
+          }
         }
       }
     } catch (e: any) {
@@ -405,6 +420,7 @@ const TrainingHub: React.FC = () => {
         setConversation([]);
         setTestResult(null);
         setCurrentEvaluation(null);
+        setScorecardOpen(false);
       } else {
         toast.error(data.error || 'Failed to save');
       }
@@ -423,6 +439,7 @@ const TrainingHub: React.FC = () => {
       setTestResult(null);
       setCurrentEvaluation(null);
       setTestMessage('');
+      setScorecardOpen(false);
       toast.success('Conversation reset');
     }
   };
@@ -690,6 +707,18 @@ const TrainingHub: React.FC = () => {
                   ))}
                 </div>
               )}
+              <div className="mt-3 flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">
+                  {evaluationLoading ? 'Refreshing score...' : 'Click for detailed rubric & checklist'}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setScorecardOpen(true)}
+                >
+                  View Details
+                </Button>
+              </div>
             </div>
           )}
 
@@ -750,6 +779,12 @@ const TrainingHub: React.FC = () => {
         <Link2 className="w-3 h-3" />
         <span>Sandbox Mode: All prompts and data are stored locally. No external API calls to GHL.</span>
       </div>
+
+      <EvaluationScorecard
+        evaluation={currentEvaluation}
+        isOpen={Boolean(scorecardOpen && currentEvaluation)}
+        onClose={() => setScorecardOpen(false)}
+      />
     </div>
   );
 };
