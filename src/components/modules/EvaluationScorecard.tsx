@@ -7,7 +7,10 @@ import {
   ClipboardList,
   ClipboardCheck,
   BookOpen,
-  Sparkles
+  Sparkles,
+  Pencil,
+  Loader2,
+  Check
 } from 'lucide-react';
 import { EvaluationResult, EvaluationScorecardProps } from '../../types/evaluation';
 
@@ -50,8 +53,25 @@ const statusIcon: Record<ScoreStatus, React.ReactNode> = {
   error: <AlertTriangle className="w-4 h-4" />
 };
 
-const EvaluationScorecard: React.FC<EvaluationScorecardProps> = ({ evaluation, isOpen, onClose }) => {
+const EvaluationScorecard: React.FC<EvaluationScorecardProps> = ({
+  evaluation,
+  isOpen,
+  onClose,
+  conversation,
+  agentId,
+  promptId,
+  reviewId,
+  callLogId,
+  onSaveCorrection,
+  savingCorrection,
+  correctionConfirmation
+}) => {
   const [checkedNotes, setCheckedNotes] = useState<Record<string, boolean>>({});
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editText, setEditText] = useState('');
+  const [editReason, setEditReason] = useState('');
+  const [storeLocation, setStoreLocation] = useState<'prompt' | 'kb'>('prompt');
+  const [formError, setFormError] = useState<string | null>(null);
 
   useEffect(() => {
     if (evaluation?.improvementNotes?.length) {
@@ -65,6 +85,25 @@ const EvaluationScorecard: React.FC<EvaluationScorecardProps> = ({ evaluation, i
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [evaluation]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setEditingIndex(null);
+      setEditText('');
+      setEditReason('');
+      setStoreLocation('prompt');
+      setFormError(null);
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (editingIndex !== null) {
+      const message = conversation[editingIndex];
+      if (message) {
+        setEditText(message.text);
+      }
+    }
+  }, [conversation, editingIndex]);
 
   const confidencePercent = useMemo(() => {
     if (!evaluation) return 0;
@@ -82,6 +121,70 @@ const EvaluationScorecard: React.FC<EvaluationScorecardProps> = ({ evaluation, i
   const handleToggleNote = (note: string) => {
     setCheckedNotes((prev) => ({ ...prev, [note]: !prev[note] }));
   };
+
+  const formatTimestamp = (value?: number) => {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '—';
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  };
+
+  const handleStartEdit = (index: number) => {
+    const message = conversation[index];
+    if (!message || (message.speaker ?? '').toLowerCase() !== 'agent') {
+      return;
+    }
+    setEditingIndex(index);
+    setEditText(message.text);
+    setEditReason('');
+    setStoreLocation('prompt');
+    setFormError(null);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingIndex(null);
+    setEditText('');
+    setEditReason('');
+    setStoreLocation('prompt');
+    setFormError(null);
+  };
+
+  const handleSaveEdit = async () => {
+    if (editingIndex === null) return;
+    const message = conversation[editingIndex];
+    if (!message) return;
+
+    const trimmed = editText.trim();
+    if (!trimmed) {
+      setFormError('Corrected response cannot be empty.');
+      return;
+    }
+
+    if (trimmed === message.text.trim()) {
+      setFormError('Corrected response must differ from the original.');
+      return;
+    }
+
+    try {
+      setFormError(null);
+      await onSaveCorrection({
+        messageIndex: editingIndex,
+        originalResponse: message.text,
+        correctedResponse: trimmed,
+        storeIn: storeLocation,
+        reason: editReason.trim() || undefined
+      });
+      setEditingIndex(null);
+      setEditText('');
+      setEditReason('');
+      setStoreLocation('prompt');
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : 'Failed to save correction.';
+      setFormError(messageText);
+    }
+  };
+
+  const editingMessage = editingIndex !== null ? conversation[editingIndex] : null;
 
   if (!evaluation) return null;
 
@@ -158,6 +261,13 @@ const EvaluationScorecard: React.FC<EvaluationScorecardProps> = ({ evaluation, i
               </div>
             </div>
 
+            {correctionConfirmation && (
+              <div className="rounded-lg border border-green-500/40 bg-green-500/10 px-4 py-3 text-sm text-green-700 dark:text-green-200 flex items-center gap-2">
+                <Check className="w-4 h-4" />
+                <span>{correctionConfirmation}</span>
+              </div>
+            )}
+
             {/* Rubric Scores */}
             <section>
               <div className="flex items-center gap-2 mb-3">
@@ -228,6 +338,152 @@ const EvaluationScorecard: React.FC<EvaluationScorecardProps> = ({ evaluation, i
               )}
             </section>
 
+            {/* Conversation Transcript */}
+            <section>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-primary" />
+                  <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">Conversation Transcript</h3>
+                </div>
+                {editingMessage && (
+                  <span className="text-xs text-muted-foreground">Editing turn #{editingIndex !== null ? editingIndex + 1 : ''}</span>
+                )}
+              </div>
+              {conversation.length === 0 ? (
+                <div className="p-4 border border-border/60 rounded-lg bg-muted/10 text-sm text-muted-foreground">
+                  No transcript captured for this evaluation.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {conversation.map((turn, idx) => {
+                    const isAgent = (turn.speaker ?? '').toLowerCase() === 'agent';
+                    const isEditing = editingIndex === idx;
+                    return (
+                      <div
+                        key={`${turn.timestamp}-${idx}`}
+                        className={`rounded-lg border p-4 transition ${
+                          isAgent
+                            ? 'border-primary/40 bg-primary/5'
+                            : 'border-border/60 bg-muted/10'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className={`text-xs font-medium uppercase tracking-wide ${isAgent ? 'text-primary' : 'text-muted-foreground'}`}>
+                              {isAgent ? 'Agent Response' : 'Caller Input'}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground">{formatTimestamp(turn.timestamp)}</p>
+                          </div>
+                          {isAgent && !isEditing && (
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1 rounded-md border border-border/60 px-2 py-1 text-[11px] font-medium text-muted-foreground hover:border-primary/50 hover:text-primary transition"
+                              onClick={() => handleStartEdit(idx)}
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                              Edit
+                            </button>
+                          )}
+                        </div>
+
+                        {isEditing ? (
+                          <div className="mt-3 space-y-3">
+                            <textarea
+                              className="w-full min-h-[120px] resize-y rounded-lg border border-border/60 bg-background p-3 text-sm text-foreground focus:border-primary focus:outline-none"
+                              value={editText}
+                              onChange={(event) => setEditText(event.target.value)}
+                              aria-label="Corrected agent response"
+                            />
+
+                            <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+                              <label
+                                className={`flex items-center gap-2 rounded-md border p-2 cursor-pointer transition ${
+                                  storeLocation === 'prompt'
+                                    ? 'border-primary text-primary bg-primary/5'
+                                    : 'border-border/60 bg-muted/5'
+                                }`}
+                              >
+                                <input
+                                  type="radio"
+                                  name="store-location"
+                                  value="prompt"
+                                  checked={storeLocation === 'prompt'}
+                                  onChange={() => setStoreLocation('prompt')}
+                                  className="h-3.5 w-3.5"
+                                />
+                                Store inside prompt (version bump)
+                              </label>
+                              <label
+                                className={`flex items-center gap-2 rounded-md border p-2 cursor-pointer transition ${
+                                  storeLocation === 'kb'
+                                    ? 'border-primary text-primary bg-primary/5'
+                                    : 'border-border/60 bg-muted/5'
+                                }`}
+                              >
+                                <input
+                                  type="radio"
+                                  name="store-location"
+                                  value="kb"
+                                  checked={storeLocation === 'kb'}
+                                  onChange={() => setStoreLocation('kb')}
+                                  className="h-3.5 w-3.5"
+                                />
+                                Add to knowledge base
+                              </label>
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-medium text-muted-foreground mb-1" htmlFor="correction-reason">
+                                Reason / context (optional)
+                              </label>
+                              <input
+                                id="correction-reason"
+                                type="text"
+                                value={editReason}
+                                onChange={(event) => setEditReason(event.target.value)}
+                                className="w-full rounded-md border border-border/60 bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
+                                placeholder="e.g., Clarify pricing objection"
+                              />
+                            </div>
+
+                            {formError && (
+                              <p className="text-xs text-red-500">{formError}</p>
+                            )}
+
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <button
+                                type="button"
+                                onClick={handleSaveEdit}
+                                disabled={savingCorrection}
+                                className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition disabled:opacity-60"
+                              >
+                                {savingCorrection ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <CheckCircle className="w-4 h-4" />
+                                )}
+                                {savingCorrection ? 'Saving…' : 'Save Correction'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleCancelEdit}
+                                disabled={savingCorrection}
+                                className="inline-flex items-center gap-2 rounded-md border border-border/60 px-3 py-2 text-sm font-medium text-muted-foreground hover:border-primary/40 hover:text-primary transition"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="mt-2 whitespace-pre-line text-sm text-foreground/90">{turn.text}</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
             {/* Suggested Prompt Patch */}
             {evaluation.suggestedPromptPatch && (
               <section>
@@ -272,6 +528,24 @@ const EvaluationScorecard: React.FC<EvaluationScorecardProps> = ({ evaluation, i
                 <Info className="w-3 h-3" />
                 <span>Evaluations auto-save to MCP review queue for quality tracking.</span>
               </div>
+              <dl className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-muted-foreground">
+                <div>
+                  <dt className="font-medium text-foreground">Agent ID</dt>
+                  <dd>{agentId || '—'}</dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-foreground">Prompt ID</dt>
+                  <dd className="break-all">{promptId || '—'}</dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-foreground">Review ID</dt>
+                  <dd className="break-all">{reviewId || '—'}</dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-foreground">Call Log</dt>
+                  <dd className="break-all">{callLogId || '—'}</dd>
+                </div>
+              </dl>
             </section>
           </div>
         </div>

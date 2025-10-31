@@ -8,6 +8,15 @@ const AITemplateGenerator: React.FC = () => {
     { id: '2', name: 'Support Assistant', industry: 'Customer Service', status: 'generating' },
   ]);
 
+  const voiceBestPractices = [
+    'Speak clearly and ask only one question at a time',
+    'Keep responses short and natural — no more than 1–2 sentences',
+    'Pause between topic changes (simulate voice pacing)',
+    'Avoid stacked questions unless the user explicitly provides multiple answers at once',
+    'Always confirm one answer before asking the next',
+    'Respond conversationally, not like a chatbot or form',
+  ];
+
   const handleGenerate = () => {
     toast.success('Generating AI template...');
   };
@@ -57,6 +66,29 @@ const AITemplateGenerator: React.FC = () => {
           <p>• AI generates a complete voice agent template</p>
           <p>• Review and customize the generated script</p>
           <p>• Deploy with one click</p>
+        </div>
+      </div>
+
+      <div className="card p-6 mt-8 border border-primary/20 bg-gradient-to-br from-amber-50/70 via-white to-blue-50/40 dark:from-slate-900/40 dark:via-slate-900/20 dark:to-slate-900/10">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-xl font-semibold flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-primary" /> Voice AI Best Practices
+          </h2>
+          <span className="text-xs font-semibold uppercase tracking-wide text-primary">Master Prompt Add-On</span>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4">
+          Every generated system prompt now includes the following voice-optimized block to keep conversations human on simulated calls. You can copy or edit it directly inside your prompt.
+        </p>
+        <div className="rounded-lg border border-primary/30 bg-background/80 p-4 text-sm leading-relaxed shadow-sm">
+          <p className="font-semibold text-primary mb-3">## CONVERSATION RULES (PHONE-LIKE):</p>
+          <ul className="space-y-2">
+            {voiceBestPractices.map((rule) => (
+              <li key={rule} className="flex items-start gap-2">
+                <span className="mt-1 h-2 w-2 rounded-full bg-primary" aria-hidden="true" />
+                <span>{rule}</span>
+              </li>
+            ))}
+          </ul>
         </div>
       </div>
     </div>

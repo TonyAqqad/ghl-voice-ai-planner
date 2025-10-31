@@ -340,6 +340,24 @@ CREATE TABLE IF NOT EXISTS agent_prompt_reviews (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- Manual response corrections captured from Training Hub
+CREATE TABLE IF NOT EXISTS agent_response_corrections (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  agent_id TEXT NOT NULL,
+  call_log_id UUID REFERENCES agent_call_logs(id),
+  prompt_id UUID REFERENCES agent_prompts(id),
+  review_id UUID REFERENCES agent_prompt_reviews(id),
+  original_response TEXT NOT NULL,
+  original_hash TEXT,
+  corrected_response TEXT NOT NULL,
+  corrected_hash TEXT,
+  store_in TEXT NOT NULL CHECK (store_in IN ('prompt', 'kb')),
+  reason TEXT,
+  confirmation_message TEXT,
+  metadata JSONB,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
 -- ============================================
 -- Column Migrations for Existing Tables
 -- ============================================
@@ -439,6 +457,8 @@ CREATE INDEX IF NOT EXISTS idx_call_logs_agent_id ON agent_call_logs(agent_id);
 CREATE INDEX IF NOT EXISTS idx_call_logs_reviewed_at ON agent_call_logs(reviewed_at);
 CREATE INDEX IF NOT EXISTS idx_prompt_reviews_agent_id ON agent_prompt_reviews(agent_id);
 CREATE INDEX IF NOT EXISTS idx_prompt_reviews_patch_applied ON agent_prompt_reviews(patch_applied);
+CREATE INDEX IF NOT EXISTS idx_response_corrections_agent_id ON agent_response_corrections(agent_id);
+CREATE INDEX IF NOT EXISTS idx_response_corrections_created_at ON agent_response_corrections(created_at);
 
 -- RLS policies
 ALTER TABLE agent_call_logs ENABLE ROW LEVEL SECURITY;
@@ -448,6 +468,10 @@ CREATE POLICY "Enable all for service role" ON agent_call_logs FOR ALL USING (tr
 ALTER TABLE agent_prompt_reviews ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Enable all for service role" ON agent_prompt_reviews;
 CREATE POLICY "Enable all for service role" ON agent_prompt_reviews FOR ALL USING (true);
+
+ALTER TABLE agent_response_corrections ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Enable all for service role" ON agent_response_corrections;
+CREATE POLICY "Enable all for service role" ON agent_response_corrections FOR ALL USING (true);
 
 -- ============================================
 -- Seed Test Agents for Development

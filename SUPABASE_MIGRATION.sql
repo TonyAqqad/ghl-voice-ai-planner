@@ -150,7 +150,39 @@ CREATE INDEX IF NOT EXISTS idx_agent_prompts_niche ON agent_prompts(niche);
 CREATE INDEX IF NOT EXISTS idx_prompt_kits_name ON prompt_kits(name);
 
 -- ============================================
--- 5. Enable RLS and create policies
+-- 5. Create manual response correction table
+-- ============================================
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_name = 'agent_response_corrections'
+  ) THEN
+    CREATE TABLE agent_response_corrections (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      agent_id TEXT NOT NULL,
+      call_log_id UUID REFERENCES agent_call_logs(id),
+      prompt_id UUID REFERENCES agent_prompts(id),
+      review_id UUID REFERENCES agent_prompt_reviews(id),
+      original_response TEXT NOT NULL,
+      original_hash TEXT,
+      corrected_response TEXT NOT NULL,
+      corrected_hash TEXT,
+      store_in TEXT NOT NULL CHECK (store_in IN ('prompt', 'kb')),
+      reason TEXT,
+      confirmation_message TEXT,
+      metadata JSONB,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_response_corrections_agent_id ON agent_response_corrections(agent_id);
+CREATE INDEX IF NOT EXISTS idx_response_corrections_created_at ON agent_response_corrections(created_at);
+
+-- ============================================
+-- 6. Enable RLS and create policies
 -- ============================================
 
 -- Enable RLS on prompt_kits
@@ -178,8 +210,13 @@ ALTER TABLE agent_prompt_reviews ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Enable all for service role" ON agent_prompt_reviews;
 CREATE POLICY "Enable all for service role" ON agent_prompt_reviews FOR ALL USING (true);
 
+-- Enable RLS on agent_response_corrections
+ALTER TABLE agent_response_corrections ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Enable all for service role" ON agent_response_corrections;
+CREATE POLICY "Enable all for service role" ON agent_response_corrections FOR ALL USING (true);
+
 -- ============================================
--- VERIFICATION QUERIES
+-- 7. VERIFICATION QUERIES
 -- ============================================
 -- Run these after migration to verify:
 
@@ -199,6 +236,12 @@ ORDER BY ordinal_position;
 SELECT column_name, data_type 
 FROM information_schema.columns 
 WHERE table_name = 'agent_prompts' AND column_name = 'prompt_hash';
+
+-- Check agent_response_corrections columns
+SELECT column_name, data_type
+FROM information_schema.columns
+WHERE table_name = 'agent_response_corrections'
+ORDER BY ordinal_position;
 
 -- ============================================
 -- SUCCESS!

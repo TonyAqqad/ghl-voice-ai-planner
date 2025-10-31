@@ -323,5 +323,8 @@ router.post('/prompt/rollback', evaluationModule.rollbackPrompt);
 // Batch review missed transcripts
 router.post('/agent/batchReview', evaluationModule.batchReview);
 
+// Store a manual response correction from the Training Hub
+router.post('/agent/saveCorrection', evaluationModule.saveCorrection);
+
 module.exports = router;
 

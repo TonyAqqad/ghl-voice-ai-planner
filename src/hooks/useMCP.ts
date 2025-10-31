@@ -149,6 +149,10 @@ export function useMCP() {
     return callMCP('/agent/feedbackLoop', params, options);
   }, [callMCP]);
 
+  const agentSaveCorrection = useCallback((params: any, options?: UseMCPOptions) => {
+    return callMCP('/agent/saveCorrection', params, { showToast: false, ...(options || {}) });
+  }, [callMCP]);
+
   const configDriftDetect = useCallback((params: any, options?: UseMCPOptions) => {
     return callMCP('/configDrift/detect', params, options);
   }, [callMCP]);
@@ -233,6 +237,7 @@ export function useMCP() {
     agentAutoRecovery,
     agentAnomalyDetect,
     agentFeedbackLoop,
+    agentSaveCorrection,
     configDriftDetect,
     agentLiveTrace,
     getTrace,

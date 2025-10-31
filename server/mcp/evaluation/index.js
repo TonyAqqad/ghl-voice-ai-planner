@@ -3,10 +3,11 @@
  * Handles transcript ingestion, evaluation, patching, and review queue management
  */
 
+const crypto = require('crypto');
 const { evaluateTranscript } = require('./evaluateTranscript');
 const { applyPromptPatch } = require('./applyPromptPatch');
 const { pool } = require('../../database');
-const { getAgentPrompt, getPromptById } = require('../../db/promptStore');
+const { saveAgentPrompt, getAgentPrompt, getPromptById } = require('../../db/promptStore');
 const { getNicheOverlay } = require('../promptLib');
 
 /**
@@ -100,6 +101,8 @@ async function ingestTranscript(req, res) {
           success: true,
           callLog,
           evaluation,
+          reviewId: review.id,
+          promptId: prompt.id,
           patchApplied: true,
           newPromptId: newPrompt.id,
           message: `Evaluation complete. Patch auto-applied due to high confidence (${(evaluation.confidenceScore * 100).toFixed(0)}%)`
@@ -114,6 +117,8 @@ async function ingestTranscript(req, res) {
       success: true,
       callLog,
       evaluation,
+      reviewId: review.id,
+      promptId: prompt.id,
       patchApplied: false,
       message: evaluation.confidenceScore < 0.85 
         ? `Low confidence (${(evaluation.confidenceScore * 100).toFixed(0)}%) - queued for manual review` 
@@ -390,6 +395,233 @@ module.exports = {
   getReviewQueue,
   applyPatchEndpoint,
   rollbackPrompt,
-  batchReview
+  batchReview,
+  saveCorrection: saveCorrectionEndpoint
 };
+
+/**
+ * Save manual correction endpoint
+ * POST /api/mcp/agent/saveCorrection
+ */
+async function saveCorrectionEndpoint(req, res) {
+  try {
+    const {
+      agentId,
+      promptId,
+      callLogId,
+      reviewId,
+      originalResponse,
+      correctedResponse,
+      reason,
+      storeIn = 'prompt',
+      userId,
+      sessionId,
+      metadata = {}
+    } = req.body || {};
+
+    if (!agentId) {
+      return res.status(400).json({ success: false, error: 'agentId is required' });
+    }
+
+    if (!originalResponse || !correctedResponse) {
+      return res.status(400).json({ success: false, error: 'Both originalResponse and correctedResponse are required' });
+    }
+
+    const normalizedStore = (storeIn || 'prompt').toLowerCase();
+    if (!['prompt', 'kb'].includes(normalizedStore)) {
+      return res.status(400).json({ success: false, error: 'storeIn must be "prompt" or "kb"' });
+    }
+
+    const promptRecord = promptId ? await getPromptById(promptId) : await getAgentPrompt(agentId);
+    if (!promptRecord) {
+      return res.status(404).json({ success: false, error: 'Prompt not found for provided agentId/promptId' });
+    }
+
+    const timestamp = new Date().toISOString();
+    const originalHash = hashText(originalResponse);
+    const correctedHash = hashText(correctedResponse);
+
+    const currentKbRefs = Array.isArray(promptRecord.kb_refs) ? promptRecord.kb_refs : [];
+    const actions = promptRecord.actions || {};
+    const customActions = actions.custom_actions || [];
+    const evalRubric = actions.eval_rubric || [];
+
+    let updatedSystemPrompt = promptRecord.system_prompt || '';
+    let updatedKbRefs = currentKbRefs;
+    let kbEntryId = null;
+    const manualLabel = `Manual Correction ${timestamp}`;
+
+    if (normalizedStore === 'prompt') {
+      const correctionBlock = [
+        `### ${manualLabel}`,
+        `Original (hash ${originalHash}):`,
+        originalResponse.trim(),
+        '',
+        `Preferred (hash ${correctedHash}):`,
+        correctedResponse.trim()
+      ].join('\n');
+
+      updatedSystemPrompt = `${updatedSystemPrompt.trim()}\n\n${correctionBlock}`.trim();
+    } else {
+      const outline = [
+        `Original (hash ${originalHash}): ${truncateForOutline(originalResponse)}`,
+        `Preferred (hash ${correctedHash}): ${truncateForOutline(correctedResponse)}`
+      ];
+
+      const kbEntry = {
+        id: `manual-${Date.now()}`,
+        title: manualLabel,
+        outline,
+        metadata: {
+          type: 'manual_correction',
+          created_at: timestamp,
+          original_response: originalResponse,
+          corrected_response: correctedResponse,
+          original_hash: originalHash,
+          corrected_hash: correctedHash,
+          reason: reason || null,
+          user_id: userId || null,
+          session_id: sessionId || null
+        }
+      };
+
+      updatedKbRefs = [...currentKbRefs, kbEntry];
+      kbEntryId = kbEntry.id;
+    }
+
+    const nextVersion = bumpVersion(promptRecord.version);
+
+    const savedPrompt = await saveAgentPrompt(
+      {
+        version: nextVersion,
+        agent_type: 'voice_ai',
+        niche: promptRecord.niche,
+        system_prompt: updatedSystemPrompt,
+        kb_stubs: updatedKbRefs,
+        custom_actions: customActions,
+        eval_rubric: evalRubric
+      },
+      agentId,
+      promptRecord.kit_id || null
+    );
+
+    if (normalizedStore === 'prompt') {
+      await pool.query(
+        'UPDATE agents SET system_prompt = $1, updated_at = NOW() WHERE agent_id = $2',
+        [updatedSystemPrompt, agentId]
+      );
+    }
+
+    const confirmationMessage = normalizedStore === 'prompt'
+      ? `Corrected response stored in prompt version ${savedPrompt.version}.`
+      : `Corrected response added to knowledge base as "${manualLabel}".`;
+
+    const correctionMetadata = {
+      ...metadata,
+      userId: userId || null,
+      sessionId: sessionId || null,
+      createdAt: timestamp,
+      storeIn: normalizedStore,
+      manualLabel,
+      promptVersion: savedPrompt.version,
+      kbEntryId,
+      originalHash,
+      correctedHash
+    };
+
+    const correctionResult = await pool.query(
+      `INSERT INTO agent_response_corrections (
+        agent_id,
+        call_log_id,
+        prompt_id,
+        review_id,
+        original_response,
+        original_hash,
+        corrected_response,
+        corrected_hash,
+        store_in,
+        reason,
+        confirmation_message,
+        metadata
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      RETURNING *`,
+      [
+        agentId,
+        callLogId || null,
+        savedPrompt.id,
+        reviewId || null,
+        originalResponse,
+        originalHash,
+        correctedResponse,
+        correctedHash,
+        normalizedStore,
+        reason || null,
+        confirmationMessage,
+        JSON.stringify(correctionMetadata)
+      ]
+    );
+
+    await pool.query(
+      `INSERT INTO agent_logs (agent_id, action, payload, context, status, created_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())`,
+      [
+        agentId,
+        'manual_response_correction',
+        JSON.stringify({
+          correctionId: correctionResult.rows[0].id,
+          storeIn: normalizedStore,
+          reason: reason || null,
+          originalHash,
+          correctedHash
+        }),
+        JSON.stringify({
+          callLogId: callLogId || null,
+          reviewId: reviewId || null,
+          promptId: savedPrompt.id,
+          confirmationMessage,
+          kbEntryId
+        }),
+        'success'
+      ]
+    );
+
+    const insertedCorrection = correctionResult.rows[0];
+    const parsedMetadata = typeof insertedCorrection.metadata === 'string'
+      ? JSON.parse(insertedCorrection.metadata)
+      : insertedCorrection.metadata;
+
+    res.json({
+      success: true,
+      confirmationMessage,
+      promptId: savedPrompt.id,
+      promptVersion: savedPrompt.version,
+      correction: {
+        ...insertedCorrection,
+        metadata: parsedMetadata
+      }
+    });
+  } catch (error) {
+    console.error('❌ saveCorrection error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+function bumpVersion(version) {
+  const numeric = parseFloat(version);
+  if (Number.isFinite(numeric)) {
+    return (numeric + 0.1).toFixed(1);
+  }
+  return `${version || '1.0'}-manual-${Date.now()}`;
+}
+
+function hashText(text) {
+  return crypto.createHash('sha256').update(text || '').digest('hex');
+}
+
+function truncateForOutline(text, maxLen = 160) {
+  if (!text) return '';
+  const singleLine = text.replace(/\s+/g, ' ').trim();
+  if (singleLine.length <= maxLen) return singleLine;
+  return `${singleLine.slice(0, maxLen - 1)}…`;
+}
 

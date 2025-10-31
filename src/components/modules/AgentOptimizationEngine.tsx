@@ -8,6 +8,15 @@ const AgentOptimizationEngine: React.FC = () => {
     { id: '3', category: 'Quality', description: 'Improve voice clarity', impact: 'Medium', status: 'pending' },
   ]);
 
+  const voiceBestPractices = [
+    'Speak clearly and ask only one question at a time',
+    'Keep responses short and natural — no more than 1–2 sentences',
+    'Pause between topic changes (simulate voice pacing)',
+    'Avoid stacked questions unless the user explicitly provides multiple answers at once',
+    'Always confirm one answer before asking the next',
+    'Respond conversationally, not like a chatbot or form',
+  ];
+
   return (
     <div className="p-6 bg-background min-h-screen text-foreground">
       <div className="mb-8">
@@ -60,6 +69,23 @@ const AgentOptimizationEngine: React.FC = () => {
             </div>
           ))}
         </div>
+      </div>
+
+      <div className="card p-6 mt-8 border border-primary/20 bg-gradient-to-br from-purple-50/60 via-white to-blue-50/40 dark:from-slate-900/40 dark:via-slate-900/20 dark:to-slate-900/10">
+        <h2 className="text-xl font-semibold mb-3 flex items-center gap-2">
+          <Zap className="w-5 h-5 text-primary" /> Voice AI Best Practices
+        </h2>
+        <p className="text-sm text-muted-foreground mb-4">
+          This reusable prompt block is appended to every generated system prompt so agents respect conversational pacing during calls.
+        </p>
+        <ul className="space-y-2 text-sm leading-relaxed">
+          {voiceBestPractices.map((rule) => (
+            <li key={rule} className="flex items-start gap-2">
+              <span className="mt-1 h-2 w-2 rounded-full bg-primary" aria-hidden="true" />
+              <span>{rule}</span>
+            </li>
+          ))}
+        </ul>
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { BookOpen, Save, Upload, RefreshCw, Database, Sparkles, CheckCircle, Link2, Copy } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { toast } from 'react-hot-toast';
@@ -6,6 +6,7 @@ import { useMCP } from '../../hooks/useMCP';
 import Button from '../../components/ui/Button';
 import { getApiBaseUrl } from '../../utils/apiBase';
 import EvaluationScorecard from './EvaluationScorecard';
+import { ConversationTurn, ManualCorrectionPayload } from '../../types/evaluation';
 
 interface TrainingPayload {
   agentId: string;
@@ -54,11 +55,14 @@ const TrainingHub: React.FC = () => {
   const [healthResult, setHealthResult] = useState<any>(null);
   
   // Conversation tracking
-  const [conversation, setConversation] = useState<Array<{ speaker: 'user' | 'agent', text: string, timestamp: number }>>([]);
+  const [conversation, setConversation] = useState<ConversationTurn[]>([]);
   const [showEvaluation, setShowEvaluation] = useState(false);
   const [currentEvaluation, setCurrentEvaluation] = useState<any>(null);
   const [evaluationLoading, setEvaluationLoading] = useState(false);
   const [scorecardOpen, setScorecardOpen] = useState(false);
+  const [evaluationContext, setEvaluationContext] = useState<{ callLogId: string | null; reviewId: string | null; promptId: string | null } | null>(null);
+  const [savingCorrection, setSavingCorrection] = useState(false);
+  const [correctionConfirmation, setCorrectionConfirmation] = useState<string | null>(null);
 
   const selectedAgent = useMemo(() => voiceAgents.find(a => a.id === selectedId), [voiceAgents, selectedId]);
 
@@ -374,18 +378,85 @@ const TrainingHub: React.FC = () => {
         const evaluationPayload = data.evaluation || null;
         if ((data.ok || data.success) && evaluationPayload) {
           setCurrentEvaluation(evaluationPayload);
+          setEvaluationContext({
+            callLogId: data.callLog?.id ?? null,
+            reviewId: data.reviewId ?? data.callLog?.review_id ?? null,
+            promptId: data.promptId ?? data.callLog?.prompt_id ?? null
+          });
+          setCorrectionConfirmation(null);
           if (showEvaluation) {
             setScorecardOpen(true);
           }
+        } else {
+          setEvaluationContext(null);
         }
       }
     } catch (e: any) {
       console.error('Evaluation failed:', e);
       // Silently fail - evaluation is optional
+      setEvaluationContext(null);
     } finally {
       setEvaluationLoading(false);
     }
   };
+
+  const handleSaveCorrection = useCallback(async (payload: ManualCorrectionPayload) => {
+    if (!selectedAgent) {
+      throw new Error('Please select an agent before saving corrections.');
+    }
+
+    if (!evaluationContext) {
+      throw new Error('No evaluation context found. Run a scored test before saving corrections.');
+    }
+
+    setSavingCorrection(true);
+    setCorrectionConfirmation(null);
+
+    try {
+      const requestBody = {
+        agentId: selectedAgent.id,
+        promptId: evaluationContext.promptId,
+        callLogId: evaluationContext.callLogId,
+        reviewId: evaluationContext.reviewId,
+        originalResponse: payload.originalResponse,
+        correctedResponse: payload.correctedResponse,
+        storeIn: payload.storeIn,
+        reason: payload.reason,
+        metadata: {
+          messageIndex: payload.messageIndex,
+          conversationSnapshot: conversation,
+          triggeredFrom: 'training_hub'
+        }
+      };
+
+      const response = await mcp.agentSaveCorrection(requestBody, { showToast: false });
+
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to save correction.');
+      }
+
+      const confirmationMessage = (response as any).confirmationMessage || 'Correction saved successfully.';
+      const updatedPromptId = (response as any).promptId || evaluationContext.promptId;
+
+      setConversation(prev =>
+        prev.map((message, index) =>
+          index === payload.messageIndex
+            ? { ...message, text: payload.correctedResponse }
+            : message
+        )
+      );
+
+      setEvaluationContext(prev => (prev ? { ...prev, promptId: updatedPromptId } : prev));
+      setCorrectionConfirmation(confirmationMessage);
+      toast.success(confirmationMessage);
+    } catch (error: any) {
+      const message = error?.message || 'Failed to save correction.';
+      toast.error(message);
+      throw error;
+    } finally {
+      setSavingCorrection(false);
+    }
+  }, [selectedAgent, evaluationContext, conversation, mcp]);
 
   const handleSaveForTraining = async () => {
     if (!selectedAgent || conversation.length === 0) {
@@ -421,6 +492,8 @@ const TrainingHub: React.FC = () => {
         setTestResult(null);
         setCurrentEvaluation(null);
         setScorecardOpen(false);
+        setEvaluationContext(null);
+        setCorrectionConfirmation(null);
       } else {
         toast.error(data.error || 'Failed to save');
       }
@@ -440,6 +513,8 @@ const TrainingHub: React.FC = () => {
       setCurrentEvaluation(null);
       setTestMessage('');
       setScorecardOpen(false);
+      setEvaluationContext(null);
+      setCorrectionConfirmation(null);
       toast.success('Conversation reset');
     }
   };
@@ -784,6 +859,14 @@ const TrainingHub: React.FC = () => {
         evaluation={currentEvaluation}
         isOpen={Boolean(scorecardOpen && currentEvaluation)}
         onClose={() => setScorecardOpen(false)}
+        conversation={conversation}
+        agentId={selectedAgent?.id || null}
+        promptId={evaluationContext?.promptId || null}
+        reviewId={evaluationContext?.reviewId || null}
+        callLogId={evaluationContext?.callLogId || null}
+        onSaveCorrection={handleSaveCorrection}
+        savingCorrection={savingCorrection}
+        correctionConfirmation={correctionConfirmation}
       />
     </div>
   );

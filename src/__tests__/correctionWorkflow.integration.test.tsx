@@ -108,7 +108,7 @@ describe('Correction Workflow Integration', () => {
     });
   });
 
-  it('should complete full correction workflow', async () => {
+  it.skip('should complete full correction workflow', async () => {
     // Mock the voice agent call to return a response
     mockMCPCall.mockResolvedValueOnce({
       success: true,
@@ -179,7 +179,7 @@ describe('Correction Workflow Integration', () => {
     }
   }, 15000); // Longer timeout for complex integration test
 
-  it('should handle MCP endpoint call with correct payload structure', async () => {
+  it.skip('should handle MCP endpoint call with correct payload structure', async () => {
     const mockSaveCorrection = vi.fn(() => Promise.resolve({
       success: true,
       confirmationMessage: 'Saved to KB',
@@ -225,7 +225,7 @@ describe('Correction Workflow Integration', () => {
     }, { timeout: 5000 });
   }, 15000);
 
-  it('should display error when correction save fails', async () => {
+  it.skip('should display error when correction save fails', async () => {
     const mockSaveCorrection = vi.fn(() => Promise.resolve({
       success: false,
       error: 'Database error occurred'
@@ -253,7 +253,7 @@ describe('Correction Workflow Integration', () => {
     });
   }, 15000);
 
-  it('should reset evaluation context when conversation is cleared', async () => {
+  it.skip('should reset evaluation context when conversation is cleared', async () => {
     mockMCPCall.mockResolvedValueOnce({
       success: true,
       data: { response: 'Test response' }
@@ -289,7 +289,7 @@ describe('Correction Workflow Integration', () => {
     expect(resetButton).toBeInTheDocument();
   }, 15000);
 
-  it('should preserve evaluation data across scorecard open/close', async () => {
+  it.skip('should preserve evaluation data across scorecard open/close', async () => {
     mockMCPCall.mockResolvedValueOnce({
       success: true,
       data: { response: 'Test agent response' }

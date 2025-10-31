@@ -43,6 +43,14 @@ Opening line (suggested): {{OPENING_LINE}}
 
 If the caller refuses to provide information, politely explain why each field is needed and offer to continue or arrange a call back.`;
 
+const VOICE_OPTIMIZED_PROMPT_BLOCK = `## CONVERSATION RULES (PHONE-LIKE):
+- Speak clearly and ask only **one question at a time**
+- Keep responses short and natural — no more than 1–2 sentences
+- Pause between topic changes (simulate voice pacing)
+- Avoid stacked questions unless the user explicitly provides multiple answers at once
+- Always confirm one answer before asking the next
+- Respond conversationally, not like a chatbot or form`;
+
 const baseStandard = {
   name: 'voice-ai-standard-v1',
   version: '1.0',
@@ -665,6 +673,10 @@ function buildSystemPrompt({
     });
   }
   
+  if (!masterPrompt.includes('## CONVERSATION RULES (PHONE-LIKE):')) {
+    masterPrompt = `${masterPrompt.trim()}`.concat('\n\n', VOICE_OPTIMIZED_PROMPT_BLOCK);
+  }
+
   return masterPrompt;
 }
 

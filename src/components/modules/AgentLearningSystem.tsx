@@ -9,6 +9,15 @@ const AgentLearningSystem: React.FC = () => {
     adaptions: 45,
   });
 
+  const voiceBestPractices = [
+    'Speak clearly and ask only one question at a time',
+    'Keep responses short and natural — no more than 1–2 sentences',
+    'Pause between topic changes (simulate voice pacing)',
+    'Avoid stacked questions unless the user explicitly provides multiple answers at once',
+    'Always confirm one answer before asking the next',
+    'Respond conversationally, not like a chatbot or form',
+  ];
+
   return (
     <div className="p-6 bg-background min-h-screen text-foreground">
       <div className="mb-8">
@@ -55,6 +64,23 @@ const AgentLearningSystem: React.FC = () => {
             <p className="text-sm text-muted-foreground">Learning system contributed to 18% increase in success rate</p>
           </div>
         </div>
+      </div>
+
+      <div className="card p-6 mt-8 bg-gradient-to-br from-blue-50/60 via-white to-purple-50/40 dark:from-slate-900/40 dark:via-slate-900/20 dark:to-slate-900/10 border border-primary/20">
+        <h2 className="text-xl font-semibold mb-3 flex items-center gap-2">
+          <Sparkles className="w-5 h-5 text-primary" /> Voice AI Best Practices
+        </h2>
+        <p className="text-sm text-muted-foreground mb-4">
+          These conversation rules are embedded into every master prompt so agents sound human on voice calls—even when simulated via SMS.
+        </p>
+        <ul className="space-y-2 text-sm leading-relaxed">
+          {voiceBestPractices.map((rule) => (
+            <li key={rule} className="flex items-start gap-2">
+              <span className="mt-1 h-2 w-2 rounded-full bg-primary" aria-hidden="true" />
+              <span>{rule}</span>
+            </li>
+          ))}
+        </ul>
       </div>
     </div>
   );
