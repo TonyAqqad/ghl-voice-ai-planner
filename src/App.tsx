@@ -86,7 +86,7 @@ function App() {
   return (
         <div className={`min-h-screen bg-background ${darkMode ? 'dark' : ''}`}>
           <NavBar />
-          <Routes>
+          <Routes future={{ v7_relativeSplatPath: true }}>
             <Route path="/" element={<HomePage />} />
             <Route path="/auth/ghl/callback" element={<GHLOAuthCallback />} />
             <Route path="/*" element={
@@ -101,7 +101,7 @@ function App() {
                   
               <main className="p-6">
                 {/* <Breadcrumbs /> */}
-                    <Routes>
+                    <Routes future={{ v7_relativeSplatPath: true }}>
                   <Route path="/voice-agents" element={<VoiceAgentBuilder />} />
                   <Route path="/voice-testing" element={<VoiceTestingStudio />} />
                   <Route path="/agent-dashboard" element={<AgentDeploymentDashboard />} />
