@@ -329,5 +329,8 @@ router.post('/agent/saveCorrection', evaluationModule.saveCorrection);
 // Get corrections history for dashboard
 router.get('/agent/corrections', evaluationModule.getCorrectionsHistory);
 
+// Get prompt version history
+router.get('/prompt/versions', evaluationModule.getPromptVersions);
+
 module.exports = router;
 

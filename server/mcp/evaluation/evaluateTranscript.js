@@ -499,31 +499,78 @@ function shouldActionHaveTriggered(actionName, transcript, overlay) {
 function extractFieldValues(transcript, requiredFields, fieldsCaptured) {
   const fields = [];
   
+  // Split transcript into turns for better parsing
+  const turns = transcript.split('\n').map(line => line.trim()).filter(Boolean);
+  
   // Define expected fields and their extraction patterns
   const fieldPatterns = {
     'contact.first_name': {
       label: 'First Name',
-      pattern: /(?:first name|my name is|i'm|i am|this is|call me)\s+([A-Z][a-z]+)/i,
+      // Look for name after agent asks for first name, or after "my name is", "I'm", etc.
+      extract: (turns) => {
+        // Find the turn where agent asks for first name
+        const askIndex = turns.findIndex(t => 
+          /(?:first name|your name)/i.test(t) && /(?:agent|assistant):/i.test(t)
+        );
+        
+        if (askIndex !== -1 && askIndex < turns.length - 1) {
+          // Get the next user response
+          const userResponse = turns[askIndex + 1];
+          // Extract capitalized word (likely a name)
+          const match = userResponse.match(/(?:user:|caller:)\s*([A-Z][a-z]+)/i);
+          if (match) return match[1];
+        }
+        
+        // Fallback: Look for "my name is X" or "I'm X" anywhere
+        const nameMatch = transcript.match(/(?:my name is|i'm|i am|this is|call me)\s+([A-Z][a-z]+)/i);
+        return nameMatch ? nameMatch[1] : null;
+      },
       icon: 'user'
     },
     'contact.last_name': {
       label: 'Last Name',
-      pattern: /(?:last name|surname)\s+(?:is\s+)?([A-Z][a-z]+)|([A-Z][a-z]+)\s+is my last name/i,
+      extract: (turns) => {
+        // Find the turn where agent asks for last name
+        const askIndex = turns.findIndex(t => 
+          /(?:last name|surname)/i.test(t) && /(?:agent|assistant):/i.test(t)
+        );
+        
+        if (askIndex !== -1 && askIndex < turns.length - 1) {
+          // Get the next user response
+          const userResponse = turns[askIndex + 1];
+          // Extract capitalized word
+          const match = userResponse.match(/(?:user:|caller:)\s*([A-Z][a-z]+)/i);
+          if (match) return match[1];
+        }
+        
+        // Fallback: Look for pattern
+        const nameMatch = transcript.match(/(?:last name|surname)\s+(?:is\s+)?([A-Z][a-z]+)/i);
+        return nameMatch ? nameMatch[1] : null;
+      },
       icon: 'user'
     },
     'contact.unique_phone_number': {
       label: 'Phone Number',
-      pattern: /(\d{3}[-.\s]?\d{3}[-.\s]?\d{4})/,
+      extract: () => {
+        const match = transcript.match(/(\d{10}|\d{3}[-.\s]\d{3}[-.\s]\d{4})/);
+        return match ? match[0] : null;
+      },
       icon: 'phone'
     },
     'contact.phone': {
       label: 'Phone Number',
-      pattern: /(\d{3}[-.\s]?\d{3}[-.\s]?\d{4})/,
+      extract: () => {
+        const match = transcript.match(/(\d{10}|\d{3}[-.\s]\d{3}[-.\s]\d{4})/);
+        return match ? match[0] : null;
+      },
       icon: 'phone'
     },
     'contact.email': {
       label: 'Email',
-      pattern: /([\w.-]+@[\w.-]+\.\w+)/i,
+      extract: () => {
+        const match = transcript.match(/([\w.-]+@[\w.-]+\.\w+)/i);
+        return match ? match[0] : null;
+      },
       icon: 'mail'
     }
   };
@@ -543,8 +590,7 @@ function extractFieldValues(transcript, requiredFields, fieldsCaptured) {
       return;
     }
 
-    const match = transcript.match(pattern.pattern);
-    const value = match ? (match[1] || match[2] || match[0]).trim() : null;
+    const value = pattern.extract(turns);
     
     fields.push({
       field: field,

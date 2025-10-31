@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Brain, BookOpen, TrendingUp, Sparkles, RefreshCw, AlertCircle } from 'lucide-react';
 import { useCorrections } from '../../hooks/useCorrections';
 import { format } from 'date-fns';
+import PromptVersionHistory from './PromptVersionHistory';
 
 const AgentLearningSystem: React.FC = () => {
   const { corrections, stats, loading, error, refresh } = useCorrections();
@@ -116,6 +117,11 @@ const AgentLearningSystem: React.FC = () => {
             ))}
           </div>
         )}
+      </div>
+
+      {/* Prompt Version History */}
+      <div className="mt-8">
+        <PromptVersionHistory />
       </div>
 
       {/* Voice Best Practices (keep existing) */}

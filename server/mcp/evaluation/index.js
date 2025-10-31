@@ -397,7 +397,8 @@ module.exports = {
   rollbackPrompt,
   batchReview,
   saveCorrection: saveCorrectionEndpoint,
-  getCorrectionsHistory
+  getCorrectionsHistory,
+  getPromptVersions
 };
 
 /**
@@ -633,9 +634,9 @@ function truncateForOutline(text, maxLen = 160) {
 async function getCorrectionsHistory(req, res) {
   try {
     const { agentId, limit = 50 } = req.query;
-    
+
     let query = `
-      SELECT 
+      SELECT
         arc.*,
         ap.version as prompt_version,
         ap.system_prompt as current_prompt,
@@ -645,21 +646,21 @@ async function getCorrectionsHistory(req, res) {
       LEFT JOIN agent_prompts ap ON arc.prompt_id = ap.id
       LEFT JOIN agent_call_logs acl ON arc.call_log_id = acl.id
     `;
-    
+
     const params = [];
     if (agentId) {
       query += ' WHERE arc.agent_id = $1';
       params.push(agentId);
     }
-    
+
     query += ' ORDER BY arc.created_at DESC LIMIT $' + (params.length + 1);
     params.push(limit);
-    
+
     const result = await pool.query(query, params);
-    
+
     // Get stats
     const statsQuery = `
-      SELECT 
+      SELECT
         COUNT(*) as total_corrections,
         COUNT(DISTINCT agent_id) as agents_improved,
         COUNT(CASE WHEN store_in = 'prompt' THEN 1 END) as prompt_updates,
@@ -667,9 +668,9 @@ async function getCorrectionsHistory(req, res) {
       FROM agent_response_corrections
       ${agentId ? 'WHERE agent_id = $1' : ''}
     `;
-    
+
     const statsResult = await pool.query(statsQuery, agentId ? [agentId] : []);
-    
+
     res.json({
       success: true,
       corrections: result.rows,
@@ -677,6 +678,46 @@ async function getCorrectionsHistory(req, res) {
     });
   } catch (error) {
     console.error('Error fetching corrections:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+/**
+ * GET /api/mcp/prompt/versions
+ * Fetch prompt version history for an agent
+ */
+async function getPromptVersions(req, res) {
+  try {
+    const { agentId, limit = 20 } = req.query;
+
+    let query = `
+      SELECT
+        id,
+        version,
+        agent_id,
+        system_prompt,
+        created_at,
+        niche
+      FROM agent_prompts
+    `;
+
+    const params = [];
+    if (agentId) {
+      query += ' WHERE agent_id = $1';
+      params.push(agentId);
+    }
+
+    query += ' ORDER BY created_at DESC LIMIT $' + (params.length + 1);
+    params.push(limit);
+
+    const result = await pool.query(query, params);
+
+    res.json({
+      success: true,
+      versions: result.rows
+    });
+  } catch (error) {
+    console.error('Error fetching prompt versions:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 }
