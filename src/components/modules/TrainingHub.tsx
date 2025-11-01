@@ -39,6 +39,7 @@ import {
   createCorrectionEntry,
   type Violation 
 } from '../../lib/evaluation/autoCorrector';
+import { lintSpec, detectSpecDrift, formatLintIssues, type SpecLintIssue } from '../../lib/spec/specLinter';
 
 interface TrainingPayload {
   agentId: string;
@@ -83,6 +84,11 @@ const TrainingHub: React.FC = () => {
   const [promptHash, setPromptHash] = useState<string>('');
   const [activeSpec, setActiveSpec] = useState<PromptSpec | null>(null);
   const [currentScopeId, setCurrentScopeId] = useState<string>('');
+  
+  // Spec drift and linting
+  const [savedPromptHash, setSavedPromptHash] = useState<string>('');
+  const [specLintIssues, setSpecLintIssues] = useState<SpecLintIssue[]>([]);
+  const [showSpecLinter, setShowSpecLinter] = useState(false);
 
   // New composer state
   const [selectedNiche, setSelectedNiche] = useState<string>('generic');
@@ -267,7 +273,17 @@ const TrainingHub: React.FC = () => {
     const allViolations: Array<{ turn: SimulatorTurn; violations: Violation[] }> = [];
     let totalCorrections = 0;
 
-    if (activeSpec && currentScopeId && selectedAgent?.id) {
+    if (!activeSpec || !currentScopeId) {
+      console.warn('⚠️ Master Agent Review skipped - No PromptSpec loaded');
+      console.warn('   Click "Save Prompt" to enable automatic violation detection and correction');
+      toast(
+        <div className="space-y-1">
+          <p className="font-semibold text-sm">⚠️ Self-Healing Disabled</p>
+          <p className="text-xs text-muted-foreground">Click "Save Prompt" above to enable automatic corrections</p>
+        </div>,
+        { duration: 4000, icon: '🔒' }
+      );
+    } else if (activeSpec && currentScopeId && selectedAgent?.id) {
       console.log('🔍 Master Agent analyzing transcript for violations...');
 
       // Scan all agent responses in the transcript
@@ -1058,12 +1074,33 @@ const TrainingHub: React.FC = () => {
       // 1. Generate prompt hash for scoping
       const hash = await generatePromptHash(systemPrompt);
       setPromptHash(hash);
+      setSavedPromptHash(hash); // Track saved hash for drift detection
       
       // 2. Extract spec from prompt
       const spec = extractSpecFromPrompt(systemPrompt);
       setActiveSpec(spec);
       
-      // 3. Generate scope ID
+      // 3. Lint the spec
+      if (spec) {
+        const lintIssues = lintSpec(spec);
+        setSpecLintIssues(lintIssues);
+        
+        const errors = lintIssues.filter(i => i.severity === 'error');
+        if (errors.length > 0) {
+          console.warn(`⚠️ Spec has ${errors.length} error(s):`, errors.map(e => e.message));
+          toast(
+            <div>
+              <p className="font-semibold text-sm">⚠️ Spec Validation Issues</p>
+              <p className="text-xs mt-1">{errors.length} error(s) found. Click "View Issues" to see details.</p>
+            </div>,
+            { duration: 5000, className: 'warn' }
+          );
+        } else {
+          console.log('✅ Spec validation passed - no errors');
+        }
+      }
+      
+      // 4. Generate scope ID
       const newScopeId = scopeId({
         locationId: locationId,
         agentId: selectedAgent.id,
@@ -1071,7 +1108,7 @@ const TrainingHub: React.FC = () => {
       });
       setCurrentScopeId(newScopeId);
       
-      // 4. Update the agent in the store with the new system prompt
+      // 5. Update the agent in the store with the new system prompt
       updateVoiceAgent(selectedAgent.id, {
         systemPrompt: systemPrompt as any,
         // Store hash and spec in agent config for future reference
@@ -1087,9 +1124,9 @@ const TrainingHub: React.FC = () => {
       console.log(`💾 System Prompt saved for agent: ${selectedAgent.name}`);
       console.log(`   • Prompt Hash: ${hash}`);
       console.log(`   • Scope ID: ${newScopeId}`);
-      console.log(`   • Spec: ${spec.niche} (${spec.agent_type})`);
+      console.log(`   • Spec: ${spec ? `${spec.niche} (${spec.agent_type})` : 'No spec found'}`);
       
-      toast.success(`System Prompt saved! Agent will use updated prompt on next call.`);
+      toast.success(`System Prompt saved! Self-healing enabled ✅`);
       toast(`Scope ID: ${newScopeId.substring(0, 30)}...`, { icon: '🔐', duration: 3000 });
     } catch (error: any) {
       console.error('Failed to save system prompt:', error);
@@ -1218,6 +1255,84 @@ const TrainingHub: React.FC = () => {
               className="w-full px-3 py-2 border border-border rounded-md bg-input h-32 transition-all duration-200 focus:ring-2 focus:ring-primary focus:border-primary" 
               placeholder="Write the master system prompt..." 
             />
+            
+            {/* Spec Status & Drift Guard */}
+            <div className="mt-2 space-y-2">
+              {/* Spec Lock Status */}
+              <div className="flex items-center justify-between gap-2">
+                {activeSpec && currentScopeId ? (
+                  <div className="chip ok fadein">
+                    ✅ Spec Locked - Self-Healing Active
+                  </div>
+                ) : (
+                  <div className="chip err pulse">
+                    ⚠️ No Spec - Click "Save Prompt" to enable auto-correction
+                  </div>
+                )}
+                
+                {/* Drift Detection */}
+                {(() => {
+                  const currentHash = promptHash || '';
+                  const drift = detectSpecDrift(currentHash, savedPromptHash);
+                  return drift.hasDrift ? (
+                    <div className="chip warn fadein" title={drift.message}>
+                      ⚠️ Spec Drift Detected
+                    </div>
+                  ) : null;
+                })()}
+                
+                {/* Linter Issues */}
+                {specLintIssues.length > 0 && (
+                  <button
+                    onClick={() => setShowSpecLinter(!showSpecLinter)}
+                    className="chip tap text-xs"
+                    title="View spec validation issues"
+                  >
+                    {specLintIssues.filter(i => i.severity === 'error').length > 0 ? '❌' : '⚠️'} 
+                    {' '}{specLintIssues.length} issue{specLintIssues.length !== 1 ? 's' : ''}
+                  </button>
+                )}
+              </div>
+              
+              {/* Linter Results Expandable */}
+              {showSpecLinter && specLintIssues.length > 0 && (
+                <div className="p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 rounded-lg fadeinslow">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-xs font-semibold text-amber-900 dark:text-amber-100">
+                      Spec Validation Issues
+                    </h4>
+                    <button 
+                      onClick={() => setShowSpecLinter(false)}
+                      className="text-xs text-amber-600 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-200"
+                    >
+                      ✕ Close
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {specLintIssues.map((issue, idx) => (
+                      <div key={idx} className="text-xs">
+                        <p className="flex items-start gap-2">
+                          <span className={`font-medium ${
+                            issue.severity === 'error' ? 'text-red-600 dark:text-red-400' :
+                            issue.severity === 'warning' ? 'text-amber-600 dark:text-amber-400' :
+                            'text-blue-600 dark:text-blue-400'
+                          }`}>
+                            {issue.severity === 'error' ? '❌' : issue.severity === 'warning' ? '⚠️' : 'ℹ️'}
+                          </span>
+                          <span className="flex-1 text-amber-900 dark:text-amber-100">{issue.message}</span>
+                        </p>
+                        {issue.fix && (
+                          <p className="ml-5 mt-1 text-amber-700 dark:text-amber-300 italic">
+                            Fix: {issue.fix}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            
             {estimateTokens(systemPrompt) > 1000 && (
               <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1 animate-fade-in">
                 <AlertTriangle className="w-3 h-3" />
