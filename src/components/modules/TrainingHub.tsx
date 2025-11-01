@@ -198,16 +198,147 @@ const TrainingHub: React.FC = () => {
 
   const handleEvaluateNow = useCallback(() => {
     if (!canEvaluateNow) return;
+
+    // 🔥 POST-CALL AUTO-CORRECTION: Analyze entire transcript for violations
+    const allViolations: Array<{ turn: SimulatorTurn; violations: Violation[] }> = [];
+    let totalCorrections = 0;
+
+    if (activeSpec && currentScopeId && selectedAgent?.id) {
+      console.log('🔍 Master Agent analyzing transcript for violations...');
+
+      // Scan all agent responses in the transcript
+      conversation.forEach((turn, idx) => {
+        if (turn.role === 'agent') {
+          const historyUpToThisTurn = conversation.slice(0, idx);
+          const violations = validateAgentResponse(
+            turn.text,
+            turn.id,
+            activeSpec,
+            historyUpToThisTurn
+          );
+
+          if (violations.length > 0) {
+            allViolations.push({ turn, violations });
+
+            // Generate and store correction for each violation
+            const correctionResult = autoCorrectResponse(violations, historyUpToThisTurn, activeSpec);
+            
+            if (correctionResult.correctedResponse) {
+              // Store in knowledge base
+              applyScopedCorrections(currentScopeId, conversationId, {
+                turnId: turn.id,
+                correctedResponse: correctionResult.correctedResponse,
+              });
+
+              totalCorrections++;
+              
+              console.log(`  📝 Turn ${idx + 1}: ${violations.length} violation(s) - Auto-corrected`);
+              violations.forEach(v => console.log(`     • [${v.severity}] ${v.type}: ${v.message}`));
+            }
+          }
+        }
+      });
+
+      if (allViolations.length > 0) {
+        console.log(`✅ Master Agent found ${allViolations.length} agent responses with violations`);
+        console.log(`   Applied ${totalCorrections} auto-corrections to knowledge base`);
+
+        // Show summary
+        toast.success(
+          `🎓 Master Agent: ${allViolations.length} violation${allViolations.length !== 1 ? 's' : ''} found, ${totalCorrections} correction${totalCorrections !== 1 ? 's' : ''} applied to KB`,
+          { duration: 5000, className: 'pulse' }
+        );
+      }
+    }
+
     const session = runSessionEvaluation();
     if (session) {
       toast.success('Session evaluated');
     }
-  }, [canEvaluateNow, runSessionEvaluation]);
+  }, [canEvaluateNow, runSessionEvaluation, conversation, conversationId, activeSpec, currentScopeId, selectedAgent?.id]);
 
   const handleEndCall = useCallback(() => {
     if (conversation.length === 0) {
       toast.error('No conversation to evaluate');
       return;
+    }
+
+    // 🔥 POST-CALL AUTO-CORRECTION: Analyze entire transcript for violations
+    const allViolations: Array<{ turn: SimulatorTurn; violations: Violation[] }> = [];
+    let totalCorrections = 0;
+
+    if (activeSpec && currentScopeId && selectedAgent?.id) {
+      console.log('🔍 Master Agent analyzing transcript for violations...');
+
+      // Scan all agent responses in the transcript
+      conversation.forEach((turn, idx) => {
+        if (turn.role === 'agent') {
+          const historyUpToThisTurn = conversation.slice(0, idx);
+          const violations = validateAgentResponse(
+            turn.text,
+            turn.id,
+            activeSpec,
+            historyUpToThisTurn
+          );
+
+          if (violations.length > 0) {
+            allViolations.push({ turn, violations });
+
+            // Generate and store correction for each violation
+            const correctionResult = autoCorrectResponse(violations, historyUpToThisTurn, activeSpec);
+            
+            if (correctionResult.correctedResponse) {
+              // Store in knowledge base
+              applyScopedCorrections(currentScopeId, conversationId, {
+                turnId: turn.id,
+                correctedResponse: correctionResult.correctedResponse,
+              });
+
+              totalCorrections++;
+              
+              console.log(`  📝 Turn ${idx + 1}: ${violations.length} violation(s) - Auto-corrected`);
+              violations.forEach(v => console.log(`     • [${v.severity}] ${v.type}: ${v.message}`));
+            }
+          }
+        }
+      });
+
+      if (allViolations.length > 0) {
+        console.log(`✅ Master Agent found ${allViolations.length} agent responses with violations`);
+        console.log(`   Applied ${totalCorrections} auto-corrections to knowledge base`);
+
+        // Show detailed summary toast
+        toast(
+          <div className="space-y-2">
+            <p className="font-semibold text-sm">🤖 Master Agent Review Complete</p>
+            <p className="text-xs text-muted-foreground">
+              Found {allViolations.length} response{allViolations.length !== 1 ? 's' : ''} needing correction
+            </p>
+            <ul className="text-[10px] space-y-1 text-muted-foreground mt-1">
+              {allViolations.slice(0, 3).map((item, idx) => (
+                <li key={idx}>• {item.violations[0].type}: {item.violations[0].message.substring(0, 60)}...</li>
+              ))}
+              {allViolations.length > 3 && (
+                <li className="text-primary">+ {allViolations.length - 3} more...</li>
+              )}
+            </ul>
+            <p className="text-xs text-green-600 dark:text-green-400 font-medium mt-2">
+              ✓ {totalCorrections} correction{totalCorrections !== 1 ? 's' : ''} saved to agent KB
+            </p>
+          </div>,
+          {
+            duration: 8000,
+            className: 'pulse',
+            icon: '🎓',
+          }
+        );
+      } else {
+        console.log('✅ Master Agent review: No violations detected - excellent performance!');
+        toast.success('🎉 Perfect call! No corrections needed', {
+          duration: 3000,
+          className: 'pulse',
+        });
+      }
     }
 
     // Use spec-based evaluation if we have an active spec and scope
@@ -226,7 +357,7 @@ const TrainingHub: React.FC = () => {
       
       // Save to scoped storage
       saveScopedSession(currentScopeId, result);
-      toast.success(`Call ended - Spec-based evaluation complete (${activeSpec.niche})`);
+      toast.success(`Call ended - Evaluation complete (${result.confidence}% confidence)`);
     } else {
       // FALLBACK: Legacy evaluation
       console.log(`ℹ️ End Call - Evaluating without spec (legacy mode)`);
@@ -247,7 +378,7 @@ const TrainingHub: React.FC = () => {
     // Optional: Reset conversation for new call
     // setConversation([]);
     // setConversationId(createConversationId());
-  }, [conversation, conversationId, sessions, selectedAgent?.id, selectedNiche]);
+  }, [conversation, conversationId, sessions, selectedAgent?.id, selectedNiche, activeSpec, currentScopeId]);
 
   useEffect(() => {
     if (!selectedAgent && voiceAgents.length > 0) {
@@ -566,75 +697,12 @@ const TrainingHub: React.FC = () => {
 
       // Add agent response to conversation
       const agentTs = Date.now();
-      let agentTurn: SimulatorTurn = {
+      const agentTurn: SimulatorTurn = {
         id: `agent-${agentTs}-${Math.random().toString(36).slice(2, 6)}`,
         role: 'agent',
         text: agentText || 'No response',
         ts: agentTs,
       };
-
-      // 🔥 AUTO-CORRECTION: Validate agent response and auto-fix violations
-      let autoCorrections: string[] = [];
-      if (activeSpec && agentText) {
-        const violations = validateAgentResponse(
-          agentText,
-          agentTurn.id,
-          activeSpec,
-          updatedConversation
-        );
-
-        if (violations.length > 0) {
-          console.log(`🚨 Detected ${violations.length} violation(s) in agent response:`);
-          violations.forEach(v => console.log(`   • [${v.severity}] ${v.type}: ${v.message}`));
-
-          const correctionResult = autoCorrectResponse(violations, updatedConversation, activeSpec);
-
-          if (correctionResult.correctedResponse) {
-            // Apply the correction automatically
-            agentTurn = {
-              ...agentTurn,
-              text: correctionResult.correctedResponse,
-            };
-
-            // Store the correction in knowledge base
-            if (currentScopeId && selectedAgent?.id) {
-              const correctionEntry = createCorrectionEntry(
-                violations[0], // Use primary violation
-                correctionResult.correctedResponse,
-                selectedAgent.id,
-                conversationId
-              );
-
-              console.log(`📝 Auto-correction applied and stored in KB (scope: ${currentScopeId.substring(0, 30)}...)`);
-              
-              // Store in scoped KB for future reference
-              applyScopedCorrections(currentScopeId, conversationId, {
-                turnId: agentTurn.id,
-                correctedResponse: correctionResult.correctedResponse,
-              });
-
-              // Prepare user notification
-              autoCorrections = violations.map(v => `${v.type}: ${v.message}`);
-            }
-
-            // Show auto-correction notification
-            toast(
-              <div className="space-y-1">
-                <p className="font-semibold text-sm">🤖 Self-Healing Applied</p>
-                <p className="text-xs text-muted-foreground">{violations[0].message}</p>
-                <p className="text-xs text-green-600 dark:text-green-400 mt-1">✓ Corrected automatically & saved to KB</p>
-              </div>,
-              {
-                duration: 5000,
-                className: 'pulse',
-                icon: '🔧',
-              }
-            );
-          }
-        } else {
-          console.log('✅ Agent response validated - no violations detected');
-        }
-      }
 
       const finalConversation = [...updatedConversation, agentTurn];
       setConversation(finalConversation);
