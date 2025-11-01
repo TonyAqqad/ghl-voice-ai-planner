@@ -5,6 +5,8 @@ import {
   RubricScore,
   SessionEvaluation,
 } from './types';
+import { PromptSpec } from '../spec/specTypes';
+import { buildRubricFromSpec } from './rubricFromSpec';
 
 const emailRx = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
 const phoneRx = /\b(\+?\d[\d\s\-()]{7,}\d)\b/;
@@ -153,51 +155,62 @@ export function evaluateSession(
   version = 'v1.1',
   agentId: string = 'unknown',
   niche?: string,
+  spec?: PromptSpec | null,
 ): SessionEvaluation {
   const startedAt = turns[0]?.ts ?? Date.now();
   const endedAt = turns.length > 0 ? turns[turns.length - 1].ts : startedAt;
   const fields = extractFieldCaptures(turns);
 
-  const askedFor = (phrase: RegExp) =>
-    turns.some((t) => t.role === 'agent' && phrase.test(t.text));
+  // If spec is provided, use spec-based rubric builder
+  let rubric: RubricScore[];
+  
+  if (spec) {
+    console.log('✅ Using spec-based rubric for evaluation');
+    rubric = buildRubricFromSpec(spec, turns, fields);
+  } else {
+    // Fallback to legacy rubric
+    console.log('ℹ️ Using legacy rubric (no spec provided)');
+    
+    const askedFor = (phrase: RegExp) =>
+      turns.some((t) => t.role === 'agent' && phrase.test(t.text));
 
-  const callerGave = (pred: (t: ConversationTurn) => boolean) =>
-    turns.some((t) => t.role === 'caller' && pred(t));
+    const callerGave = (pred: (t: ConversationTurn) => boolean) =>
+      turns.some((t) => t.role === 'caller' && pred(t));
 
-  const rubric: RubricScore[] = [
-    scoreBoolean(
-      fields.some((f) => ['first_name', 'unique_phone_number', 'email'].includes(f.key)),
-      fields.map((f) => f.turnId),
-      'fieldCollection',
-      'Captured at least one key contact field',
-    ),
-    scoreBoolean(
-      askedFor(/trial|class|schedule|booking/i) &&
-        callerGave((t) => /yes|works|okay|confirm/i.test(t.text)),
-      turns.map((t) => t.id),
-      'bookingRules',
-      'Booking flow reached an affirmative',
-    ),
-    scoreBoolean(
-      askedFor(/first\s*name|email|phone/i),
-      turns
-        .filter((t) => /first\s*name|email|phone/i.test(t.text))
-        .map((t) => t.id),
-      'questionCadence',
-      'Used guided cadence to collect basics',
-    ),
-    scoreBoolean(
-      askedFor(/confirm|verify|spell|email/i),
-      turns.map((t) => t.id),
-      'verification',
-      'Attempted verification',
-    ),
-    {
-      key: 'tone',
-      score: null,
-      evidenceTurnIds: turns.map((t) => t.id),
-      notes: 'Tone not auto-scored; adjust manually',
-    },
+    rubric = [
+      scoreBoolean(
+        fields.some((f) => ['first_name', 'unique_phone_number', 'email'].includes(f.key)),
+        fields.map((f) => f.turnId),
+        'fieldCollection',
+        'Captured at least one key contact field',
+      ),
+      scoreBoolean(
+        askedFor(/trial|class|schedule|booking/i) &&
+          callerGave((t) => /yes|works|okay|confirm/i.test(t.text)),
+        turns.map((t) => t.id),
+        'bookingRules',
+        'Booking flow reached an affirmative',
+      ),
+      scoreBoolean(
+        askedFor(/first\s*name|email|phone/i),
+        turns
+          .filter((t) => /first\s*name|email|phone/i.test(t.text))
+          .map((t) => t.id),
+        'questionCadence',
+        'Used guided cadence to collect basics',
+      ),
+      scoreBoolean(
+        askedFor(/confirm|verify|spell|email/i),
+        turns.map((t) => t.id),
+        'verification',
+        'Attempted verification',
+      ),
+      {
+        key: 'tone',
+        score: null,
+        evidenceTurnIds: turns.map((t) => t.id),
+        notes: 'Tone not auto-scored; adjust manually',
+      },
     turns.some((t) =>
       /price|too\s+expensive|not\s+interested|busy/i.test(t.text),
     )

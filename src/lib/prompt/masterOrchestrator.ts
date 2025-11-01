@@ -11,6 +11,8 @@ import { MinimalContext, truncateContextValues, CONTACT_KEYS } from './fieldSet'
 import { ConversationTurn, SessionEvaluation } from '../evaluation/types';
 import { evaluateSession } from '../evaluation/sessionEvaluator';
 import { applyManualCorrections as storeManualCorrections, saveSession } from '../evaluation/masterStore';
+import { PromptSpec } from '../spec/specTypes';
+import { extractSpecFromPrompt } from '../spec/specExtract';
 
 /**
  * Compose compact client prompt (≤600 tokens)
@@ -196,5 +198,71 @@ export function validateRequiredFields(
  */
 export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
+}
+
+/**
+ * Generate scope ID for location + agent + prompt version
+ * Used to isolate learning, corrections, and sessions per unique configuration
+ */
+export function scopeId({
+  locationId,
+  agentId,
+  promptHash,
+}: {
+  locationId: string;
+  agentId: string;
+  promptHash: string;
+}): string {
+  return `scope:${locationId}:${agentId}:${promptHash}`;
+}
+
+/**
+ * Generate prompt hash (SHA-256 hex string, first 16 chars)
+ * Uses Web Crypto API for consistent hashing
+ */
+export async function generatePromptHash(prompt: string): Promise<string> {
+  if (typeof window === 'undefined' || !window.crypto || !window.crypto.subtle) {
+    // Fallback for non-browser environments - simple hash
+    let hash = 0;
+    for (let i = 0; i < prompt.length; i++) {
+      const char = prompt.charCodeAt(i);
+      hash = (hash << 5) - hash + char;
+      hash = hash & hash; // Convert to 32bit integer
+    }
+    return Math.abs(hash).toString(16).padStart(16, '0').substring(0, 16);
+  }
+
+  try {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(prompt);
+    const hashBuffer = await window.crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return hashHex.substring(0, 16); // First 16 chars
+  } catch (error) {
+    console.error('Failed to generate prompt hash:', error);
+    // Fallback
+    return Date.now().toString(16).substring(0, 16);
+  }
+}
+
+/**
+ * Evaluate conversation after call ends (with spec support)
+ * Wrapper around existing sessionEvaluator with optional spec parameter
+ */
+export function evaluateAfterCallWithSpec(
+  conversationId: string,
+  turns: ConversationTurn[],
+  agentId: string,
+  spec: PromptSpec | null,
+  niche?: string
+): SessionEvaluation {
+  // Use evaluator with spec if provided
+  const evaluation = evaluateSession(conversationId, turns, 'v2.0', agentId, niche, spec);
+  
+  // Auto-save to masterStore
+  saveSession(evaluation);
+  
+  return evaluation;
 }
 

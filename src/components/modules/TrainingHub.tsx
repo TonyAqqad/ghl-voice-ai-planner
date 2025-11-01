@@ -12,9 +12,26 @@ import {
   SessionEvaluation,
   ConversationTurn as SessionConversationTurn,
 } from '../../lib/evaluation/types';
-import { evaluateAfterCall, applyManualFix, estimateTokens } from '../../lib/prompt/masterOrchestrator';
-import { loadSessions, saveSession, applyManualCorrections } from '../../lib/evaluation/masterStore';
+import { 
+  evaluateAfterCall, 
+  evaluateAfterCallWithSpec, 
+  applyManualFix, 
+  estimateTokens, 
+  scopeId, 
+  generatePromptHash 
+} from '../../lib/prompt/masterOrchestrator';
+import { 
+  loadSessions, 
+  saveSession, 
+  applyManualCorrections,
+  saveScopedSession,
+  loadScopedSessions,
+  applyScopedCorrections,
+  getScopedLearnedSnippets
+} from '../../lib/evaluation/masterStore';
 import { getRelevantLearned, formatLearnedForPrompt, getAgentKBStats } from '../../lib/evaluation/knowledgeBase';
+import { extractSpecFromPrompt, embedSpecInPrompt, hasEmbeddedSpec } from '../../lib/spec/specExtract';
+import { PromptSpec, DEFAULT_SPEC } from '../../lib/spec/specTypes';
 
 interface TrainingPayload {
   agentId: string;
@@ -53,6 +70,12 @@ const TrainingHub: React.FC = () => {
   const [syncing, setSyncing] = useState(false);
   const [genLoading, setGenLoading] = useState(false);
   const [promptSaving, setPromptSaving] = useState(false);
+  
+  // Scoping state: location + agent + prompt version
+  const [locationId, setLocationId] = useState<string>('default-location');
+  const [promptHash, setPromptHash] = useState<string>('');
+  const [activeSpec, setActiveSpec] = useState<PromptSpec | null>(null);
+  const [currentScopeId, setCurrentScopeId] = useState<string>('');
 
   // New composer state
   const [selectedNiche, setSelectedNiche] = useState<string>('generic');
@@ -101,18 +124,38 @@ const TrainingHub: React.FC = () => {
   const runSessionEvaluation = useCallback(() => {
     if (conversation.length === 0) return null;
 
-    // Use new master orchestrator for after-call evaluation with agent context
-    const session = evaluateAfterCall(
-      conversationId, 
-      conversation,
-      selectedAgent?.id || 'unknown',
-      selectedNiche
-    );
+    // Use spec-based evaluation if we have an active spec and scope
+    let session: SessionEvaluation;
+    
+    if (currentScopeId && activeSpec) {
+      // NEW: Spec-based, scoped evaluation
+      console.log(`🎯 Evaluating with spec: ${activeSpec.niche} (scope: ${currentScopeId.substring(0, 30)}...)`);
+      session = evaluateAfterCallWithSpec(
+        conversationId,
+        conversation,
+        selectedAgent?.id || 'unknown',
+        activeSpec,
+        selectedNiche
+      );
+      
+      // Save to scoped storage
+      saveScopedSession(currentScopeId, session);
+    } else {
+      // FALLBACK: Legacy evaluation without spec
+      console.log(`ℹ️ Evaluating without spec (legacy mode)`);
+      session = evaluateAfterCall(
+        conversationId, 
+        conversation,
+        selectedAgent?.id || 'unknown',
+        selectedNiche
+      );
+    }
+    
     setSessions((prev) => [session, ...prev.filter((s) => s.conversationId !== session.conversationId)]);
     setLatestSession(session);
     setHasEvaluatedSession(true);
     return session;
-  }, [conversation, conversationId, selectedAgent?.id, selectedNiche]);
+  }, [conversation, conversationId, selectedAgent?.id, selectedNiche, currentScopeId, activeSpec]);
 
   const canEvaluateNow = useMemo(() => {
     const hasCaller = conversation.some((t) => t.role === 'caller');
@@ -144,19 +187,39 @@ const TrainingHub: React.FC = () => {
       return;
     }
 
-    // Run after-call evaluation with agent context
-    const result = evaluateAfterCall(
-      conversationId, 
-      conversation,
-      selectedAgent?.id || 'unknown',
-      selectedNiche
-    );
-    saveSession(result);
+    // Use spec-based evaluation if we have an active spec and scope
+    let result: SessionEvaluation;
+    
+    if (currentScopeId && activeSpec) {
+      // NEW: Spec-based, scoped evaluation
+      console.log(`🎯 End Call - Evaluating with spec: ${activeSpec.niche} (scope: ${currentScopeId.substring(0, 30)}...)`);
+      result = evaluateAfterCallWithSpec(
+        conversationId,
+        conversation,
+        selectedAgent?.id || 'unknown',
+        activeSpec,
+        selectedNiche
+      );
+      
+      // Save to scoped storage
+      saveScopedSession(currentScopeId, result);
+      toast.success(`Call ended - Spec-based evaluation complete (${activeSpec.niche})`);
+    } else {
+      // FALLBACK: Legacy evaluation
+      console.log(`ℹ️ End Call - Evaluating without spec (legacy mode)`);
+      result = evaluateAfterCall(
+        conversationId, 
+        conversation,
+        selectedAgent?.id || 'unknown',
+        selectedNiche
+      );
+      saveSession(result);
+      toast.success('Call ended - Master AI evaluation complete');
+    }
+    
     setSessions([result, ...sessions.filter((s) => s.conversationId !== result.conversationId)]);
     setLatestSession(result);
     setHasEvaluatedSession(true);
-
-    toast.success('Call ended - Master AI evaluation complete');
 
     // Optional: Reset conversation for new call
     // setConversation([]);
@@ -406,23 +469,44 @@ const TrainingHub: React.FC = () => {
         throw new Error('No agent selected');
       }
 
-      const conversationText = updatedConversation.map(m => m.text).join(' ');
-      const learnedResponses = getRelevantLearned(
-        selectedAgent.id,
-        conversationText,
-        3,
-        selectedNiche
-      );
+      // Use scoped learned snippets if we have a currentScopeId, otherwise fallback to legacy KB
+      let learnedPrompt = '';
       
-      const learnedPrompt = formatLearnedForPrompt(learnedResponses);
-      
-      // Log for debugging
-      if (learnedResponses.length > 0) {
-        console.log(`📚 Injecting ${learnedResponses.length} learned responses for agent ${selectedAgent.id}`);
-        console.log('Learned responses:', learnedResponses);
+      if (currentScopeId) {
+        // NEW: Scoped learning - isolated per location+agent+prompt
+        const scopedSnippets = getScopedLearnedSnippets(currentScopeId, 5);
+        
+        if (scopedSnippets.length > 0) {
+          console.log(`📚 Injecting ${scopedSnippets.length} scoped learned snippets for ${currentScopeId.substring(0, 30)}...`);
+          console.log('Scoped snippets:', scopedSnippets);
+          
+          // Format as compact snippets (≤200 chars each)
+          const snippetLines = scopedSnippets.map((s, i) => 
+            `• ${s.originalQuestion.substring(0, 100)} → ${s.correctedResponse.substring(0, 100)}`
+          ).join('\n');
+          
+          learnedPrompt = `\n\n<!-- LEARNED_SNIPPETS_START -->\nPrevious corrections to remember:\n${snippetLines}\n<!-- LEARNED_SNIPPETS_END -->`;
+        } else {
+          console.log(`📚 No scoped learned snippets yet for scope: ${currentScopeId.substring(0, 30)}...`);
+        }
       } else {
-        const stats = getAgentKBStats(selectedAgent.id);
-        console.log(`📚 No relevant learned responses (agent has ${stats.totalCorrections} total corrections)`);
+        // FALLBACK: Legacy agent-wide learning (if no scope set yet)
+        const conversationText = updatedConversation.map(m => m.text).join(' ');
+        const learnedResponses = getRelevantLearned(
+          selectedAgent.id,
+          conversationText,
+          3,
+          selectedNiche
+        );
+        
+        learnedPrompt = formatLearnedForPrompt(learnedResponses);
+        
+        if (learnedResponses.length > 0) {
+          console.log(`📚 Injecting ${learnedResponses.length} learned responses (legacy KB) for agent ${selectedAgent.id}`);
+        } else {
+          const stats = getAgentKBStats(selectedAgent.id);
+          console.log(`📚 No relevant learned responses (agent has ${stats.totalCorrections} total corrections)`);
+        }
       }
 
       // Build enhanced system prompt with agent-specific corrections
@@ -752,14 +836,39 @@ const TrainingHub: React.FC = () => {
         }
       }
 
-      // Now apply the manual fix
-      const result = await applyManualFix({
-        conversationId,
-        turnId: originalMessage.id,
-        correctedResponse: editedText,
-        agentId: selectedAgent?.id,
-        niche: selectedNiche,
-      });
+      // Apply correction - use scoped if available, otherwise fallback
+      let result: SessionEvaluation | null;
+      
+      if (currentScopeId) {
+        // NEW: Scoped correction (isolated per location+agent+prompt)
+        console.log(`📝 Applying scoped correction to ${currentScopeId.substring(0, 30)}...`);
+        result = applyScopedCorrections(
+          currentScopeId,
+          conversationId,
+          {
+            turnId: originalMessage.id,
+            correctedResponse: editedText,
+          }
+        );
+        
+        if (result) {
+          toast.success(`Saved for Training (scoped) • ${result.correctionsApplied} corrections`);
+        }
+      } else {
+        // FALLBACK: Legacy correction (agent-wide)
+        console.log(`📝 Applying legacy correction (agent-wide)`);
+        result = await applyManualFix({
+          conversationId,
+          turnId: originalMessage.id,
+          correctedResponse: editedText,
+          agentId: selectedAgent?.id,
+          niche: selectedNiche,
+        });
+        
+        if (result) {
+          toast.success(`Saved for Training • ${result.correctionsApplied} corrections applied`);
+        }
+      }
 
       if (result) {
         // Update local session state to show incremented corrections counter
@@ -767,7 +876,6 @@ const TrainingHub: React.FC = () => {
         setSessions((prev) => 
           prev.map(s => s.conversationId === result.conversationId ? result : s)
         );
-        toast.success(`Saved for Training • ${result.correctionsApplied} corrections applied`);
       } else {
         toast.error('Session not found - evaluation may have failed');
       }
@@ -789,13 +897,42 @@ const TrainingHub: React.FC = () => {
 
     setPromptSaving(true);
     try {
-      // Update the agent in the store with the new system prompt
+      // 1. Generate prompt hash for scoping
+      const hash = await generatePromptHash(systemPrompt);
+      setPromptHash(hash);
+      
+      // 2. Extract spec from prompt
+      const spec = extractSpecFromPrompt(systemPrompt);
+      setActiveSpec(spec);
+      
+      // 3. Generate scope ID
+      const newScopeId = scopeId({
+        locationId: locationId,
+        agentId: selectedAgent.id,
+        promptHash: hash,
+      });
+      setCurrentScopeId(newScopeId);
+      
+      // 4. Update the agent in the store with the new system prompt
       updateVoiceAgent(selectedAgent.id, {
-        systemPrompt: systemPrompt as any
+        systemPrompt: systemPrompt as any,
+        // Store hash and spec in agent config for future reference
+        ...(selectedAgent as any).config && {
+          config: {
+            ...(selectedAgent as any).config,
+            promptHash: hash,
+            spec: spec,
+          }
+        }
       });
       
       console.log(`💾 System Prompt saved for agent: ${selectedAgent.name}`);
+      console.log(`   • Prompt Hash: ${hash}`);
+      console.log(`   • Scope ID: ${newScopeId}`);
+      console.log(`   • Spec: ${spec.niche} (${spec.agent_type})`);
+      
       toast.success(`System Prompt saved! Agent will use updated prompt on next call.`);
+      toast(`Scope ID: ${newScopeId.substring(0, 30)}...`, { icon: '🔐', duration: 3000 });
     } catch (error: any) {
       console.error('Failed to save system prompt:', error);
       toast.error('Failed to save system prompt');
