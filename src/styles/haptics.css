@@ -1,23 +1,72 @@
 /**
  * Haptic Feedback & Micro-interactions
- * Adds tactile feel to UI controls with minimal CSS
+ * Lightweight tactile feel for UI controls
+ * Respects prefers-reduced-motion
  */
 
-/* Tap feedback for buttons and controls */
+/* ============================================
+   MOTION PREFERENCES
+   ============================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ============================================
+   TIMING & EASING
+   ============================================ */
+
+.ease-smooth {
+  transition-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.ease-spring {
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.t-120 {
+  transition-duration: 120ms;
+}
+
+.t-180 {
+  transition-duration: 180ms;
+}
+
+.t-220 {
+  transition-duration: 220ms;
+}
+
+/* ============================================
+   PRESS/HOVER STATES
+   ============================================ */
+
 .tap {
-  transition: transform 120ms ease, opacity 120ms ease;
+  transition: transform 120ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 120ms;
   cursor: pointer;
 }
 
 .tap:active {
   transform: scale(0.97);
-  opacity: 0.9;
+  opacity: 0.92;
 }
 
-/* Pulse animation for success states */
-.pulse {
-  animation: pulse 280ms ease;
+.hover-raise {
+  transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 180ms;
 }
+
+.hover-raise:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(var(--shadow-color), 0.28);
+}
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
 
 @keyframes pulse {
   0% { transform: scale(0.98); }
@@ -25,9 +74,8 @@
   100% { transform: scale(1); }
 }
 
-/* Fade in for dynamic panels */
-.fadein {
-  animation: fadein 0.18s ease;
+.pulse {
+  animation: pulse 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 @keyframes fadein {
@@ -41,31 +89,23 @@
   }
 }
 
-/* Green glow for thumbs up */
-.glow-green {
-  animation: glowGreen 600ms ease;
+.fadein {
+  animation: fadein 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-@keyframes glowGreen {
-  0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
-  50% { box-shadow: 0 0 12px 4px rgba(34, 197, 94, 0.6); }
-  100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+@keyframes slideup {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
-/* Red glow for thumbs down */
-.glow-red {
-  animation: glowRed 600ms ease;
-}
-
-@keyframes glowRed {
-  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
-  50% { box-shadow: 0 0 12px 4px rgba(239, 68, 68, 0.6); }
-  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
-}
-
-/* Shake animation for errors */
-.shake {
-  animation: shake 320ms ease;
+.slideup {
+  animation: slideup 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 @keyframes shake {
@@ -74,10 +114,8 @@
   75% { transform: translateX(4px); }
 }
 
-/* Smooth expand/collapse */
-.expand {
-  animation: expand 200ms ease;
-  transform-origin: top;
+.shake {
+  animation: shake 320ms ease;
 }
 
 @keyframes expand {
@@ -91,13 +129,158 @@
   }
 }
 
+.expand {
+  animation: expand 200ms ease;
+  transform-origin: top;
+}
+
 /* Token meter pulse */
+@keyframes tokenPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
 .token-pulse {
   animation: tokenPulse 1.2s ease infinite;
 }
 
-@keyframes tokenPulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
+/* ============================================
+   CHIPS & BADGES
+   ============================================ */
+
+.chip {
+  border-radius: var(--radius-full, 999px);
+  padding: 6px 10px;
+  background: var(--bg-2, #141b23);
+  color: var(--text-1, #e5eef9);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 0.75rem;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chip.ok {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(34, 197, 94, 0.35);
+  color: var(--ok, #22c55e);
+}
+
+.chip.warn {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.35);
+  color: var(--warn, #f59e0b);
+}
+
+.chip.err {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: var(--err, #ef4444);
+}
+
+/* ============================================
+   BUTTONS
+   ============================================ */
+
+.btn {
+  background: var(--bg-2, #141b23);
+  color: var(--text-1, #e5eef9);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md, 10px);
+  padding: 10px 12px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 120ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--brand-500, #1098ff);
+  border-color: transparent;
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.btn-ghost {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* ============================================
+   ACCENT GLOWS
+   ============================================ */
+
+.glow-ok {
+  box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.0);
+}
+
+.glow-ok.live {
+  box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.16);
+  transition: box-shadow 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.glow-brand {
+  box-shadow: 0 0 0 0 rgba(16, 152, 255, 0.0);
+}
+
+.glow-brand.live {
+  box-shadow: 0 0 0 6px rgba(16, 152, 255, 0.18);
+  transition: box-shadow 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.glow-warn {
+  box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.0);
+}
+
+.glow-warn.live {
+  box-shadow: 0 0 0 6px rgba(245, 158, 11, 0.16);
+  transition: box-shadow 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.glow-err {
+  box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.0);
+}
+
+.glow-err.live {
+  box-shadow: 0 0 0 6px rgba(239, 68, 68, 0.16);
+  transition: box-shadow 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Legacy glow animations for backward compatibility */
+@keyframes glowGreen {
+  0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+  50% { box-shadow: 0 0 12px 4px rgba(34, 197, 94, 0.6); }
+  100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+
+.glow-green {
+  animation: glowGreen 600ms ease;
+}
+
+@keyframes glowRed {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+  50% { box-shadow: 0 0 12px 4px rgba(239, 68, 68, 0.6); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
+.glow-red {
+  animation: glowRed 600ms ease;
 }
 

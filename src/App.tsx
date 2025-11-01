@@ -69,6 +69,7 @@ import RealTimeAgentMonitor from './components/modules/RealTimeAgentMonitor';
 import ErrorBoundary from './components/ui/ErrorBoundary';
 // import Breadcrumbs from './components/ui/Breadcrumbs';
 import './styles/globals.css';
+import './styles/theme.css';
 import './styles/haptics.css';
 import NavBar from './components/ui/NavBar';
 

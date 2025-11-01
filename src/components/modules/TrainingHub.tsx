@@ -971,11 +971,11 @@ const TrainingHub: React.FC = () => {
     const message = conversation[messageIndex];
     console.log(`👍 Positive feedback for message ${messageIndex}:`, message.text.substring(0, 50));
     
-    // Add green glow effect
+    // Add glow effect using new haptics
     const button = document.querySelector(`[data-thumbs-up="${messageIndex}"]`);
     if (button) {
-      button.classList.add('glow-green');
-      setTimeout(() => button.classList.remove('glow-green'), 600);
+      button.classList.add('glow-ok', 'live');
+      setTimeout(() => button.classList.remove('live'), 600);
     }
     
     toast.success('Marked as good response!', { className: 'pulse' });
@@ -988,13 +988,20 @@ const TrainingHub: React.FC = () => {
       [messageIndex]: prev[messageIndex] === 'down' ? null : 'down'
     }));
     
+    // Add glow effect for thumbs down
+    const button = document.querySelector(`[data-thumbs-down="${messageIndex}"]`);
+    if (button) {
+      button.classList.add('glow-err', 'live');
+      setTimeout(() => button.classList.remove('live'), 600);
+    }
+    
     // If thumbs down is active, open edit interface
     if (messageFeedback[messageIndex] !== 'down') {
       const message = conversation[messageIndex];
       setEditingMessageIndex(messageIndex);
       setEditedText(message.text);
       console.log(`👎 Negative feedback for message ${messageIndex} - opening edit interface`);
-      toast('Edit the message to teach the agent the correct response', { icon: '📝' });
+      toast('Edit the message to teach the agent the correct response', { icon: '📝', className: 'fadein' });
     }
   };
 
@@ -1055,16 +1062,16 @@ const TrainingHub: React.FC = () => {
                   ~{estimateTokens(systemPrompt)} tokens
                   {estimateTokens(systemPrompt) > 1000 && ' ⚠️ High'}
                 </div>
-                <Button 
-                  size="sm" 
-                  onClick={handleSaveSystemPrompt} 
-                  disabled={promptSaving || !selectedAgent}
-                  loading={promptSaving}
-                  className="animate-fade-in tap"
-                >
-                  <Save className="w-3 h-3 mr-1" />
-                  Save Prompt
-                </Button>
+              <Button 
+                size="sm" 
+                onClick={handleSaveSystemPrompt} 
+                disabled={promptSaving || !selectedAgent}
+                loading={promptSaving}
+                className="btn-primary tap hover-raise"
+              >
+                <Save className="w-3 h-3 mr-1" />
+                Save Prompt
+              </Button>
               </div>
             </div>
             <textarea 
@@ -1244,7 +1251,7 @@ const TrainingHub: React.FC = () => {
                   variant="outline" 
                   size="sm" 
                   onClick={handleResetConversation}
-                  className="text-xs"
+                  className="btn-ghost tap text-xs"
                 >
                   <RefreshCw className="w-3 h-3 mr-1" /> Retry
                 </Button>
@@ -1469,7 +1476,7 @@ const TrainingHub: React.FC = () => {
               onClick={handleDryRun} 
               disabled={!selectedAgent || !testMessage.trim() || syncing} 
               loading={syncing}
-              className="tap"
+              className="btn-primary tap hover-raise"
             >
               Send
             </Button>
@@ -1482,7 +1489,7 @@ const TrainingHub: React.FC = () => {
                 size="sm"
                 onClick={handleEvaluateNow}
                 disabled={!canEvaluateNow || evaluationMode !== 'postCall'}
-                className="flex-1 tap"
+                className="flex-1 btn-primary tap hover-raise"
                 data-testid="evaluate-now"
               >
                 ⚡ Evaluate Now
@@ -1492,7 +1499,7 @@ const TrainingHub: React.FC = () => {
                 variant="primary"
                 onClick={handleEndCall}
                 disabled={conversation.length === 0}
-                className="flex-1 tap"
+                className="flex-1 btn-primary tap hover-raise"
                 data-testid="end-call"
               >
                 📞 End Call
@@ -1501,7 +1508,7 @@ const TrainingHub: React.FC = () => {
                 variant="outline" 
                 size="sm" 
                 onClick={handleCopyTranscript}
-                className="flex-1"
+                className="flex-1 btn-ghost tap"
               >
                 📋 Copy Transcript
               </Button>
@@ -1510,7 +1517,7 @@ const TrainingHub: React.FC = () => {
                 onClick={handleSaveForTraining}
                 disabled={saving}
                 loading={saving}
-                className="flex-1"
+                className="flex-1 btn-primary tap hover-raise"
               >
                 💾 Save for Training
               </Button>
