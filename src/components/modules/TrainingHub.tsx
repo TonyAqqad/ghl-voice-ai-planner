@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { BookOpen, Save, Upload, RefreshCw, Database, Sparkles, CheckCircle, Link2, Copy, Edit2, X, Check, AlertTriangle } from 'lucide-react';
+import { BookOpen, Save, Upload, RefreshCw, Database, Sparkles, CheckCircle, Link2, Copy, Edit2, X, Check, AlertTriangle, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { toast } from 'react-hot-toast';
 import { useMCP } from '../../hooks/useMCP';
@@ -44,7 +44,7 @@ const fallbackNiches = [
 ];
 
 const TrainingHub: React.FC = () => {
-  const { voiceAgents } = useStore();
+  const { voiceAgents, updateVoiceAgent } = useStore();
   const [selectedId, setSelectedId] = useState<string>('');
   const [systemPrompt, setSystemPrompt] = useState<string>('');
   const [knowledge, setKnowledge] = useState<string>('');
@@ -52,6 +52,7 @@ const TrainingHub: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [genLoading, setGenLoading] = useState(false);
+  const [promptSaving, setPromptSaving] = useState(false);
 
   // New composer state
   const [selectedNiche, setSelectedNiche] = useState<string>('generic');
@@ -87,6 +88,9 @@ const TrainingHub: React.FC = () => {
   const [editingMessageIndex, setEditingMessageIndex] = useState<number | null>(null);
   const [editedText, setEditedText] = useState<string>('');
   const [masterAgentContext, setMasterAgentContext] = useState<string>('');
+
+  // Feedback state (thumbs up/down for each message)
+  const [messageFeedback, setMessageFeedback] = useState<Record<number, 'up' | 'down' | null>>({});
 
   // Token tracking
   const [totalTokens, setTotalTokens] = useState(0);
@@ -776,6 +780,59 @@ const TrainingHub: React.FC = () => {
     handleCancelEdit();
   };
 
+  // Handle system prompt save
+  const handleSaveSystemPrompt = async () => {
+    if (!selectedAgent) {
+      toast.error('No agent selected');
+      return;
+    }
+
+    setPromptSaving(true);
+    try {
+      // Update the agent in the store with the new system prompt
+      updateVoiceAgent(selectedAgent.id, {
+        systemPrompt: systemPrompt as any
+      });
+      
+      console.log(`💾 System Prompt saved for agent: ${selectedAgent.name}`);
+      toast.success(`System Prompt saved! Agent will use updated prompt on next call.`);
+    } catch (error: any) {
+      console.error('Failed to save system prompt:', error);
+      toast.error('Failed to save system prompt');
+    } finally {
+      setPromptSaving(false);
+    }
+  };
+
+  // Handle thumbs up feedback
+  const handleThumbsUp = (messageIndex: number) => {
+    setMessageFeedback(prev => ({
+      ...prev,
+      [messageIndex]: prev[messageIndex] === 'up' ? null : 'up'
+    }));
+    
+    const message = conversation[messageIndex];
+    console.log(`👍 Positive feedback for message ${messageIndex}:`, message.text.substring(0, 50));
+    toast.success('Marked as good response!');
+  };
+
+  // Handle thumbs down feedback - opens edit interface
+  const handleThumbsDown = (messageIndex: number) => {
+    setMessageFeedback(prev => ({
+      ...prev,
+      [messageIndex]: prev[messageIndex] === 'down' ? null : 'down'
+    }));
+    
+    // If thumbs down is active, open edit interface
+    if (messageFeedback[messageIndex] !== 'down') {
+      const message = conversation[messageIndex];
+      setEditingMessageIndex(messageIndex);
+      setEditedText(message.text);
+      console.log(`👎 Negative feedback for message ${messageIndex} - opening edit interface`);
+      toast('Edit the message to teach the agent the correct response', { icon: '📝' });
+    }
+  };
+
   return (
     <div className="p-6 bg-background min-h-screen text-foreground">
       <div className="mb-6 flex items-center justify-between">
@@ -828,14 +885,31 @@ const TrainingHub: React.FC = () => {
           <div className="mb-4">
             <div className="flex items-center justify-between mb-2">
               <label className="block text-sm font-medium">System Prompt</label>
-              <div className={`text-xs px-2 py-1 rounded ${estimateTokens(systemPrompt) > 1000 ? 'bg-amber-100 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 font-semibold' : 'text-muted-foreground'}`}>
-                ~{estimateTokens(systemPrompt)} tokens
-                {estimateTokens(systemPrompt) > 1000 && ' ⚠️ High'}
+              <div className="flex items-center gap-2">
+                <div className={`text-xs px-2 py-1 rounded ${estimateTokens(systemPrompt) > 1000 ? 'bg-amber-100 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 font-semibold' : 'text-muted-foreground'}`}>
+                  ~{estimateTokens(systemPrompt)} tokens
+                  {estimateTokens(systemPrompt) > 1000 && ' ⚠️ High'}
+                </div>
+                <Button 
+                  size="sm" 
+                  onClick={handleSaveSystemPrompt} 
+                  disabled={promptSaving || !selectedAgent}
+                  loading={promptSaving}
+                  className="animate-fade-in"
+                >
+                  <Save className="w-3 h-3 mr-1" />
+                  Save Prompt
+                </Button>
               </div>
             </div>
-            <textarea value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} className="w-full px-3 py-2 border border-border rounded-md bg-input h-32" placeholder="Write the master system prompt..." />
+            <textarea 
+              value={systemPrompt} 
+              onChange={(e) => setSystemPrompt(e.target.value)} 
+              className="w-full px-3 py-2 border border-border rounded-md bg-input h-32 transition-all duration-200 focus:ring-2 focus:ring-primary focus:border-primary" 
+              placeholder="Write the master system prompt..." 
+            />
             {estimateTokens(systemPrompt) > 1000 && (
-              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1">
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1 animate-fade-in">
                 <AlertTriangle className="w-3 h-3" />
                 Large prompt detected. Consider using "Compose Prompt" for compact 200-300 token prompts.
               </p>
@@ -1073,7 +1147,7 @@ const TrainingHub: React.FC = () => {
                     // Display Mode
                     <div className="relative group">
                       <div 
-                        className={`max-w-[80%] px-3 py-2 rounded-lg text-sm ${
+                        className={`max-w-[80%] px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
                           msg.role === 'caller'
                             ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-900 dark:text-blue-100' 
                             : 'bg-green-100 dark:bg-green-900/30 text-green-900 dark:text-green-100'
@@ -1083,13 +1157,42 @@ const TrainingHub: React.FC = () => {
                           <div className="text-xs opacity-60">
                             {msg.role === 'caller' ? 'Caller' : 'Agent'}
                           </div>
-                          <button
-                            onClick={() => handleStartEdit(idx)}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-white/50 dark:hover:bg-black/30 rounded"
-                            title="Edit message"
-                          >
-                            <Edit2 className="w-3 h-3" />
-                          </button>
+                          <div className="flex items-center gap-1">
+                            {/* Feedback buttons - only for agent messages */}
+                            {msg.role === 'agent' && (
+                              <>
+                                <button
+                                  onClick={() => handleThumbsUp(idx)}
+                                  className={`transition-all duration-200 p-1 rounded ${
+                                    messageFeedback[idx] === 'up'
+                                      ? 'bg-green-500 text-white scale-110'
+                                      : 'opacity-0 group-hover:opacity-100 hover:bg-green-100 dark:hover:bg-green-900/50'
+                                  }`}
+                                  title="Good response"
+                                >
+                                  <ThumbsUp className="w-3 h-3" />
+                                </button>
+                                <button
+                                  onClick={() => handleThumbsDown(idx)}
+                                  className={`transition-all duration-200 p-1 rounded ${
+                                    messageFeedback[idx] === 'down'
+                                      ? 'bg-red-500 text-white scale-110'
+                                      : 'opacity-0 group-hover:opacity-100 hover:bg-red-100 dark:hover:bg-red-900/50'
+                                  }`}
+                                  title="Needs improvement"
+                                >
+                                  <ThumbsDown className="w-3 h-3" />
+                                </button>
+                              </>
+                            )}
+                            <button
+                              onClick={() => handleStartEdit(idx)}
+                              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-white/50 dark:hover:bg-black/30 rounded"
+                              title="Edit message"
+                            >
+                              <Edit2 className="w-3 h-3" />
+                            </button>
+                          </div>
                         </div>
                         {msg.text}
                       </div>
