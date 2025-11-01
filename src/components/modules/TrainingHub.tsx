@@ -7,7 +7,13 @@ import Button from '../../components/ui/Button';
 import { getApiBaseUrl } from '../../utils/apiBase';
 import EvaluationScorecard from './EvaluationScorecard';
 import MasterAIInsights from './MasterAIInsights';
-import { ConversationTurn, ManualCorrectionPayload } from '../../types/evaluation';
+import { ConversationTurn as LegacyConversationTurn, ManualCorrectionPayload } from '../../types/evaluation';
+import {
+  SessionEvaluation,
+  ConversationTurn as SessionConversationTurn,
+} from '../../lib/evaluation/types';
+import { evaluateSession } from '../../lib/evaluation/sessionEvaluator';
+import { loadSessions, saveSession, applyManualCorrections } from '../../lib/evaluation/masterAgentStore';
 
 interface TrainingPayload {
   agentId: string;
@@ -18,6 +24,10 @@ interface TrainingPayload {
 }
 
 const defaultQnA = [{ q: 'What are your hours?', a: 'We are open Monday–Friday 9am–6pm.' }];
+
+const createConversationId = () => `conv-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+type SimulatorTurn = SessionConversationTurn;
 
 const fallbackNiches = [
   { value: 'fitness_gym', label: 'F45 Training / Fitness Gym' },
@@ -54,9 +64,16 @@ const TrainingHub: React.FC = () => {
   const [testResult, setTestResult] = useState<any>(null);
   const [healthLoading, setHealthLoading] = useState(false);
   const [healthResult, setHealthResult] = useState<any>(null);
-  
+
   // Conversation tracking
-  const [conversation, setConversation] = useState<ConversationTurn[]>([]);
+  const [conversationId, setConversationId] = useState(() => createConversationId());
+  const [conversation, setConversation] = useState<SimulatorTurn[]>([]);
+  const [evaluationMode, setEvaluationMode] = useState<'perMessage' | 'postCall'>('postCall');
+  const [sessions, setSessions] = useState<SessionEvaluation[]>(() => loadSessions());
+  const [latestSession, setLatestSession] = useState<SessionEvaluation | null>(
+    sessions[0] ?? null,
+  );
+  const [hasEvaluatedSession, setHasEvaluatedSession] = useState(false);
   const [showEvaluation, setShowEvaluation] = useState(false);
   const [currentEvaluation, setCurrentEvaluation] = useState<any>(null);
   const [evaluationLoading, setEvaluationLoading] = useState(false);
@@ -66,6 +83,42 @@ const TrainingHub: React.FC = () => {
   const [correctionConfirmation, setCorrectionConfirmation] = useState<string | null>(null);
 
   const selectedAgent = useMemo(() => voiceAgents.find(a => a.id === selectedId), [voiceAgents, selectedId]);
+
+  const runSessionEvaluation = useCallback(() => {
+    if (conversation.length === 0) return null;
+
+    const version = ((selectedAgent as any)?.prompt_version || (selectedAgent as any)?.version || 'v1.1') as string;
+    const session = evaluateSession(conversationId, conversation, version);
+    saveSession(session);
+    setSessions((prev) => [session, ...prev.filter((s) => s.conversationId !== session.conversationId)]);
+    setLatestSession(session);
+    setHasEvaluatedSession(true);
+    return session;
+  }, [conversation, conversationId, selectedAgent]);
+
+  const canEvaluateNow = useMemo(() => {
+    const hasCaller = conversation.some((t) => t.role === 'caller');
+    const hasAgent = conversation.some((t) => t.role === 'agent');
+    return hasCaller && hasAgent;
+  }, [conversation]);
+
+  const legacyConversation = useMemo<LegacyConversationTurn[]>(
+    () =>
+      conversation.map((turn) => ({
+        speaker: turn.role === 'caller' ? 'user' : 'agent',
+        text: turn.text,
+        timestamp: turn.ts,
+      })),
+    [conversation],
+  );
+
+  const handleEvaluateNow = useCallback(() => {
+    if (!canEvaluateNow) return;
+    const session = runSessionEvaluation();
+    if (session) {
+      toast.success('Session evaluated');
+    }
+  }, [canEvaluateNow, runSessionEvaluation]);
 
   useEffect(() => {
     if (!selectedAgent && voiceAgents.length > 0) {
@@ -105,10 +158,10 @@ const TrainingHub: React.FC = () => {
   useEffect(() => {
     if (!showEvaluation) {
       setScorecardOpen(false);
-    } else if (showEvaluation && currentEvaluation) {
+    } else if (showEvaluation && currentEvaluation && evaluationMode === 'perMessage') {
       setScorecardOpen(true);
     }
-  }, [showEvaluation, currentEvaluation]);
+  }, [showEvaluation, currentEvaluation, evaluationMode]);
 
   const payload: TrainingPayload | null = selectedAgent
     ? {
@@ -287,16 +340,22 @@ const TrainingHub: React.FC = () => {
 
   const handleDryRun = async () => {
     if (!selectedAgent || !testMessage.trim()) return;
-    
-    // Add user message to conversation
-    const userMessage = { 
-      speaker: 'user' as const, 
-      text: testMessage, 
-      timestamp: Date.now() 
+
+    if (hasEvaluatedSession) {
+      setHasEvaluatedSession(false);
+    }
+
+    const callerTs = Date.now();
+    const callerTurn: SimulatorTurn = {
+      id: `caller-${callerTs}-${Math.random().toString(36).slice(2, 6)}`,
+      role: 'caller',
+      text: testMessage,
+      ts: callerTs,
     };
-    const updatedConversation = [...conversation, userMessage];
+
+    const updatedConversation = [...conversation, callerTurn];
     setConversation(updatedConversation);
-    
+
     setSyncing(true);
     try {
       const callResponse = await mcp.voiceAgentCall({
@@ -304,10 +363,10 @@ const TrainingHub: React.FC = () => {
         phoneNumber: '+10000000000',
         context: { 
           userMessage: testMessage,
-          conversationHistory: conversation.map(m => ({
-            role: m.speaker === 'user' ? 'user' : 'assistant',
-            content: m.text
-          }))
+          conversationHistory: conversation.map((m) => ({
+            role: m.role === 'caller' ? 'user' : 'assistant',
+            content: m.text,
+          })),
         },
         options: { textOnly: true }
       }, { showToast: false });
@@ -325,12 +384,14 @@ const TrainingHub: React.FC = () => {
       }
 
       // Add agent response to conversation
-      const agentMessage = {
-        speaker: 'agent' as const,
+      const agentTs = Date.now();
+      const agentTurn: SimulatorTurn = {
+        id: `agent-${agentTs}-${Math.random().toString(36).slice(2, 6)}`,
+        role: 'agent',
         text: agentText || 'No response',
-        timestamp: Date.now()
+        ts: agentTs,
       };
-      const finalConversation = [...updatedConversation, agentMessage];
+      const finalConversation = [...updatedConversation, agentTurn];
       setConversation(finalConversation);
       setTestResult(agentPayload);
       
@@ -338,7 +399,7 @@ const TrainingHub: React.FC = () => {
       setTestMessage('');
       
       // Auto-evaluate if enabled
-      if (showEvaluation) {
+      if (showEvaluation && evaluationMode === 'perMessage') {
         await evaluateConversation(finalConversation);
       }
       
@@ -352,11 +413,13 @@ const TrainingHub: React.FC = () => {
   };
 
   const evaluateConversation = async (conv: typeof conversation) => {
-    if (!selectedAgent) return;
+    if (!selectedAgent || evaluationMode !== 'perMessage') return;
     
     setEvaluationLoading(true);
     try {
-      const transcript = conv.map(m => `${m.speaker === 'user' ? 'Caller' : 'Agent'}: ${m.text}`).join('\n');
+      const transcript = conv
+        .map((m) => `${m.role === 'caller' ? 'Caller' : 'Agent'}: ${m.text}`)
+        .join('\n');
       
       // Note: Evaluation endpoint is part of autonomous system (may not be deployed yet)
       // This will gracefully handle 404 if endpoint doesn't exist
@@ -450,6 +513,17 @@ const TrainingHub: React.FC = () => {
       setEvaluationContext(prev => (prev ? { ...prev, promptId: updatedPromptId } : prev));
       setCorrectionConfirmation(confirmationMessage);
       toast.success(confirmationMessage);
+
+      if (latestSession && latestSession.conversationId === conversationId) {
+        const updated = applyManualCorrections(conversationId, {
+          rubric: latestSession.rubric,
+          fields: latestSession.collectedFields,
+        });
+        if (updated) {
+          setLatestSession(updated);
+          setSessions(prev => [updated, ...prev.filter(s => s.conversationId !== updated.conversationId)]);
+        }
+      }
     } catch (error: any) {
       const message = error?.message || 'Failed to save correction.';
       toast.error(message);
@@ -457,7 +531,7 @@ const TrainingHub: React.FC = () => {
     } finally {
       setSavingCorrection(false);
     }
-  }, [selectedAgent, evaluationContext, conversation, mcp]);
+  }, [selectedAgent, evaluationContext, conversation, latestSession, conversationId, mcp]);
 
   const handleSaveForTraining = async () => {
     if (!selectedAgent || conversation.length === 0) {
@@ -467,7 +541,9 @@ const TrainingHub: React.FC = () => {
     
     setSaving(true);
     try {
-      const transcript = conversation.map(m => `${m.speaker === 'user' ? 'Caller' : 'Agent'}: ${m.text}`).join('\n');
+      const transcript = conversation
+        .map((m) => `${m.role === 'caller' ? 'Caller' : 'Agent'}: ${m.text}`)
+        .join('\n');
       const summary = `Manual training session with ${conversation.length} messages`;
       
       const response = await fetch('/api/mcp/agent/ingestTranscript', {
@@ -480,16 +556,21 @@ const TrainingHub: React.FC = () => {
           tags: ['training', 'manual_review', 'dry_run'],
           metrics: {
             messageCount: conversation.length,
-            duration: conversation[conversation.length - 1].timestamp - conversation[0].timestamp
-          }
+            duration: conversation[conversation.length - 1].ts - conversation[0].ts,
+          },
         })
       });
       
       const data = await response.json();
       if (data.ok) {
         toast.success('Conversation saved for training!');
+        if (evaluationMode === 'postCall' && !hasEvaluatedSession) {
+          runSessionEvaluation();
+        }
         // Reset conversation after successful save
         setConversation([]);
+        setConversationId(createConversationId());
+        setHasEvaluatedSession(false);
         setTestResult(null);
         setCurrentEvaluation(null);
         setScorecardOpen(false);
@@ -507,24 +588,31 @@ const TrainingHub: React.FC = () => {
 
   const handleResetConversation = () => {
     if (conversation.length === 0) return;
-    
-    if (confirm('Reset conversation? All messages will be cleared.')) {
-      setConversation([]);
-      setTestResult(null);
-      setCurrentEvaluation(null);
-      setTestMessage('');
-      setScorecardOpen(false);
-      setEvaluationContext(null);
-      setCorrectionConfirmation(null);
-      toast.success('Conversation reset');
+
+    const shouldReset = window.confirm('Retry conversation? The current transcript will be saved and a new session started.');
+    if (!shouldReset) return;
+
+    if (evaluationMode === 'postCall' && !hasEvaluatedSession) {
+      runSessionEvaluation();
     }
+
+    setConversation([]);
+    setConversationId(createConversationId());
+    setHasEvaluatedSession(false);
+    setTestResult(null);
+    setCurrentEvaluation(null);
+    setTestMessage('');
+    setScorecardOpen(false);
+    setEvaluationContext(null);
+    setCorrectionConfirmation(null);
+    toast.success('Ready for a fresh run!');
   };
 
   const handleCopyTranscript = () => {
-    const transcript = conversation.map(m => 
-      `${m.speaker === 'user' ? 'Caller' : 'Agent'}: ${m.text}`
-    ).join('\n\n');
-    
+    const transcript = conversation
+      .map((m) => `${m.role === 'caller' ? 'Caller' : 'Agent'}: ${m.text}`)
+      .join('\n\n');
+
     navigator.clipboard.writeText(transcript);
     toast.success('Transcript copied to clipboard');
   };
@@ -689,7 +777,7 @@ const TrainingHub: React.FC = () => {
 
       {/* Master AI Insights */}
       <div className="mt-6">
-        <MasterAIInsights agentId={selectedAgent?.id} />
+        <MasterAIInsights sessions={sessions} currentSession={latestSession ?? undefined} />
       </div>
 
       {/* Inline Testing Panel */}
@@ -721,6 +809,15 @@ const TrainingHub: React.FC = () => {
                 />
                 <span>Show Score</span>
               </label>
+
+              <select
+                value={evaluationMode}
+                onChange={(e) => setEvaluationMode(e.target.value as 'perMessage' | 'postCall')}
+                className="text-xs px-2 py-1 border border-border rounded bg-input"
+              >
+                <option value="postCall">Post-call</option>
+                <option value="perMessage">Per-message</option>
+              </select>
               
               {/* Reset Button */}
               {conversation.length > 0 && (
@@ -730,7 +827,7 @@ const TrainingHub: React.FC = () => {
                   onClick={handleResetConversation}
                   className="text-xs"
                 >
-                  <RefreshCw className="w-3 h-3 mr-1" /> Reset
+                  <RefreshCw className="w-3 h-3 mr-1" /> Retry
                 </Button>
               )}
             </div>
@@ -742,17 +839,17 @@ const TrainingHub: React.FC = () => {
               {conversation.map((msg, idx) => (
                 <div 
                   key={idx} 
-                  className={`flex ${msg.speaker === 'user' ? 'justify-start' : 'justify-end'}`}
+                  className={`flex ${msg.role === 'caller' ? 'justify-start' : 'justify-end'}`}
                 >
                   <div 
                     className={`max-w-[80%] px-3 py-2 rounded-lg text-sm ${
-                      msg.speaker === 'user' 
+                      msg.role === 'caller'
                         ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-900 dark:text-blue-100' 
                         : 'bg-green-100 dark:bg-green-900/30 text-green-900 dark:text-green-100'
                     }`}
                   >
                     <div className="text-xs opacity-60 mb-1">
-                      {msg.speaker === 'user' ? 'Caller' : 'Agent'}
+                      {msg.role === 'caller' ? 'Caller' : 'Agent'}
                     </div>
                     {msg.text}
                   </div>
@@ -774,18 +871,25 @@ const TrainingHub: React.FC = () => {
               </div>
               {currentEvaluation.rubricScores && (
                 <div className="flex flex-wrap gap-1">
-                  {Object.entries(currentEvaluation.rubricScores).map(([key, value]: [string, any]) => (
-                    <span 
-                      key={key} 
-                      className={`text-xs px-2 py-1 rounded ${
-                        value >= 4 ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' :
-                        value >= 2 ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300' :
-                        'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
-                      }`}
-                    >
-                      {value >= 4 ? '✅' : value >= 2 ? '⚠️' : '❌'} {key.replace(/([A-Z])/g, ' $1').trim()}
-                    </span>
-                  ))}
+                  {Object.entries(currentEvaluation.rubricScores).map(([key, value]: [string, any]) => {
+                    const numeric = typeof value === 'number' ? value : null;
+                    const badgeClass =
+                      numeric === null
+                        ? 'bg-gray-100 dark:bg-gray-900/30 text-gray-600 dark:text-gray-300'
+                        : numeric >= 4
+                        ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+                        : numeric >= 2
+                        ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300'
+                        : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300';
+                    const glyph =
+                      numeric === null ? 'ℹ️' : numeric >= 4 ? '✅' : numeric >= 2 ? '⚠️' : '❌';
+
+                    return (
+                      <span key={key} className={`text-xs px-2 py-1 rounded ${badgeClass}`}>
+                        {glyph} {key.replace(/([A-Z])/g, ' $1').trim()} {numeric === null ? '(N/A)' : numeric.toFixed(1)}
+                      </span>
+                    );
+                  })}
                 </div>
               )}
               
@@ -854,7 +958,15 @@ const TrainingHub: React.FC = () => {
 
           {/* Action Buttons */}
           {conversation.length > 0 && (
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Button
+                size="sm"
+                onClick={handleEvaluateNow}
+                disabled={!canEvaluateNow || evaluationMode !== 'postCall'}
+                className="flex-1"
+              >
+                ⚡ Evaluate Now
+              </Button>
               <Button 
                 variant="outline" 
                 size="sm" 
@@ -893,7 +1005,7 @@ const TrainingHub: React.FC = () => {
         evaluation={currentEvaluation}
         isOpen={Boolean(scorecardOpen && currentEvaluation)}
         onClose={() => setScorecardOpen(false)}
-        conversation={conversation}
+        conversation={legacyConversation}
         agentId={selectedAgent?.id || null}
         promptId={evaluationContext?.promptId || null}
         reviewId={evaluationContext?.reviewId || null}

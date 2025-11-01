@@ -38,10 +38,10 @@ const RUBRIC_ORDER = [
   'verification'
 ];
 
-type ScoreStatus = 'success' | 'warning' | 'error';
+type ScoreStatus = 'success' | 'warning' | 'error' | 'na';
 
-const getScoreStatus = (score?: number): ScoreStatus => {
-  if (typeof score !== 'number') return 'warning';
+const getScoreStatus = (score?: number | null): ScoreStatus => {
+  if (score === null || typeof score === 'undefined') return 'na';
   if (score >= 4) return 'success';
   if (score >= 2) return 'warning';
   return 'error';
@@ -50,13 +50,15 @@ const getScoreStatus = (score?: number): ScoreStatus => {
 const statusStyles: Record<ScoreStatus, string> = {
   success: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300',
   warning: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300',
-  error: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
+  error: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300',
+  na: 'bg-gray-100 dark:bg-gray-900/30 text-gray-600 dark:text-gray-300',
 };
 
 const statusIcon: Record<ScoreStatus, React.ReactNode> = {
   success: <CheckCircle className="w-4 h-4" />, 
   warning: <AlertTriangle className="w-4 h-4" />, 
-  error: <AlertTriangle className="w-4 h-4" />
+  error: <AlertTriangle className="w-4 h-4" />,
+  na: <AlertTriangle className="w-4 h-4" />
 };
 
 const EvaluationScorecard: React.FC<EvaluationScorecardProps> = ({
@@ -121,7 +123,7 @@ const EvaluationScorecard: React.FC<EvaluationScorecardProps> = ({
     const ordered = RUBRIC_ORDER.filter((key) => key in evaluation.rubricScores);
     const unordered = Object.keys(evaluation.rubricScores).filter((k) => !ordered.includes(k));
     const finalOrder = [...ordered, ...unordered];
-    return finalOrder.map((key) => ({ key, score: evaluation.rubricScores[key] }));
+    return finalOrder.map((key) => ({ key, score: evaluation.rubricScores[key] ?? null }));
   }, [evaluation]);
 
   const handleToggleNote = (note: string) => {
@@ -286,6 +288,7 @@ const EvaluationScorecard: React.FC<EvaluationScorecardProps> = ({
                 ) : (
                   rubricEntries.map(({ key, score }) => {
                     const status = getScoreStatus(score);
+                    const displayScore = typeof score === 'number' ? score.toFixed(1) : 'N/A';
                     return (
                       <div key={key} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border/60 bg-muted/10">
                         <div className="flex items-center gap-3">
@@ -300,8 +303,8 @@ const EvaluationScorecard: React.FC<EvaluationScorecardProps> = ({
                           </div>
                         </div>
                         <div className="flex items-baseline gap-1">
-                          <span className="text-lg font-semibold text-foreground">{typeof score === 'number' ? score.toFixed(1) : '--'}</span>
-                          <span className="text-xs text-muted-foreground">/ 5</span>
+                          <span className="text-lg font-semibold text-foreground">{displayScore}</span>
+                          <span className="text-xs text-muted-foreground">{displayScore === 'N/A' ? '' : '/ 5'}</span>
                         </div>
                       </div>
                     );

@@ -18,7 +18,7 @@ export interface CollectedField {
 
 export interface EvaluationResult {
   pass: boolean;
-  rubricScores: Record<string, number>;
+  rubricScores: Record<string, number | null>;
   improvementNotes: string[];
   confidenceScore: number;
   suggestedPromptPatch?: Record<string, unknown> | null;

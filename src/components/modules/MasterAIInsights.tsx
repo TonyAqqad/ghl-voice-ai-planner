@@ -1,17 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import { Brain, TrendingUp, TrendingDown, AlertCircle, CheckCircle2, Sparkles, BarChart3 } from 'lucide-react';
-import axios from 'axios';
+import React, { useMemo } from 'react';
+import {
+  Brain,
+  TrendingUp,
+  TrendingDown,
+  CheckCircle2,
+  Sparkles,
+  BarChart3,
+  AlertTriangle,
+} from 'lucide-react';
 import { format } from 'date-fns';
 
-interface PromptPerformance {
-  version: string;
-  created_at: string;
-  avg_confidence: number;
-  avg_field_collection: number;
-  avg_tone: number;
-  call_count: number;
-  correction_count: number;
-}
+import { FieldCapture, RubricScore, SessionEvaluation } from '../../lib/evaluation/types';
 
 interface MasterInsight {
   type: 'improvement' | 'degradation' | 'insight';
@@ -22,170 +21,145 @@ interface MasterInsight {
 }
 
 interface MasterAIInsightsProps {
-  agentId?: string;
+  sessions: SessionEvaluation[];
+  currentSession?: SessionEvaluation | null;
 }
 
-const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ agentId }) => {
-  const [performance, setPerformance] = useState<PromptPerformance[]>([]);
-  const [insights, setInsights] = useState<MasterInsight[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSession }) => {
+  const orderedSessions = useMemo(() => {
+    if (!currentSession) return sessions;
+    const rest = sessions.filter((s) => s.conversationId !== currentSession.conversationId);
+    return [currentSession, ...rest];
+  }, [sessions, currentSession]);
 
-  useEffect(() => {
-    if (agentId) {
-      fetchPerformance();
-    }
-  }, [agentId]);
+  const latest = orderedSessions[0] ?? null;
+  const previous = orderedSessions[1] ?? null;
 
-  const fetchPerformance = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await axios.get('/api/mcp/agent/performance', {
-        params: { agentId }
-      });
-
-      if (response.data.success) {
-        const perfData = response.data.performance || [];
-        setPerformance(perfData);
-        generateInsights(perfData);
-      } else {
-        setError(response.data.error || 'Failed to fetch performance');
-      }
-    } catch (err: any) {
-      console.error('Error fetching performance:', err);
-      setError(err.response?.data?.error || err.message || 'An unknown error occurred');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const generateInsights = (perfData: PromptPerformance[]) => {
-    if (perfData.length < 2) {
-      setInsights([
+  const insights = useMemo<MasterInsight[]>(() => {
+    if (!latest) {
+      return [
         {
           type: 'insight',
-          message: 'Train your agent with more conversations to unlock Master AI insights',
+          message: 'Run an evaluation to see Master AI insights.',
           metric: 'training',
           delta: 0,
-          confidence: 'high'
-        }
-      ]);
-      return;
+          confidence: 'high',
+        },
+      ];
     }
 
-    const latest = perfData[0];
-    const previous = perfData[1];
-    const generatedInsights: MasterInsight[] = [];
+    if (!previous) {
+      return [
+        {
+          type: 'insight',
+          message: 'Keep training this agent to unlock comparative insights.',
+          metric: 'training',
+          delta: 0,
+          confidence: 'high',
+        },
+      ];
+    }
 
-    // Analyze confidence score trend (with null checks)
-    const confidenceDelta = (latest.avg_confidence || 0) - (previous.avg_confidence || 0);
-    if (Math.abs(confidenceDelta) > 0.05 && latest.avg_confidence && previous.avg_confidence) {
-      generatedInsights.push({
-        type: confidenceDelta > 0 ? 'improvement' : 'degradation',
-        message: confidenceDelta > 0
-          ? `Overall confidence improved by ${Math.round(confidenceDelta * 100)}% after ${latest.correction_count} corrections`
-          : `Confidence dropped by ${Math.round(Math.abs(confidenceDelta) * 100)}%. Review recent corrections.`,
+    const generated: MasterInsight[] = [];
+
+    const confidenceDelta = latest.confidence - previous.confidence;
+    if (Math.abs(confidenceDelta) >= 5) {
+      generated.push({
+        type: confidenceDelta >= 0 ? 'improvement' : 'degradation',
+        message:
+          confidenceDelta >= 0
+            ? `Overall confidence improved by ${confidenceDelta.toFixed(0)} points`:
+            `Confidence dropped by ${Math.abs(confidenceDelta).toFixed(0)} points. Review recent responses.`,
         metric: 'confidence',
-        delta: confidenceDelta,
-        confidence: Math.abs(confidenceDelta) > 0.1 ? 'high' : 'medium'
+        delta: confidenceDelta / 100,
+        confidence: Math.abs(confidenceDelta) >= 10 ? 'high' : 'medium',
       });
     }
 
-    // Analyze field collection (with null checks)
-    const fieldDelta = (latest.avg_field_collection || 0) - (previous.avg_field_collection || 0);
-    if (Math.abs(fieldDelta) > 0.3 && latest.avg_field_collection && previous.avg_field_collection) {
-      generatedInsights.push({
+    const latestFieldCount = latest.collectedFields.length;
+    const previousFieldCount = previous.collectedFields.length;
+    const fieldDelta = latestFieldCount - previousFieldCount;
+    if (fieldDelta !== 0) {
+      generated.push({
         type: fieldDelta > 0 ? 'improvement' : 'degradation',
-        message: fieldDelta > 0
-          ? `Field collection score improved from ${previous.avg_field_collection.toFixed(1)} to ${latest.avg_field_collection.toFixed(1)}. Agent is getting better at capturing contact info.`
-          : `Field collection quality declined. Agent may need reinforcement on collecting all required fields in order.`,
-        metric: 'field_collection',
-        delta: fieldDelta,
-        confidence: 'high'
+        message:
+          fieldDelta > 0
+            ? `Captured ${fieldDelta} more contact field${fieldDelta === 1 ? '' : 's'} than previous session.`
+            : `Captured ${Math.abs(fieldDelta)} fewer contact field${Math.abs(fieldDelta) === 1 ? '' : 's'} this time.`,
+        metric: 'fieldCollection',
+        delta: fieldDelta / Math.max(previousFieldCount || 1, 1),
+        confidence: 'medium',
       });
     }
 
-    // Analyze tone improvements (with null checks)
-    const toneDelta = (latest.avg_tone || 0) - (previous.avg_tone || 0);
-    if (Math.abs(toneDelta) > 0.3 && latest.avg_tone && previous.avg_tone) {
-      generatedInsights.push({
-        type: toneDelta > 0 ? 'improvement' : 'degradation',
-        message: toneDelta > 0
-          ? `Conversational tone improved. Agent sounds more natural and human-like.`
-          : `Tone quality decreased. Consider reviewing corrections for overly robotic or formal language.`,
-        metric: 'tone',
-        delta: toneDelta,
-        confidence: 'medium'
-      });
-    }
-
-    // Training velocity insight
-    if (latest.call_count > 5) {
-      generatedInsights.push({
-        type: 'insight',
-        message: `Agent has handled ${latest.call_count} conversations at version ${latest.version}. ${latest.correction_count > 0 ? `Applied ${latest.correction_count} corrections.` : 'Consider testing more scenarios to identify improvement areas.'}`,
-        metric: 'training',
+    const latestObjection = latest.rubric.find((r) => r.key === 'objectionHandling');
+    const previousObjection = previous.rubric.find((r) => r.key === 'objectionHandling');
+    if (latestObjection && previousObjection && latestObjection.score !== previousObjection.score) {
+      generated.push({
+        type: latestObjection.score !== null && (latestObjection.score ?? 0) > (previousObjection.score ?? 0)
+          ? 'improvement'
+          : 'degradation',
+        message:
+          latestObjection.score !== null && previousObjection.score !== null
+            ? `Objection handling moved from ${previousObjection.score} → ${latestObjection.score}.`
+            : 'Objection handling rubric changed this session.',
+        metric: 'objectionHandling',
         delta: 0,
-        confidence: 'high'
+        confidence: 'medium',
       });
     }
 
-    // Master template readiness (with null checks)
-    if (latest.avg_confidence && latest.avg_confidence >= 0.85 && latest.call_count && latest.call_count >= 10) {
-      generatedInsights.push({
-        type: 'improvement',
-        message: `🌟 Agent is performing well! Consider promoting to a Master Template for reuse across similar agents.`,
-        metric: 'readiness',
-        delta: 0,
-        confidence: 'high'
-      });
-    }
+    return generated.length > 0
+      ? generated
+      : [
+          {
+            type: 'insight',
+            message: 'No major changes detected. Continue refining prompts and corrections.',
+            metric: 'neutral',
+            delta: 0,
+            confidence: 'medium',
+          },
+        ];
+  }, [latest, previous]);
 
-    setInsights(generatedInsights.length > 0 ? generatedInsights : [
-      {
-        type: 'insight',
-        message: 'No significant changes detected. Keep training to see insights!',
-        metric: 'neutral',
-        delta: 0,
-        confidence: 'medium'
-      }
-    ]);
-  };
-
-  if (!agentId) {
+  if (!latest) {
     return (
-      <div className="card p-6 border-border/60 bg-muted/10">
-        <div className="flex items-center gap-2 text-muted-foreground">
+      <div className="card p-6 border-dashed border-border/60 bg-muted/10 text-sm text-muted-foreground flex flex-col gap-2">
+        <div className="flex items-center gap-2">
           <Brain className="w-5 h-5" />
-          <p className="text-sm">Select an agent to see Master AI insights</p>
+          <span>Run Evaluate Now or finish a call to see Master AI insights.</span>
         </div>
       </div>
     );
   }
 
-  if (loading) {
-    return (
-      <div className="card p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <Brain className="w-5 h-5 text-primary animate-pulse" />
-          <h2 className="text-lg font-semibold">Master AI Analyzing...</h2>
-        </div>
-      </div>
-    );
-  }
+  const performanceTimeline = orderedSessions.slice(0, 5);
 
-  if (error) {
-    return (
-      <div className="card p-6 border-red-200 dark:border-red-800">
-        <div className="flex items-center gap-2 mb-2">
-          <AlertCircle className="w-5 h-5 text-red-600" />
-          <h2 className="text-lg font-semibold text-red-600">Analysis Error</h2>
-        </div>
-        <p className="text-sm text-muted-foreground">{error}</p>
-      </div>
-    );
-  }
+  const renderFieldChip = (field: FieldCapture, idx: number) => (
+    <span
+      key={`${field.turnId}-${field.key}-${idx}`}
+      className={`px-2 py-1 text-xs rounded-full border ${
+        field.valid
+          ? 'border-green-500/60 bg-green-50 dark:bg-green-900/10 text-green-700 dark:text-green-300'
+          : 'border-amber-500/60 bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-300'
+      }`}
+      title={`Captured on turn ${field.turnId}`}
+    >
+      {field.valid ? '✅' : '⚠️'} {field.key}: {field.value}
+    </span>
+  );
+
+  const renderRubricRow = (score: RubricScore) => (
+    <div key={score.key} className="grid grid-cols-5 gap-2 text-xs items-center">
+      <span className="col-span-2 font-medium capitalize">{score.key.replace(/([A-Z])/g, ' $1')}</span>
+      <span className="col-span-1 text-center font-semibold">
+        {score.score === null ? 'N/A' : score.score.toFixed(1)}
+      </span>
+      <span className="col-span-2 text-muted-foreground line-clamp-2">
+        {score.notes || '—'}
+      </span>
+    </div>
+  );
 
   return (
     <div className="card p-6">
@@ -193,56 +167,44 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ agentId }) => {
         <div className="flex items-center gap-2">
           <Brain className="w-5 h-5 text-primary" />
           <h2 className="text-lg font-semibold">Master AI Insights</h2>
-          <span className="text-xs text-muted-foreground">Real-time Performance Analysis</span>
+          <span className="text-xs text-muted-foreground">Session Intelligence</span>
         </div>
         <Sparkles className="w-5 h-5 text-amber-500" />
       </div>
 
-      {/* Performance Overview */}
-      {performance.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div className="p-4 rounded-lg border border-border/60 bg-muted/10">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-muted-foreground">Current Confidence</span>
-              <BarChart3 className="w-4 h-4 text-blue-500" />
-            </div>
-            <p className="text-2xl font-bold">
-              {performance[0].avg_confidence ? Math.round(performance[0].avg_confidence * 100) : 0}%
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Version {performance[0].version} · {performance[0].call_count || 0} calls
-            </p>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="p-4 rounded-lg border border-border/60 bg-muted/10">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-muted-foreground">Current Confidence</span>
+            <BarChart3 className="w-4 h-4 text-blue-500" />
           </div>
-          
-          <div className="p-4 rounded-lg border border-border/60 bg-muted/10">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-muted-foreground">Field Collection</span>
-              <CheckCircle2 className="w-4 h-4 text-green-500" />
-            </div>
-            <p className="text-2xl font-bold">
-              {performance[0].avg_field_collection ? performance[0].avg_field_collection.toFixed(1) : '0.0'}/5
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">
-              {performance.length > 1 && performance[0].avg_field_collection && performance[1].avg_field_collection && (
-                <span className={performance[0].avg_field_collection > performance[1].avg_field_collection ? 'text-green-600' : 'text-red-600'}>
-                  {performance[0].avg_field_collection > performance[1].avg_field_collection ? '↑' : '↓'} {Math.abs(performance[0].avg_field_collection - performance[1].avg_field_collection).toFixed(1)} from previous
-                </span>
-              )}
-            </p>
-          </div>
-          
-          <div className="p-4 rounded-lg border border-border/60 bg-muted/10">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-muted-foreground">Corrections Applied</span>
-              <TrendingUp className="w-4 h-4 text-purple-500" />
-            </div>
-            <p className="text-2xl font-bold">{performance[0].correction_count || 0}</p>
-            <p className="text-xs text-muted-foreground mt-1">This version</p>
-          </div>
+          <p className="text-2xl font-bold">{latest.confidence}%</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {format(new Date(latest.endedAt), 'MMM d, h:mm a')} · {latest.version}
+          </p>
         </div>
-      )}
 
-      {/* AI-Generated Insights */}
+        <div className="p-4 rounded-lg border border-border/60 bg-muted/10">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-muted-foreground">Fields Captured</span>
+            <CheckCircle2 className="w-4 h-4 text-green-500" />
+          </div>
+          <p className="text-2xl font-bold">{latest.collectedFields.length}</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {latest.collectedFields.filter((f) => f.valid).length} validated
+          </p>
+        </div>
+
+        <div className="p-4 rounded-lg border border-border/60 bg-muted/10">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-muted-foreground">Corrections Applied</span>
+            <TrendingUp className="w-4 h-4 text-purple-500" />
+          </div>
+          <p className="text-2xl font-bold">{latest.correctionsApplied ?? 0}</p>
+          <p className="text-xs text-muted-foreground mt-1">Manual adjustments to date</p>
+        </div>
+      </div>
+
       <div className="space-y-3">
         <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-amber-500" />
@@ -288,30 +250,49 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ agentId }) => {
         })}
       </div>
 
-      {/* Performance Timeline */}
-      {performance.length > 1 && (
-        <div className="mt-6 pt-6 border-t border-border/60">
-          <h3 className="text-sm font-semibold text-foreground mb-3">Performance Timeline</h3>
-          <div className="space-y-2">
-            {performance.slice(0, 5).map((perf, idx) => (
-              <div key={idx} className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">
-                  {format(new Date(perf.created_at), 'MMM d, h:mm a')} · v{perf.version}
-                </span>
-                <div className="flex items-center gap-3">
-                  <span className="text-foreground">
-                    {perf.avg_confidence ? Math.round(perf.avg_confidence * 100) : 0}% conf
-                  </span>
-                  <span className="text-foreground">
-                    {perf.avg_field_collection ? perf.avg_field_collection.toFixed(1) : '0.0'} fields
-                  </span>
-                  <span className="text-muted-foreground">{perf.call_count || 0} calls</span>
-                </div>
-              </div>
-            ))}
+      <div className="mt-6 pt-6 border-t border-border/60 space-y-4">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground mb-3">Field Collection</h3>
+          <div className="flex flex-wrap gap-2">
+            {latest.collectedFields.length > 0 ? (
+              latest.collectedFields.map(renderFieldChip)
+            ) : (
+              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3" /> No fields detected yet.
+              </span>
+            )}
           </div>
         </div>
-      )}
+
+        <div>
+          <h3 className="text-sm font-semibold text-foreground mb-3">Rubric Scores</h3>
+          <div className="space-y-2">
+            {latest.rubric.map(renderRubricRow)}
+          </div>
+        </div>
+
+        {performanceTimeline.length > 1 && (
+          <div>
+            <h3 className="text-sm font-semibold text-foreground mb-3">Performance Timeline</h3>
+            <div className="space-y-2">
+              {performanceTimeline.map((session) => (
+                <div key={session.conversationId} className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">
+                    {format(new Date(session.endedAt), 'MMM d, h:mm a')} · {session.version}
+                  </span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-foreground">{session.confidence}% conf</span>
+                    <span className="text-foreground">{session.collectedFields.length} fields</span>
+                    <span className="text-muted-foreground">
+                      {session.correctionsApplied ?? 0} corrections
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
