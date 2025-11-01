@@ -231,6 +231,7 @@ export function evaluateSession(
           notes: 'Not tested in this call',
         },
   ];
+  }
 
   const scored = rubric.filter((r) => r.score !== null) as Required<RubricScore>[];
   const confidence =
