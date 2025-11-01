@@ -40,6 +40,9 @@ class OpenAIProvider {
     }
     
     try {
+      const targetModel = options.model || DEFAULT_CHAT_MODEL;
+      const useResponsesApi = /^gpt-5/i.test(targetModel);
+
       // Build messages array
       let messages;
       
@@ -65,11 +68,82 @@ class OpenAIProvider {
           }
         ];
       }
-      
+
+      if (useResponsesApi) {
+        const toInputMessage = (msg) => ({
+          role: msg.role,
+          content: Array.isArray(msg.content)
+            ? msg.content
+            : [{ type: 'input_text', text: msg.content }]
+        });
+
+        const responsePayload = {
+          model: targetModel,
+          input: messages.map(toInputMessage),
+          temperature: options.temperature || 0.7,
+          max_output_tokens: options.maxTokens || 1000,
+          top_p: options.topP || 1,
+        };
+
+        if (options.reasoningEffort || true) {
+          responsePayload.reasoning = {
+            effort: options.reasoningEffort || 'medium'
+          };
+        }
+
+        const response = await axios.post(
+          `${this.baseUrl}/responses`,
+          responsePayload,
+          {
+            headers: this.getHeaders()
+          }
+        );
+
+        const extractText = (data) => {
+          if (!data) return '';
+          if (typeof data.output_text === 'string') {
+            return data.output_text;
+          }
+
+          if (Array.isArray(data.output)) {
+            return data.output
+              .flatMap(item =>
+                (item.content || [])
+                  .filter(chunk => chunk.type === 'output_text' || chunk.type === 'text')
+                  .map(chunk => chunk.text || '')
+              )
+              .join('\n')
+              .trim();
+          }
+
+          return '';
+        };
+
+        const content = extractText(response.data);
+
+        return {
+          choices: [
+            {
+              message: {
+                content
+              }
+            }
+          ],
+          usage: {
+            prompt_tokens: response.data?.usage?.input_tokens ?? null,
+            completion_tokens: response.data?.usage?.output_tokens ?? null,
+            total_tokens:
+              response.data?.usage?.input_tokens != null && response.data?.usage?.output_tokens != null
+                ? response.data.usage.input_tokens + response.data.usage.output_tokens
+                : null
+          }
+        };
+      }
+
       const response = await axios.post(
         `${this.baseUrl}/chat/completions`,
         {
-          model: options.model || DEFAULT_CHAT_MODEL,
+          model: targetModel,
           messages,
           temperature: options.temperature || 0.7,
           max_tokens: options.maxTokens || 1000,
@@ -105,6 +179,18 @@ class OpenAIProvider {
         throw new Error(`OpenAI API server error (${statusCode}). Please try again later.`);
       }
       
+      if (
+        statusCode === 400 &&
+        options.model !== 'gpt-4o-mini' &&
+        (errorData?.error?.message || '').toLowerCase().includes('model')
+      ) {
+        console.warn(`⚠️  OpenAI rejected model "${options.model || DEFAULT_CHAT_MODEL}". Falling back to gpt-4o-mini.`);
+        return this.generateCompletion(prompt, {
+          ...options,
+          model: 'gpt-4o-mini'
+        });
+      }
+
       console.error('OpenAI generateCompletion error:', errorData || error.message);
       throw error;
     }

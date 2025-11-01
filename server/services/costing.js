@@ -16,6 +16,7 @@ class CostingService {
       // OpenAI pricing (per token)
       openai: {
         'gpt-5-mini': { input: 0.00000025, output: 0.000002 },
+        'gpt-4o-mini': { input: 0.0000025, output: 0.00001 },
         'gpt-4': { input: 0.00003, output: 0.00006 },
         'gpt-3.5-turbo': { input: 0.0000015, output: 0.000002 }
       },
