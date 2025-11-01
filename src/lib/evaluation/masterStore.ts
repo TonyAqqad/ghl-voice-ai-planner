@@ -85,10 +85,18 @@ export function applyManualCorrections(
   }
   
   // Increment corrections counter
-  session.correctionsApplied = (session.correctionsApplied || 0) + 1;
+  const previousCount = session.correctionsApplied || 0;
+  session.correctionsApplied = previousCount + 1;
+  
+  console.log(`📝 masterStore: Incrementing corrections for ${conversationId}`);
+  console.log(`   • Previous count: ${previousCount}`);
+  console.log(`   • New count: ${session.correctionsApplied}`);
+  console.log(`   • Correction type: ${corrections.fields ? 'field edit' : 'turn edit'}`);
   
   // Save updated session
   saveSession(session);
+  
+  console.log(`💾 masterStore: Session saved to localStorage`);
   
   return session;
 }

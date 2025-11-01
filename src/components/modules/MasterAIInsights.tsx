@@ -10,6 +10,7 @@ import {
   Edit2,
   X,
   Check,
+  Plus,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -146,7 +147,11 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSe
   // Debug logging for corrections counter
   React.useEffect(() => {
     if (latest) {
-      console.log(`🔄 MasterAIInsights re-rendered: ${latest.conversationId}, corrections: ${latest.correctionsApplied}`);
+      console.log(`🔄 MasterAIInsights re-rendered`);
+      console.log(`   • Conversation ID: ${latest.conversationId}`);
+      console.log(`   • Corrections Applied: ${latest.correctionsApplied ?? 0}`);
+      console.log(`   • Fields Collected: ${latest.collectedFields.length}`);
+      console.log(`   • Confidence: ${latest.confidence}%`);
     }
   }, [latest?.correctionsApplied, latest?.conversationId]);
 
@@ -154,6 +159,11 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSe
   const [editingFieldIndex, setEditingFieldIndex] = React.useState<number | null>(null);
   const [editedFieldValue, setEditedFieldValue] = React.useState('');
   const [editedFieldKey, setEditedFieldKey] = React.useState<ContactFieldKey | ''>('');
+  
+  // State for adding new field
+  const [isAddingField, setIsAddingField] = React.useState(false);
+  const [newFieldKey, setNewFieldKey] = React.useState<ContactFieldKey | ''>('');
+  const [newFieldValue, setNewFieldValue] = React.useState('');
 
   const handleFieldEdit = (field: FieldCapture, idx: number) => {
     setEditingFieldIndex(idx);
@@ -196,6 +206,67 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSe
     setEditingFieldIndex(null);
     setEditedFieldValue('');
     setEditedFieldKey('');
+  };
+
+  const handleAddFieldStart = () => {
+    // Find first missing field to pre-select
+    const existingKeys = latest.collectedFields.map(f => f.key);
+    const missingField = FIELD_OPTIONS.find(opt => !existingKeys.includes(opt));
+    
+    setIsAddingField(true);
+    setNewFieldKey(missingField || '');
+    setNewFieldValue('');
+  };
+
+  const handleAddFieldSave = () => {
+    if (!newFieldKey || !newFieldValue.trim()) {
+      toast.error('Please select a field type and enter a value');
+      return;
+    }
+
+    // Check if field already exists
+    const existingField = latest.collectedFields.find(f => f.key === newFieldKey);
+    if (existingField) {
+      toast.error(`Field "${newFieldKey}" already exists. Edit it instead.`);
+      return;
+    }
+
+    // Create new field capture
+    const newField: FieldCapture = {
+      key: newFieldKey,
+      value: newFieldValue.trim(),
+      turnId: 'manual-add',
+      valid: true,
+      source: 'manual' as const,
+    };
+
+    // Add to existing fields
+    const updatedFields = [...latest.collectedFields, newField];
+
+    // Save to masterStore - this increments correctionsApplied
+    const updated = applyManualCorrections(latest.conversationId, {
+      fields: updatedFields,
+    });
+
+    if (updated) {
+      console.log(`✅ Field added! Corrections Applied: ${updated.correctionsApplied}`);
+      onUpdate?.(updated);
+      toast.success(`Field "${newFieldKey}" added! (${updated.correctionsApplied} corrections applied)`);
+    } else {
+      console.error('❌ Failed to add field - session not found');
+      toast.error('Failed to add field - session not found');
+    }
+
+    // Reset add state
+    setIsAddingField(false);
+    setNewFieldKey('');
+    setNewFieldValue('');
+  };
+
+  const handleAddFieldCancel = () => {
+    setIsAddingField(false);
+    setNewFieldKey('');
+    setNewFieldValue('');
   };
 
   const renderFieldChip = (field: FieldCapture, idx: number) => {
@@ -367,13 +438,55 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSe
 
       <div className="mt-6 pt-6 border-t border-border/60 space-y-4">
         <div>
-          <h3 className="text-sm font-semibold text-foreground mb-3">Field Collection</h3>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-foreground">Field Collection</h3>
+            <button
+              onClick={handleAddFieldStart}
+              disabled={isAddingField || editingFieldIndex !== null}
+              className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-primary border border-primary/50 rounded-md hover:bg-primary/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              title="Add a missing contact field"
+            >
+              <Plus className="w-3 h-3" />
+              Add Field
+            </button>
+          </div>
           <div className="flex flex-wrap gap-2">
-            {latest.collectedFields.length > 0 ? (
-              latest.collectedFields.map(renderFieldChip)
-            ) : (
+            {latest.collectedFields.length > 0 && latest.collectedFields.map(renderFieldChip)}
+            
+            {/* Add new field form */}
+            {isAddingField && (
+              <div className="flex items-center gap-2 px-3 py-2 border-2 border-primary rounded-lg bg-primary/5">
+                <Plus className="w-4 h-4 text-primary" />
+                <select
+                  value={newFieldKey}
+                  onChange={(e) => setNewFieldKey(e.target.value as ContactFieldKey)}
+                  className="text-xs border rounded px-2 py-1 bg-background"
+                >
+                  <option value="">Select field...</option>
+                  {FIELD_OPTIONS.filter(opt => !latest.collectedFields.some(f => f.key === opt)).map(opt => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  value={newFieldValue}
+                  onChange={(e) => setNewFieldValue(e.target.value)}
+                  className="text-xs border rounded px-2 py-1 min-w-[120px] bg-background"
+                  placeholder="Enter value..."
+                  autoFocus
+                />
+                <button onClick={handleAddFieldSave} className="p-1 hover:bg-green-100 dark:hover:bg-green-900/30 rounded">
+                  <Check className="w-3 h-3 text-green-600" />
+                </button>
+                <button onClick={handleAddFieldCancel} className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded">
+                  <X className="w-3 h-3 text-red-600" />
+                </button>
+              </div>
+            )}
+            
+            {latest.collectedFields.length === 0 && !isAddingField && (
               <span className="text-xs text-muted-foreground flex items-center gap-1">
-                <AlertTriangle className="w-3 h-3" /> No fields detected yet.
+                <AlertTriangle className="w-3 h-3" /> No fields detected yet. Click "Add Field" to add one manually.
               </span>
             )}
           </div>
