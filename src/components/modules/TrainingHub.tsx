@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { BookOpen, Save, Upload, RefreshCw, Database, Sparkles, CheckCircle, Link2, Copy, Edit2, X, Check } from 'lucide-react';
+import { BookOpen, Save, Upload, RefreshCw, Database, Sparkles, CheckCircle, Link2, Copy, Edit2, X, Check, AlertTriangle } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { toast } from 'react-hot-toast';
 import { useMCP } from '../../hooks/useMCP';
@@ -424,11 +424,16 @@ const TrainingHub: React.FC = () => {
       setTestResult(agentPayload);
 
       // Track tokens - estimate from conversation length
-      const contextTokens = estimateTokens(
-        finalConversation.map(m => m.text).join('\n')
-      );
+      const conversationText = finalConversation.map(m => m.text).join('\n');
+      const contextTokens = estimateTokens(conversationText);
       const promptTokens = estimateTokens(systemPrompt || '');
       const callTokens = contextTokens + promptTokens;
+      
+      console.log('📊 Token Usage Breakdown:');
+      console.log(`  • Conversation: ~${contextTokens} tokens (${conversationText.length} chars)`);
+      console.log(`  • System Prompt: ~${promptTokens} tokens (${(systemPrompt || '').length} chars)`);
+      console.log(`  • Total This Call: ~${callTokens} tokens`);
+      
       setLastCallTokens(callTokens);
       setTotalTokens(prev => prev + callTokens);
       
@@ -778,8 +783,20 @@ const TrainingHub: React.FC = () => {
 
         <div className="card p-4 col-span-2">
           <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">System Prompt</label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium">System Prompt</label>
+              <div className={`text-xs px-2 py-1 rounded ${estimateTokens(systemPrompt) > 1000 ? 'bg-amber-100 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 font-semibold' : 'text-muted-foreground'}`}>
+                ~{estimateTokens(systemPrompt)} tokens
+                {estimateTokens(systemPrompt) > 1000 && ' ⚠️ High'}
+              </div>
+            </div>
             <textarea value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} className="w-full px-3 py-2 border border-border rounded-md bg-input h-32" placeholder="Write the master system prompt..." />
+            {estimateTokens(systemPrompt) > 1000 && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3" />
+                Large prompt detected. Consider using "Compose Prompt" for compact 200-300 token prompts.
+              </p>
+            )}
           </div>
 
           <div className="mb-4">
@@ -892,6 +909,7 @@ const TrainingHub: React.FC = () => {
           sessions={sessions} 
           currentSession={latestSession ?? undefined}
           onUpdate={(updated) => {
+            console.log(`🔄 Updating session ${updated.conversationId} with ${updated.correctionsApplied} corrections`);
             setLatestSession(updated);
             setSessions(prev => prev.map(s => s.conversationId === updated.conversationId ? updated : s));
           }}

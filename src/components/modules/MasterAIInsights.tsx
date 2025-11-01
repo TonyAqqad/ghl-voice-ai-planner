@@ -166,14 +166,18 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSe
       source: 'manual' as const,
     };
 
-    // Save to masterStore
+    // Save to masterStore - this increments correctionsApplied
     const updated = applyManualCorrections(latest.conversationId, {
       fields: updatedFields,
     });
 
     if (updated) {
+      console.log(`✅ Field correction saved! Corrections Applied: ${updated.correctionsApplied}`);
       onUpdate?.(updated);
-      toast.success('Field corrected and saved for training!');
+      toast.success(`Field corrected! (${updated.correctionsApplied} corrections applied)`);
+    } else {
+      console.error('❌ Failed to apply field correction - session not found');
+      toast.error('Failed to save correction - session not found');
     }
 
     setEditingFieldIndex(null);
