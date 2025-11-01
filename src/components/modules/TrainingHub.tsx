@@ -32,6 +32,7 @@ import {
 import { getRelevantLearned, formatLearnedForPrompt, getAgentKBStats } from '../../lib/evaluation/knowledgeBase';
 import { extractSpecFromPrompt, embedSpecInPrompt, hasEmbeddedSpec } from '../../lib/spec/specExtract';
 import { PromptSpec, DEFAULT_SPEC } from '../../lib/spec/specTypes';
+import { buildRequestContext, getTokenStats, formatTurnsForAPI } from '../../lib/runtime/memory';
 
 interface TrainingPayload {
   agentId: string;
@@ -120,6 +121,22 @@ const TrainingHub: React.FC = () => {
   const [lastCallTokens, setLastCallTokens] = useState(0);
 
   const selectedAgent = useMemo(() => voiceAgents.find(a => a.id === selectedId), [voiceAgents, selectedId]);
+
+  // Calculate real-time token usage stats
+  const tokenStats = useMemo(() => {
+    if (conversation.length === 0) return null;
+    
+    // Get learned snippets for token calculation
+    let learnedSnippets = '';
+    if (currentScopeId) {
+      const snippets = getScopedLearnedSnippets(currentScopeId, 5);
+      if (snippets.length > 0) {
+        learnedSnippets = snippets.map(s => `${s.originalQuestion} → ${s.correctedResponse}`).join('\n');
+      }
+    }
+    
+    return getTokenStats(conversation, systemPrompt, learnedSnippets);
+  }, [conversation, systemPrompt, currentScopeId]);
 
   const runSessionEvaluation = useCallback(() => {
     if (conversation.length === 0) return null;
@@ -950,7 +967,15 @@ const TrainingHub: React.FC = () => {
     
     const message = conversation[messageIndex];
     console.log(`👍 Positive feedback for message ${messageIndex}:`, message.text.substring(0, 50));
-    toast.success('Marked as good response!');
+    
+    // Add green glow effect
+    const button = document.querySelector(`[data-thumbs-up="${messageIndex}"]`);
+    if (button) {
+      button.classList.add('glow-green');
+      setTimeout(() => button.classList.remove('glow-green'), 600);
+    }
+    
+    toast.success('Marked as good response!', { className: 'pulse' });
   };
 
   // Handle thumbs down feedback - opens edit interface
@@ -1032,7 +1057,7 @@ const TrainingHub: React.FC = () => {
                   onClick={handleSaveSystemPrompt} 
                   disabled={promptSaving || !selectedAgent}
                   loading={promptSaving}
-                  className="animate-fade-in"
+                  className="animate-fade-in tap"
                 >
                   <Save className="w-3 h-3 mr-1" />
                   Save Prompt
@@ -1158,10 +1183,11 @@ const TrainingHub: React.FC = () => {
       )}
 
       {/* Master AI Insights */}
-      <div className="mt-6">
+      <div className="mt-6 fadein">
         <MasterAIInsights 
           sessions={sessions} 
           currentSession={latestSession ?? undefined}
+          activeSpec={activeSpec ?? undefined}
           onUpdate={(updated) => {
             console.log(`🔄 Updating session ${updated.conversationId} with ${updated.correctionsApplied} corrections`);
             setLatestSession(updated);
@@ -1233,7 +1259,7 @@ const TrainingHub: React.FC = () => {
                 >
                   {editingMessageIndex === idx ? (
                     // Edit Mode
-                    <div className="w-full space-y-2 p-3 bg-white dark:bg-gray-800 rounded-lg border-2 border-primary">
+                    <div className="w-full space-y-2 p-3 bg-white dark:bg-gray-800 rounded-lg border-2 border-primary fadein">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-xs font-medium text-muted-foreground">
                           Editing {msg.role === 'caller' ? 'Caller' : 'Agent'} Message
@@ -1300,7 +1326,8 @@ const TrainingHub: React.FC = () => {
                               <>
                                 <button
                                   onClick={() => handleThumbsUp(idx)}
-                                  className={`transition-all duration-200 p-1 rounded ${
+                                  data-thumbs-up={idx}
+                                  className={`tap transition-all duration-200 p-1 rounded ${
                                     messageFeedback[idx] === 'up'
                                       ? 'bg-green-500 text-white scale-110'
                                       : 'opacity-0 group-hover:opacity-100 hover:bg-green-100 dark:hover:bg-green-900/50'
@@ -1311,7 +1338,8 @@ const TrainingHub: React.FC = () => {
                                 </button>
                                 <button
                                   onClick={() => handleThumbsDown(idx)}
-                                  className={`transition-all duration-200 p-1 rounded ${
+                                  data-thumbs-down={idx}
+                                  className={`tap transition-all duration-200 p-1 rounded ${
                                     messageFeedback[idx] === 'down'
                                       ? 'bg-red-500 text-white scale-110'
                                       : 'opacity-0 group-hover:opacity-100 hover:bg-red-100 dark:hover:bg-red-900/50'
@@ -1438,6 +1466,7 @@ const TrainingHub: React.FC = () => {
               onClick={handleDryRun} 
               disabled={!selectedAgent || !testMessage.trim() || syncing} 
               loading={syncing}
+              className="tap"
             >
               Send
             </Button>
@@ -1450,7 +1479,7 @@ const TrainingHub: React.FC = () => {
                 size="sm"
                 onClick={handleEvaluateNow}
                 disabled={!canEvaluateNow || evaluationMode !== 'postCall'}
-                className="flex-1"
+                className="flex-1 tap"
                 data-testid="evaluate-now"
               >
                 ⚡ Evaluate Now
@@ -1460,7 +1489,7 @@ const TrainingHub: React.FC = () => {
                 variant="primary"
                 onClick={handleEndCall}
                 disabled={conversation.length === 0}
-                className="flex-1"
+                className="flex-1 tap"
                 data-testid="end-call"
               >
                 📞 End Call
@@ -1486,22 +1515,32 @@ const TrainingHub: React.FC = () => {
           )}
 
           {/* Message Counter & Token Usage */}
-          {conversation.length > 0 && (
-            <div className="mt-2 flex justify-center items-center gap-4 text-xs text-muted-foreground">
-              <span>
-                {conversation.length} message{conversation.length !== 1 ? 's' : ''} in conversation
-              </span>
-              {totalTokens > 0 && (
-                <>
-                  <span>•</span>
-                  <span title={`Last call: ~${lastCallTokens} tokens`}>
-                    📊 Total: ~{totalTokens.toLocaleString()} tokens
-                  </span>
-                  <span title="Estimated cost at $0.002/1K tokens">
-                    💰 ~${((totalTokens / 1000) * 0.002).toFixed(4)}
-                  </span>
-                </>
-              )}
+          {conversation.length > 0 && tokenStats && (
+            <div className="mt-2 p-3 bg-muted/30 rounded-lg border border-border/50 fadein">
+              <div className="flex justify-center items-center gap-4 text-xs">
+                <span className="text-muted-foreground">
+                  {conversation.length} message{conversation.length !== 1 ? 's' : ''}
+                </span>
+                <span className="text-muted-foreground">•</span>
+                <span className="text-foreground font-medium" title={`Conversation: ${tokenStats.conversationTokens} | Prompt: ${tokenStats.promptTokens} | Learned: ${tokenStats.learnedTokens}`}>
+                  📊 ~{tokenStats.totalTokens.toLocaleString()} tokens
+                </span>
+                <span className="text-muted-foreground">•</span>
+                <span className="text-foreground font-medium" title="Estimated cost for gpt-4o-mini">
+                  💰 ${tokenStats.costEstimate.toFixed(6)}
+                </span>
+                {tokenStats.totalTokens > 800 && (
+                  <>
+                    <span className="text-muted-foreground">•</span>
+                    <span className="text-amber-600 dark:text-amber-400 font-medium token-pulse">
+                      ⚠️ High token usage
+                    </span>
+                  </>
+                )}
+              </div>
+              <div className="mt-1 text-[10px] text-center text-muted-foreground">
+                Breakdown: Prompt {tokenStats.promptTokens}t | Conversation {tokenStats.conversationTokens}t | Learned {tokenStats.learnedTokens}t
+              </div>
             </div>
           )}
         </div>

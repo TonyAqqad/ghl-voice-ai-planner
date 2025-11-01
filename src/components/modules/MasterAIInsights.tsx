@@ -20,6 +20,7 @@ import toast from 'react-hot-toast';
 
 import { FieldCapture, RubricScore, SessionEvaluation, ContactFieldKey } from '../../lib/evaluation/types';
 import { applyManualCorrections } from '../../lib/evaluation/masterStore';
+import { PromptSpec } from '../../lib/spec/specTypes';
 
 const FIELD_OPTIONS: ContactFieldKey[] = ['first_name', 'last_name', 'unique_phone_number', 'email', 'class_date__time'];
 
@@ -34,10 +35,11 @@ interface MasterInsight {
 interface MasterAIInsightsProps {
   sessions: SessionEvaluation[];
   currentSession?: SessionEvaluation | null;
+  activeSpec?: PromptSpec | null;
   onUpdate?: (updated: SessionEvaluation) => void;
 }
 
-const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSession, onUpdate }) => {
+const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSession, activeSpec, onUpdate }) => {
   const orderedSessions = useMemo(() => {
     if (!currentSession) return sessions;
     const rest = sessions.filter((s) => s.conversationId !== currentSession.conversationId);
@@ -46,6 +48,31 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSe
 
   const latest = orderedSessions[0] ?? null;
   const previous = orderedSessions[1] ?? null;
+
+  // Deduplicate collected fields - keep only the latest valid value per key
+  const dedupedFields = useMemo(() => {
+    if (!latest?.collectedFields) return [];
+    
+    const fieldMap = new Map<string, FieldCapture>();
+    
+    // Iterate in reverse order to get the latest value
+    for (let i = latest.collectedFields.length - 1; i >= 0; i--) {
+      const field = latest.collectedFields[i];
+      if (!fieldMap.has(field.key)) {
+        fieldMap.set(field.key, field);
+      }
+    }
+    
+    // Return in original order (based on first occurrence)
+    const result: FieldCapture[] = [];
+    latest.collectedFields.forEach(field => {
+      if (fieldMap.get(field.key) === field) {
+        result.push(field);
+      }
+    });
+    
+    return result;
+  }, [latest?.collectedFields]);
 
   const insights = useMemo<MasterInsight[]>(() => {
     if (!latest) {
@@ -517,7 +544,7 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSe
             </button>
           </div>
           <div className="flex flex-wrap gap-2">
-            {latest.collectedFields.length > 0 && latest.collectedFields.map(renderFieldChip)}
+            {dedupedFields.length > 0 && dedupedFields.map(renderFieldChip)}
             
             {/* Add new field form */}
             {isAddingField && (
@@ -529,7 +556,7 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSe
                   className="text-xs border rounded px-2 py-1 bg-background"
                 >
                   <option value="">Select field...</option>
-                  {FIELD_OPTIONS.filter(opt => !latest.collectedFields.some(f => f.key === opt)).map(opt => (
+                  {FIELD_OPTIONS.filter(opt => !dedupedFields.some(f => f.key === opt)).map(opt => (
                     <option key={opt} value={opt}>{opt}</option>
                   ))}
                 </select>
@@ -550,7 +577,7 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSe
               </div>
             )}
             
-            {latest.collectedFields.length === 0 && !isAddingField && (
+            {dedupedFields.length === 0 && !isAddingField && (
               <span className="text-xs text-muted-foreground flex items-center gap-1">
                 <AlertTriangle className="w-3 h-3" /> No fields detected yet. Click "Add Field" to add one manually.
               </span>
@@ -563,6 +590,25 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSe
           <div className="space-y-2">
             {latest.rubric.map(renderRubricRow)}
           </div>
+          
+          {/* Spec Footer - Shows current grading rules */}
+          {activeSpec && (
+            <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/10 rounded-lg border border-blue-200 dark:border-blue-800/30">
+              <div className="flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-xs font-semibold text-blue-900 dark:text-blue-100 mb-1">Spec in Effect</p>
+                  <div className="text-[11px] text-blue-700 dark:text-blue-300 space-y-1">
+                    <p>• <strong>Niche:</strong> {activeSpec.niche}</p>
+                    <p>• <strong>Cadence:</strong> {activeSpec.question_cadence} (max {activeSpec.max_words_per_turn} words/turn)</p>
+                    <p>• <strong>Booking Blocked:</strong> {activeSpec.block_booking_until_fields ? 'Yes' : 'No'} (until all fields collected)</p>
+                    <p>• <strong>Confirmations:</strong> {activeSpec.confirmations.repeat_phone ? 'Phone repeat' : ''}{activeSpec.confirmations.repeat_phone && activeSpec.confirmations.spell_email ? ', ' : ''}{activeSpec.confirmations.spell_email ? 'Email spell-back' : ''}</p>
+                    <p>• <strong>Required Fields:</strong> {activeSpec.required_fields.length} ({activeSpec.required_fields.join(', ')})</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Transcript Review with Feedback */}

@@ -1,0 +1,103 @@
+/**
+ * Haptic Feedback & Micro-interactions
+ * Adds tactile feel to UI controls with minimal CSS
+ */
+
+/* Tap feedback for buttons and controls */
+.tap {
+  transition: transform 120ms ease, opacity 120ms ease;
+  cursor: pointer;
+}
+
+.tap:active {
+  transform: scale(0.97);
+  opacity: 0.9;
+}
+
+/* Pulse animation for success states */
+.pulse {
+  animation: pulse 280ms ease;
+}
+
+@keyframes pulse {
+  0% { transform: scale(0.98); }
+  50% { transform: scale(1.02); }
+  100% { transform: scale(1); }
+}
+
+/* Fade in for dynamic panels */
+.fadein {
+  animation: fadein 0.18s ease;
+}
+
+@keyframes fadein {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Green glow for thumbs up */
+.glow-green {
+  animation: glowGreen 600ms ease;
+}
+
+@keyframes glowGreen {
+  0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+  50% { box-shadow: 0 0 12px 4px rgba(34, 197, 94, 0.6); }
+  100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+
+/* Red glow for thumbs down */
+.glow-red {
+  animation: glowRed 600ms ease;
+}
+
+@keyframes glowRed {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+  50% { box-shadow: 0 0 12px 4px rgba(239, 68, 68, 0.6); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
+/* Shake animation for errors */
+.shake {
+  animation: shake 320ms ease;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
+/* Smooth expand/collapse */
+.expand {
+  animation: expand 200ms ease;
+  transform-origin: top;
+}
+
+@keyframes expand {
+  from {
+    opacity: 0;
+    transform: scaleY(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+/* Token meter pulse */
+.token-pulse {
+  animation: tokenPulse 1.2s ease infinite;
+}
+
+@keyframes tokenPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
