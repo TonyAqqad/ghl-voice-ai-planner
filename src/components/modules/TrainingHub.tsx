@@ -14,6 +14,7 @@ import {
 } from '../../lib/evaluation/types';
 import { evaluateAfterCall, applyManualFix, estimateTokens } from '../../lib/prompt/masterOrchestrator';
 import { loadSessions, saveSession, applyManualCorrections } from '../../lib/evaluation/masterStore';
+import { getRelevantLearned, formatLearnedForPrompt, getAgentKBStats } from '../../lib/evaluation/knowledgeBase';
 
 interface TrainingPayload {
   agentId: string;
@@ -96,13 +97,18 @@ const TrainingHub: React.FC = () => {
   const runSessionEvaluation = useCallback(() => {
     if (conversation.length === 0) return null;
 
-    // Use new master orchestrator for after-call evaluation
-    const session = evaluateAfterCall(conversationId, conversation);
+    // Use new master orchestrator for after-call evaluation with agent context
+    const session = evaluateAfterCall(
+      conversationId, 
+      conversation,
+      selectedAgent?.id || 'unknown',
+      selectedNiche
+    );
     setSessions((prev) => [session, ...prev.filter((s) => s.conversationId !== session.conversationId)]);
     setLatestSession(session);
     setHasEvaluatedSession(true);
     return session;
-  }, [conversation, conversationId]);
+  }, [conversation, conversationId, selectedAgent?.id, selectedNiche]);
 
   const canEvaluateNow = useMemo(() => {
     const hasCaller = conversation.some((t) => t.role === 'caller');
@@ -134,8 +140,13 @@ const TrainingHub: React.FC = () => {
       return;
     }
 
-    // Run after-call evaluation
-    const result = evaluateAfterCall(conversationId, conversation);
+    // Run after-call evaluation with agent context
+    const result = evaluateAfterCall(
+      conversationId, 
+      conversation,
+      selectedAgent?.id || 'unknown',
+      selectedNiche
+    );
     saveSession(result);
     setSessions([result, ...sessions.filter((s) => s.conversationId !== result.conversationId)]);
     setLatestSession(result);
@@ -146,7 +157,7 @@ const TrainingHub: React.FC = () => {
     // Optional: Reset conversation for new call
     // setConversation([]);
     // setConversationId(createConversationId());
-  }, [conversation, conversationId, sessions]);
+  }, [conversation, conversationId, sessions, selectedAgent?.id, selectedNiche]);
 
   useEffect(() => {
     if (!selectedAgent && voiceAgents.length > 0) {
@@ -386,6 +397,33 @@ const TrainingHub: React.FC = () => {
 
     setSyncing(true);
     try {
+      // Retrieve agent-specific learned responses
+      if (!selectedAgent?.id) {
+        throw new Error('No agent selected');
+      }
+
+      const conversationText = updatedConversation.map(m => m.text).join(' ');
+      const learnedResponses = getRelevantLearned(
+        selectedAgent.id,
+        conversationText,
+        3,
+        selectedNiche
+      );
+      
+      const learnedPrompt = formatLearnedForPrompt(learnedResponses);
+      
+      // Log for debugging
+      if (learnedResponses.length > 0) {
+        console.log(`📚 Injecting ${learnedResponses.length} learned responses for agent ${selectedAgent.id}`);
+        console.log('Learned responses:', learnedResponses);
+      } else {
+        const stats = getAgentKBStats(selectedAgent.id);
+        console.log(`📚 No relevant learned responses (agent has ${stats.totalCorrections} total corrections)`);
+      }
+
+      // Build enhanced system prompt with agent-specific corrections
+      const enhancedSystemPrompt = systemPrompt + learnedPrompt;
+
       const callResponse = await mcp.voiceAgentCall({
         agentId: selectedAgent.id,
         phoneNumber: '+10000000000',
@@ -395,6 +433,7 @@ const TrainingHub: React.FC = () => {
             role: m.role === 'caller' ? 'user' : 'assistant',
             content: m.text,
           })),
+          systemPromptOverride: enhancedSystemPrompt,
         },
         options: { textOnly: true }
       }, { showToast: false });
@@ -424,14 +463,18 @@ const TrainingHub: React.FC = () => {
       setTestResult(agentPayload);
 
       // Track tokens - estimate from conversation length
-      const conversationText = finalConversation.map(m => m.text).join('\n');
-      const contextTokens = estimateTokens(conversationText);
-      const promptTokens = estimateTokens(systemPrompt || '');
-      const callTokens = contextTokens + promptTokens;
+      const conversationTextForTokens = finalConversation.map(m => m.text).join('\n');
+      const contextTokens = estimateTokens(conversationTextForTokens);
+      const basePromptTokens = estimateTokens(systemPrompt || '');
+      const learnedTokens = estimateTokens(learnedPrompt);
+      const totalPromptTokens = basePromptTokens + learnedTokens;
+      const callTokens = contextTokens + totalPromptTokens;
       
       console.log('📊 Token Usage Breakdown:');
-      console.log(`  • Conversation: ~${contextTokens} tokens (${conversationText.length} chars)`);
-      console.log(`  • System Prompt: ~${promptTokens} tokens (${(systemPrompt || '').length} chars)`);
+      console.log(`  • Conversation: ~${contextTokens} tokens (${conversationTextForTokens.length} chars)`);
+      console.log(`  • Base Prompt: ~${basePromptTokens} tokens`);
+      console.log(`  • Learned KB: ~${learnedTokens} tokens (${learnedResponses.length} corrections)`);
+      console.log(`  • Total Prompt: ~${totalPromptTokens} tokens`);
       console.log(`  • Total This Call: ~${callTokens} tokens`);
       
       setLastCallTokens(callTokens);

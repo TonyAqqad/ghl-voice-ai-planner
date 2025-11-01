@@ -37,6 +37,8 @@ export interface RubricScore {
 
 export interface SessionEvaluation {
   conversationId: string;
+  agentId: string;
+  niche?: string;
   startedAt: number;
   endedAt: number;
   collectedFields: FieldCapture[];
@@ -44,5 +46,6 @@ export interface SessionEvaluation {
   confidence: number;
   correctionsApplied: number;
   version: string;
+  transcript?: ConversationTurn[];
 }
 

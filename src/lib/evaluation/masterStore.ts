@@ -72,9 +72,14 @@ export function applyManualCorrections(
     if (!(session as any).corrections) {
       (session as any).corrections = [];
     }
+    
+    // Find the turn to get original text for KB matching
+    const turn = session.transcript?.find((t: any) => t.id === corrections.turnId);
+    
     (session as any).corrections.push({
       turnId: corrections.turnId,
       correctedResponse: corrections.correctedResponse,
+      originalTurnText: turn?.text || 'Unknown question',
       appliedAt: Date.now()
     });
   }

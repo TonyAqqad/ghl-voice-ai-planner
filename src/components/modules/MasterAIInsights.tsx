@@ -38,7 +38,7 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSe
     if (!currentSession) return sessions;
     const rest = sessions.filter((s) => s.conversationId !== currentSession.conversationId);
     return [currentSession, ...rest];
-  }, [sessions, currentSession]);
+  }, [sessions, currentSession, currentSession?.correctionsApplied]);
 
   const latest = orderedSessions[0] ?? null;
   const previous = orderedSessions[1] ?? null;
@@ -142,6 +142,13 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSe
   }
 
   const performanceTimeline = orderedSessions.slice(0, 5);
+
+  // Debug logging for corrections counter
+  React.useEffect(() => {
+    if (latest) {
+      console.log(`🔄 MasterAIInsights re-rendered: ${latest.conversationId}, corrections: ${latest.correctionsApplied}`);
+    }
+  }, [latest?.correctionsApplied, latest?.conversationId]);
 
   // State for editing field chips
   const [editingFieldIndex, setEditingFieldIndex] = React.useState<number | null>(null);
@@ -302,7 +309,13 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSe
             <span className="text-xs font-medium text-muted-foreground">Corrections Applied</span>
             <TrendingUp className="w-4 h-4 text-purple-500" />
           </div>
-          <p className="text-2xl font-bold" data-testid="corrections-applied">{latest.correctionsApplied ?? 0}</p>
+          <p 
+            className="text-2xl font-bold" 
+            data-testid="corrections-applied"
+            key={`corrections-${latest.conversationId}-${latest.correctionsApplied}`}
+          >
+            {latest.correctionsApplied ?? 0}
+          </p>
           <p className="text-xs text-muted-foreground mt-1">Manual adjustments to date</p>
         </div>
       </div>

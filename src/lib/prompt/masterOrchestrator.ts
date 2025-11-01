@@ -93,10 +93,12 @@ function getNicheOverlay(niche: string): string {
  */
 export function evaluateAfterCall(
   conversationId: string,
-  turns: ConversationTurn[]
+  turns: ConversationTurn[],
+  agentId: string,
+  niche?: string
 ): SessionEvaluation {
-  // Use existing evaluator with new version
-  const evaluation = evaluateSession(conversationId, turns, 'v2.0');
+  // Use existing evaluator with new version and agent context
+  const evaluation = evaluateSession(conversationId, turns, 'v2.0', agentId, niche);
   
   // Auto-save to masterStore
   saveSession(evaluation);

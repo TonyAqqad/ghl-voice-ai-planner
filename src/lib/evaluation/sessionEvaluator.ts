@@ -151,6 +151,8 @@ export function evaluateSession(
   conversationId: string,
   turns: ConversationTurn[],
   version = 'v1.1',
+  agentId: string = 'unknown',
+  niche?: string,
 ): SessionEvaluation {
   const startedAt = turns[0]?.ts ?? Date.now();
   const endedAt = turns.length > 0 ? turns[turns.length - 1].ts : startedAt;
@@ -229,6 +231,8 @@ export function evaluateSession(
 
   return {
     conversationId,
+    agentId,
+    niche,
     startedAt,
     endedAt,
     collectedFields: fields,
@@ -236,6 +240,7 @@ export function evaluateSession(
     confidence,
     correctionsApplied: 0,
     version,
+    transcript: turns,
   };
 }
 
