@@ -313,7 +313,15 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSe
     
     const turn = latest.transcript?.find((t: any) => t.id === turnId);
     console.log(`👍 Positive feedback for turn ${turnId}:`, turn?.text?.substring(0, 50));
-    toast.success('Marked as good response!');
+    
+    // Add glow effect using new haptics
+    const button = document.querySelector(`[data-transcript-thumbs-up="${turnId}"]`);
+    if (button) {
+      button.classList.add('glow-ok', 'live');
+      setTimeout(() => button.classList.remove('live'), 600);
+    }
+    
+    toast.success('Marked as good response!', { className: 'pulse' });
   };
 
   const handleTranscriptThumbsDown = (turnId: string) => {
@@ -322,6 +330,13 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSe
       [turnId]: prev[turnId] === 'down' ? null : 'down'
     }));
     
+    // Add glow effect for thumbs down
+    const button = document.querySelector(`[data-transcript-thumbs-down="${turnId}"]`);
+    if (button) {
+      button.classList.add('glow-err', 'live');
+      setTimeout(() => button.classList.remove('live'), 600);
+    }
+    
     // If thumbs down is active, open edit interface
     if (transcriptFeedback[turnId] !== 'down') {
       const turn = latest.transcript?.find((t: any) => t.id === turnId);
@@ -329,7 +344,7 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSe
         setEditingTurnId(turnId);
         setEditedTurnText(turn.text);
         console.log(`👎 Negative feedback for turn ${turnId} - opening edit interface`);
-        toast('Edit the response to teach the agent the correct answer', { icon: '📝' });
+        toast('Edit the response to teach the agent the correct answer', { icon: '📝', className: 'fadein' });
       }
     }
   };
@@ -398,13 +413,14 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSe
       <div
         key={`${field.turnId}-${field.key}-${idx}`}
         data-testid={`field-chip-${field.key}`}
-        className="group relative inline-flex items-center gap-1"
+        className="group relative inline-flex items-center gap-1 fadein"
+        style={{ animationDelay: `${idx * 30}ms` }}
       >
         <span
-          className={`px-2 py-1 text-xs rounded-full border cursor-pointer transition-all ${
+          className={`chip tap cursor-pointer ${
             field.valid
-              ? 'border-green-500/60 bg-green-50 dark:bg-green-900/10 text-green-700 dark:text-green-300 hover:border-green-600 hover:shadow-sm'
-              : 'border-amber-500/60 bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-300 hover:border-amber-600 hover:shadow-sm'
+              ? 'ok'
+              : 'warn'
           }`}
           title={`Click to edit • Captured on turn ${field.turnId}`}
           onClick={() => handleFieldEdit(field, idx)}
@@ -688,7 +704,8 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSe
                                 <>
                                   <button
                                     onClick={() => handleTranscriptThumbsUp(turn.id)}
-                                    className={`transition-all duration-200 p-1 rounded haptic-light ${
+                                    data-transcript-thumbs-up={turn.id}
+                                    className={`tap transition-all duration-200 p-1 rounded ${
                                       transcriptFeedback[turn.id] === 'up'
                                         ? 'bg-green-500 text-white scale-110'
                                         : 'opacity-0 group-hover:opacity-100 hover:bg-green-100 dark:hover:bg-green-900/50'
@@ -699,7 +716,8 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSe
                                   </button>
                                   <button
                                     onClick={() => handleTranscriptThumbsDown(turn.id)}
-                                    className={`transition-all duration-200 p-1 rounded haptic-light ${
+                                    data-transcript-thumbs-down={turn.id}
+                                    className={`tap transition-all duration-200 p-1 rounded ${
                                       transcriptFeedback[turn.id] === 'down'
                                         ? 'bg-red-500 text-white scale-110'
                                         : 'opacity-0 group-hover:opacity-100 hover:bg-red-100 dark:hover:bg-red-900/50'
@@ -715,7 +733,7 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSe
                                   setEditingTurnId(turn.id);
                                   setEditedTurnText(turn.text);
                                 }}
-                                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-white/50 dark:hover:bg-black/30 rounded haptic-light"
+                                className="tap opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-white/50 dark:hover:bg-black/30 rounded"
                                 title="Edit message"
                               >
                                 <Edit2 className="w-3 h-3" />
