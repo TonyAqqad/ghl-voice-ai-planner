@@ -488,10 +488,12 @@ const TrainingHub: React.FC = () => {
 
       // Use scoped learned snippets if we have a currentScopeId, otherwise fallback to legacy KB
       let learnedPrompt = '';
+      let learnedCount = 0; // Track number of learned items for logging
       
       if (currentScopeId) {
         // NEW: Scoped learning - isolated per location+agent+prompt
         const scopedSnippets = getScopedLearnedSnippets(currentScopeId, 5);
+        learnedCount = scopedSnippets.length;
         
         if (scopedSnippets.length > 0) {
           console.log(`📚 Injecting ${scopedSnippets.length} scoped learned snippets for ${currentScopeId.substring(0, 30)}...`);
@@ -516,6 +518,7 @@ const TrainingHub: React.FC = () => {
           selectedNiche
         );
         
+        learnedCount = learnedResponses.length;
         learnedPrompt = formatLearnedForPrompt(learnedResponses);
         
         if (learnedResponses.length > 0) {
@@ -578,7 +581,7 @@ const TrainingHub: React.FC = () => {
       console.log('📊 Token Usage Breakdown:');
       console.log(`  • Conversation: ~${contextTokens} tokens (${conversationTextForTokens.length} chars)`);
       console.log(`  • Base Prompt: ~${basePromptTokens} tokens`);
-      console.log(`  • Learned KB: ~${learnedTokens} tokens (${learnedResponses.length} corrections)`);
+      console.log(`  • Learned KB: ~${learnedTokens} tokens (${learnedCount} corrections)`);
       console.log(`  • Total Prompt: ~${totalPromptTokens} tokens`);
       console.log(`  • Total This Call: ~${callTokens} tokens`);
       
