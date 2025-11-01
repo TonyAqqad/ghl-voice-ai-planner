@@ -81,6 +81,11 @@ const TrainingHub: React.FC = () => {
   const [evaluationContext, setEvaluationContext] = useState<{ callLogId: string | null; reviewId: string | null; promptId: string | null } | null>(null);
   const [savingCorrection, setSavingCorrection] = useState(false);
   const [correctionConfirmation, setCorrectionConfirmation] = useState<string | null>(null);
+  
+  // Message editing state
+  const [editingMessageIndex, setEditingMessageIndex] = useState<number | null>(null);
+  const [editedText, setEditedText] = useState<string>('');
+  const [masterAgentContext, setMasterAgentContext] = useState<string>('');
 
   const selectedAgent = useMemo(() => voiceAgents.find(a => a.id === selectedId), [voiceAgents, selectedId]);
 
@@ -617,6 +622,55 @@ const TrainingHub: React.FC = () => {
     toast.success('Transcript copied to clipboard');
   };
 
+  const handleStartEdit = (index: number) => {
+    setEditingMessageIndex(index);
+    setEditedText(conversation[index].text);
+    setMasterAgentContext('');
+  };
+
+  const handleCancelEdit = () => {
+    setEditingMessageIndex(null);
+    setEditedText('');
+    setMasterAgentContext('');
+  };
+
+  const handleSaveEdit = async () => {
+    if (editingMessageIndex === null) return;
+    
+    const originalMessage = conversation[editingMessageIndex];
+    
+    // Update the conversation locally
+    const updatedConversation = conversation.map((msg, idx) =>
+      idx === editingMessageIndex ? { ...msg, text: editedText } : msg
+    );
+    setConversation(updatedConversation);
+
+    // If we have evaluation context, save as a correction with master agent context
+    if (evaluationContext && selectedAgent) {
+      try {
+        const correctionPayload: ManualCorrectionPayload = {
+          originalResponse: originalMessage.text,
+          correctedResponse: editedText,
+          messageIndex: editingMessageIndex,
+          storeIn: ['prompt'],
+          reason: masterAgentContext || 'Message edited for improved response quality'
+        };
+
+        await handleSaveCorrection(correctionPayload);
+        
+        toast.success('Message updated and context saved to master agent');
+      } catch (error: any) {
+        console.error('Failed to save correction:', error);
+        toast.error('Message updated locally, but failed to save to master agent');
+      }
+    } else {
+      toast.success('Message updated in conversation');
+    }
+
+    // Reset edit state
+    handleCancelEdit();
+  };
+
   return (
     <div className="p-6 bg-background min-h-screen text-foreground">
       <div className="mb-6 flex items-center justify-between">
@@ -841,18 +895,81 @@ const TrainingHub: React.FC = () => {
                   key={idx} 
                   className={`flex ${msg.role === 'caller' ? 'justify-start' : 'justify-end'}`}
                 >
-                  <div 
-                    className={`max-w-[80%] px-3 py-2 rounded-lg text-sm ${
-                      msg.role === 'caller'
-                        ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-900 dark:text-blue-100' 
-                        : 'bg-green-100 dark:bg-green-900/30 text-green-900 dark:text-green-100'
-                    }`}
-                  >
-                    <div className="text-xs opacity-60 mb-1">
-                      {msg.role === 'caller' ? 'Caller' : 'Agent'}
+                  {editingMessageIndex === idx ? (
+                    // Edit Mode
+                    <div className="w-full space-y-2 p-3 bg-white dark:bg-gray-800 rounded-lg border-2 border-primary">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-medium text-muted-foreground">
+                          Editing {msg.role === 'caller' ? 'Caller' : 'Agent'} Message
+                        </span>
+                        <div className="flex gap-1">
+                          <button
+                            onClick={handleSaveEdit}
+                            className="p-1 hover:bg-green-100 dark:hover:bg-green-900/30 rounded"
+                            title="Save"
+                          >
+                            <Check className="w-4 h-4 text-green-600" />
+                          </button>
+                          <button
+                            onClick={handleCancelEdit}
+                            className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded"
+                            title="Cancel"
+                          >
+                            <X className="w-4 h-4 text-red-600" />
+                          </button>
+                        </div>
+                      </div>
+                      
+                      <textarea
+                        value={editedText}
+                        onChange={(e) => setEditedText(e.target.value)}
+                        className="w-full px-3 py-2 border border-border rounded-md bg-input text-sm min-h-[60px]"
+                        placeholder="Edit message..."
+                        autoFocus
+                      />
+                      
+                      <div>
+                        <label className="block text-xs font-medium mb-1 text-muted-foreground">
+                          Context for Master Agent (optional)
+                        </label>
+                        <textarea
+                          value={masterAgentContext}
+                          onChange={(e) => setMasterAgentContext(e.target.value)}
+                          className="w-full px-3 py-2 border border-border rounded-md bg-input text-sm min-h-[40px]"
+                          placeholder="Why was this changed? What should the agent learn from this?"
+                        />
+                      </div>
+                      
+                      <div className="text-xs text-muted-foreground">
+                        💡 Tip: The context helps the master agent understand why this change improves the response
+                      </div>
                     </div>
-                    {msg.text}
-                  </div>
+                  ) : (
+                    // Display Mode
+                    <div className="relative group">
+                      <div 
+                        className={`max-w-[80%] px-3 py-2 rounded-lg text-sm ${
+                          msg.role === 'caller'
+                            ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-900 dark:text-blue-100' 
+                            : 'bg-green-100 dark:bg-green-900/30 text-green-900 dark:text-green-100'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="text-xs opacity-60">
+                            {msg.role === 'caller' ? 'Caller' : 'Agent'}
+                          </div>
+                          <button
+                            onClick={() => handleStartEdit(idx)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-white/50 dark:hover:bg-black/30 rounded"
+                            title="Edit message"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                        {msg.text}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -1019,5 +1136,3 @@ const TrainingHub: React.FC = () => {
 };
 
 export default TrainingHub;
-
-
