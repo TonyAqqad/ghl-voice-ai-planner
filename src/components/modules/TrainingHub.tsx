@@ -564,32 +564,42 @@ const TrainingHub: React.FC = () => {
     
     setSaving(true);
     try {
-      const transcript = conversation
-        .map((m) => `${m.role === 'caller' ? 'Caller' : 'Agent'}: ${m.text}`)
-        .join('\n');
-      const summary = `Manual training session with ${conversation.length} messages`;
+      // Run evaluation if not already done
+      let session = latestSession;
+      if (!hasEvaluatedSession || !session || session.conversationId !== conversationId) {
+        session = runSessionEvaluation();
+      }
       
-      const response = await fetch('/api/mcp/agent/ingestTranscript', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          agentId: selectedAgent.id,
-          transcript,
-          summary,
-          tags: ['training', 'manual_review', 'dry_run'],
-          metrics: {
-            messageCount: conversation.length,
-            duration: conversation[conversation.length - 1].ts - conversation[0].ts,
-          },
-        })
-      });
-      
-      const data = await response.json();
-      if (data.ok) {
-        toast.success('Conversation saved for training!');
-        if (evaluationMode === 'postCall' && !hasEvaluatedSession) {
-          runSessionEvaluation();
-        }
+      if (session) {
+        // Save using new masterStore
+        saveSession(session);
+        
+        // Show success with field collection stats
+        const fieldsCollected = session.collectedFields.length;
+        const allFieldsCollected = fieldsCollected === 5;
+        
+        toast.success(
+          `Saved! ${fieldsCollected}/5 contact fields collected${allFieldsCollected ? ' ✓' : ' ⚠️'}`
+        );
+        
+        // Optional: Try legacy endpoint for backward compatibility (non-blocking)
+        try {
+          const transcript = conversation
+            .map((m) => `${m.role === 'caller' ? 'Caller' : 'Agent'}: ${m.text}`)
+            .join('\n');
+          
+          await fetch('/api/mcp/agent/ingestTranscript', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              agentId: selectedAgent.id,
+              transcript,
+              summary: `Training session - ${fieldsCollected}/5 fields`,
+              tags: ['training', 'manual_review', 'dry_run'],
+            })
+          }).catch(() => {}); // Silently fail if endpoint doesn't exist
+        } catch {}
+        
         // Reset conversation after successful save
         setConversation([]);
         setConversationId(createConversationId());
@@ -600,9 +610,10 @@ const TrainingHub: React.FC = () => {
         setEvaluationContext(null);
         setCorrectionConfirmation(null);
       } else {
-        toast.error(data.error || 'Failed to save');
+        toast.error('Failed to evaluate conversation');
       }
     } catch (e: any) {
+      console.error('Save for training error:', e);
       toast.error(e.message || 'Failed to save conversation');
     } finally {
       setSaving(false);

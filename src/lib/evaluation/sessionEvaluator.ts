@@ -13,11 +13,15 @@ const dateTimeRx = /(tomorrow|today|monday|tuesday|wednesday|thursday|friday|sat
 
 export function extractFieldCaptures(turns: ConversationTurn[]): FieldCapture[] {
   const out: FieldCapture[] = [];
+  
+  // Track what we've already captured to avoid duplicates
+  const capturedKeys = new Set<string>();
 
   for (const t of turns) {
     if (t.role !== 'caller') continue;
 
-    if (emailRx.test(t.text)) {
+    // Extract email
+    if (emailRx.test(t.text) && !capturedKeys.has('email')) {
       out.push({
         key: 'email',
         value: t.text.match(emailRx)![0],
@@ -25,9 +29,11 @@ export function extractFieldCaptures(turns: ConversationTurn[]): FieldCapture[] 
         valid: true,
         source: 'detected',
       });
+      capturedKeys.add('email');
     }
 
-    if (phoneRx.test(t.text)) {
+    // Extract phone number
+    if (phoneRx.test(t.text) && !capturedKeys.has('unique_phone_number')) {
       out.push({
         key: 'unique_phone_number',
         value: t.text.match(phoneRx)![0],
@@ -35,38 +41,76 @@ export function extractFieldCaptures(turns: ConversationTurn[]): FieldCapture[] 
         valid: true,
         source: 'detected',
       });
+      capturedKeys.add('unique_phone_number');
     }
 
-    const name = t.text.match(/\b(my name is|it's|i am|i'm)\s+([a-z]+)(\s+([a-z]+))?/i);
-    if (name) {
-      out.push({
-        key: 'first_name',
-        value: name[2],
-        turnId: t.id,
-        valid: true,
-        source: 'detected',
-      });
-      if (name[4]) {
+    // Extract names - improved patterns to handle compound responses
+    const nameWithPrefix = t.text.match(/\b(my name is|it's|i am|i'm)\s+([a-z]+)(\s+([a-z]+))?/i);
+    if (nameWithPrefix) {
+      if (!capturedKeys.has('first_name')) {
         out.push({
-          key: 'last_name',
-          value: name[4],
+          key: 'first_name',
+          value: nameWithPrefix[2],
           turnId: t.id,
           valid: true,
           source: 'detected',
         });
+        capturedKeys.add('first_name');
       }
-    } else if (/^[A-Z][a-z]{2,}$/.test(t.text.trim())) {
-      out.push({
-        key: 'first_name',
-        value: t.text.trim(),
-        turnId: t.id,
-        valid: true,
-        source: 'detected',
-      });
+      if (nameWithPrefix[4] && !capturedKeys.has('last_name')) {
+        out.push({
+          key: 'last_name',
+          value: nameWithPrefix[4],
+          turnId: t.id,
+          valid: true,
+          source: 'detected',
+        });
+        capturedKeys.add('last_name');
+      }
+    } else {
+      // Extract standalone names (even in compound responses like "Himes and 8526356556")
+      // Look for capitalized words that look like names
+      const words = t.text.split(/\s+/);
+      const nameWords = words.filter(w => /^[A-Z][a-z]{1,}$/.test(w));
+      
+      // If we have name-like words and haven't captured first_name yet
+      if (nameWords.length > 0 && !capturedKeys.has('first_name')) {
+        out.push({
+          key: 'first_name',
+          value: nameWords[0],
+          turnId: t.id,
+          valid: true,
+          source: 'detected',
+        });
+        capturedKeys.add('first_name');
+        
+        // If there's a second name-like word and we haven't captured last_name yet
+        if (nameWords.length > 1 && !capturedKeys.has('last_name')) {
+          out.push({
+            key: 'last_name',
+            value: nameWords[1],
+            turnId: t.id,
+            valid: true,
+            source: 'detected',
+          });
+          capturedKeys.add('last_name');
+        }
+      }
+      // If we already have first_name but not last_name, and this looks like a single name
+      else if (nameWords.length === 1 && capturedKeys.has('first_name') && !capturedKeys.has('last_name')) {
+        out.push({
+          key: 'last_name',
+          value: nameWords[0],
+          turnId: t.id,
+          valid: true,
+          source: 'detected',
+        });
+        capturedKeys.add('last_name');
+      }
     }
 
-    // Detect class date/time (e.g., "tomorrow at 9am", "Monday 3pm", "Jan 5th at 2pm")
-    if (dateTimeRx.test(t.text)) {
+    // Detect class date/time (e.g., "tomorrow at 9am", "Monday 3pm", "Monday at 5:30am")
+    if (dateTimeRx.test(t.text) && !capturedKeys.has('class_date__time')) {
       out.push({
         key: 'class_date__time',
         value: t.text.trim(),
@@ -74,6 +118,7 @@ export function extractFieldCaptures(turns: ConversationTurn[]): FieldCapture[] 
         valid: true,
         source: 'detected',
       });
+      capturedKeys.add('class_date__time');
     }
   }
 
