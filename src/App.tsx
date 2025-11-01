@@ -74,6 +74,12 @@ import NavBar from './components/ui/NavBar';
 function App() {
   const { darkMode, sidebarOpen } = useStore();
 
+  // Enable DB sync for manual corrections (works with ENABLE_CORRECTION_SYNC=true on server)
+  useEffect(() => {
+    (window as any).__SAVE_CORRECTIONS_TO_DB__ = true;
+    console.log('✅ DB sync enabled for manual corrections');
+  }, []);
+
   useEffect(() => {
     // Apply dark mode class to document
     if (darkMode) {
