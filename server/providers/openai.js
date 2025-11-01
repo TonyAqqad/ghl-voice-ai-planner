@@ -5,6 +5,8 @@
 
 const axios = require('axios');
 
+const DEFAULT_CHAT_MODEL = 'gpt-4o-mini';
+
 class OpenAIProvider {
   constructor(apiKey) {
     this.apiKey = apiKey;
@@ -67,7 +69,7 @@ class OpenAIProvider {
       const response = await axios.post(
         `${this.baseUrl}/chat/completions`,
         {
-          model: options.model || 'gpt-4',
+          model: options.model || DEFAULT_CHAT_MODEL,
           messages,
           temperature: options.temperature || 0.7,
           max_tokens: options.maxTokens || 1000,
@@ -127,7 +129,7 @@ Generate a comprehensive system prompt that will guide the AI agent's behavior d
 
     try {
       const response = await this.generateCompletion(prompt, {
-        model: options.model || 'gpt-4',
+        model: options.model || DEFAULT_CHAT_MODEL,
         temperature: options.temperature || 0.3,
         maxTokens: options.maxTokens || 2000
       });
@@ -158,7 +160,7 @@ Each script should be natural, conversational, and appropriate for phone convers
 
     try {
       const response = await this.generateCompletion(prompt, {
-        model: options.model || 'gpt-4',
+        model: options.model || DEFAULT_CHAT_MODEL,
         temperature: options.temperature || 0.5,
         maxTokens: options.maxTokens || 1500
       });
@@ -189,7 +191,7 @@ Focus on the most common customer interactions for this type of business.`;
 
     try {
       const response = await this.generateCompletion(prompt, {
-        model: options.model || 'gpt-4',
+        model: options.model || DEFAULT_CHAT_MODEL,
         temperature: options.temperature || 0.4,
         maxTokens: options.maxTokens || 2000
       });
@@ -222,7 +224,7 @@ Each entry should be concise but informative, suitable for voice conversation.`;
 
     try {
       const response = await this.generateCompletion(prompt, {
-        model: options.model || 'gpt-4',
+        model: options.model || DEFAULT_CHAT_MODEL,
         temperature: options.temperature || 0.3,
         maxTokens: options.maxTokens || 3000
       });
@@ -254,7 +256,7 @@ Format as structured JSON with clear categories.`;
 
     try {
       const response = await this.generateCompletion(prompt, {
-        model: options.model || 'gpt-4',
+        model: options.model || DEFAULT_CHAT_MODEL,
         temperature: options.temperature || 0.2,
         maxTokens: options.maxTokens || 1500
       });
@@ -287,7 +289,7 @@ Provide specific, actionable recommendations.`;
 
     try {
       const response = await this.generateCompletion(prompt, {
-        model: options.model || 'gpt-4',
+        model: options.model || DEFAULT_CHAT_MODEL,
         temperature: options.temperature || 0.3,
         maxTokens: options.maxTokens || 2000
       });
@@ -317,7 +319,7 @@ Each variant should maintain the core functionality while testing the specific a
 
     try {
       const response = await this.generateCompletion(prompt, {
-        model: options.model || 'gpt-4',
+        model: options.model || DEFAULT_CHAT_MODEL,
         temperature: options.temperature || 0.7,
         maxTokens: options.maxTokens || 2000
       });
@@ -332,7 +334,7 @@ Each variant should maintain the core functionality while testing the specific a
   /**
    * Estimate cost for completion
    */
-  estimateCost(prompt, model = 'gpt-4', maxTokens = 1000) {
+  estimateCost(prompt, model = DEFAULT_CHAT_MODEL, maxTokens = 1000) {
     // Rough estimation based on token count
     const inputTokens = Math.ceil(prompt.length / 4); // Rough token estimation
     const outputTokens = maxTokens;
@@ -343,6 +345,10 @@ Each variant should maintain the core functionality while testing the specific a
       case 'gpt-4':
         costPerInputToken = 0.00003;
         costPerOutputToken = 0.00006;
+        break;
+      case 'gpt-4o-mini':
+        costPerInputToken = 0.0000025;
+        costPerOutputToken = 0.00001;
         break;
       case 'gpt-3.5-turbo':
         costPerInputToken = 0.0000015;

@@ -15,6 +15,7 @@ class CostingService {
       },
       // OpenAI pricing (per token)
       openai: {
+        'gpt-4o-mini': { input: 0.0000025, output: 0.00001 },
         'gpt-4': { input: 0.00003, output: 0.00006 },
         'gpt-3.5-turbo': { input: 0.0000015, output: 0.000002 }
       },
@@ -39,7 +40,7 @@ class CostingService {
    * Calculate LLM cost
    */
   calculateLLMCost(inputTokens, outputTokens, model) {
-    const rates = this.costRates.openai[model] || this.costRates.openai['gpt-4'];
+    const rates = this.costRates.openai[model] || this.costRates.openai['gpt-4o-mini'];
     return (inputTokens * rates.input) + (outputTokens * rates.output);
   }
 
