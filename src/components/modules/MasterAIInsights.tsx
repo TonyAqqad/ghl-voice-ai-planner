@@ -7,10 +7,17 @@ import {
   Sparkles,
   BarChart3,
   AlertTriangle,
+  Edit2,
+  X,
+  Check,
 } from 'lucide-react';
 import { format } from 'date-fns';
+import toast from 'react-hot-toast';
 
-import { FieldCapture, RubricScore, SessionEvaluation } from '../../lib/evaluation/types';
+import { FieldCapture, RubricScore, SessionEvaluation, ContactFieldKey } from '../../lib/evaluation/types';
+import { applyManualCorrections } from '../../lib/evaluation/masterStore';
+
+const FIELD_OPTIONS: ContactFieldKey[] = ['first_name', 'last_name', 'unique_phone_number', 'email', 'class_date__time'];
 
 interface MasterInsight {
   type: 'improvement' | 'degradation' | 'insight';
@@ -23,9 +30,10 @@ interface MasterInsight {
 interface MasterAIInsightsProps {
   sessions: SessionEvaluation[];
   currentSession?: SessionEvaluation | null;
+  onUpdate?: (updated: SessionEvaluation) => void;
 }
 
-const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSession }) => {
+const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSession, onUpdate }) => {
   const orderedSessions = useMemo(() => {
     if (!currentSession) return sessions;
     const rest = sessions.filter((s) => s.conversationId !== currentSession.conversationId);
@@ -135,20 +143,109 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSe
 
   const performanceTimeline = orderedSessions.slice(0, 5);
 
-  const renderFieldChip = (field: FieldCapture, idx: number) => (
-    <span
-      key={`${field.turnId}-${field.key}-${idx}`}
-      data-testid={`field-chip-${field.key}`}
-      className={`px-2 py-1 text-xs rounded-full border ${
-        field.valid
-          ? 'border-green-500/60 bg-green-50 dark:bg-green-900/10 text-green-700 dark:text-green-300'
-          : 'border-amber-500/60 bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-300'
-      }`}
-      title={`Captured on turn ${field.turnId}`}
-    >
-      {field.valid ? '✅' : '⚠️'} {field.key}: {field.value}
-    </span>
-  );
+  // State for editing field chips
+  const [editingFieldIndex, setEditingFieldIndex] = React.useState<number | null>(null);
+  const [editedFieldValue, setEditedFieldValue] = React.useState('');
+  const [editedFieldKey, setEditedFieldKey] = React.useState<ContactFieldKey | ''>('');
+
+  const handleFieldEdit = (field: FieldCapture, idx: number) => {
+    setEditingFieldIndex(idx);
+    setEditedFieldValue(field.value);
+    setEditedFieldKey(field.key);
+  };
+
+  const handleFieldSave = () => {
+    if (editingFieldIndex === null || !editedFieldKey) return;
+
+    // Update the field in the session
+    const updatedFields = [...latest.collectedFields];
+    updatedFields[editingFieldIndex] = {
+      ...updatedFields[editingFieldIndex],
+      key: editedFieldKey,
+      value: editedFieldValue,
+      source: 'manual' as const,
+    };
+
+    // Save to masterStore
+    const updated = applyManualCorrections(latest.conversationId, {
+      fields: updatedFields,
+    });
+
+    if (updated) {
+      onUpdate?.(updated);
+      toast.success('Field corrected and saved for training!');
+    }
+
+    setEditingFieldIndex(null);
+    setEditedFieldValue('');
+    setEditedFieldKey('');
+  };
+
+  const handleFieldCancel = () => {
+    setEditingFieldIndex(null);
+    setEditedFieldValue('');
+    setEditedFieldKey('');
+  };
+
+  const renderFieldChip = (field: FieldCapture, idx: number) => {
+    const isEditing = editingFieldIndex === idx;
+
+    if (isEditing) {
+      return (
+        <div key={`${field.turnId}-${field.key}-${idx}`} className="flex items-center gap-2 px-3 py-2 border border-primary rounded-lg bg-background">
+          <select
+            value={editedFieldKey}
+            onChange={(e) => setEditedFieldKey(e.target.value as ContactFieldKey)}
+            className="text-xs border rounded px-2 py-1"
+          >
+            {FIELD_OPTIONS.map(opt => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
+          </select>
+          <input
+            type="text"
+            value={editedFieldValue}
+            onChange={(e) => setEditedFieldValue(e.target.value)}
+            className="text-xs border rounded px-2 py-1 min-w-[120px]"
+            placeholder="Field value..."
+          />
+          <button onClick={handleFieldSave} className="p-1 hover:bg-green-100 dark:hover:bg-green-900/30 rounded">
+            <Check className="w-3 h-3 text-green-600" />
+          </button>
+          <button onClick={handleFieldCancel} className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded">
+            <X className="w-3 h-3 text-red-600" />
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div
+        key={`${field.turnId}-${field.key}-${idx}`}
+        data-testid={`field-chip-${field.key}`}
+        className="group relative inline-flex items-center gap-1"
+      >
+        <span
+          className={`px-2 py-1 text-xs rounded-full border cursor-pointer transition-all ${
+            field.valid
+              ? 'border-green-500/60 bg-green-50 dark:bg-green-900/10 text-green-700 dark:text-green-300 hover:border-green-600 hover:shadow-sm'
+              : 'border-amber-500/60 bg-amber-50 dark:bg-amber-900/10 text-amber-700 dark:text-amber-300 hover:border-amber-600 hover:shadow-sm'
+          }`}
+          title={`Click to edit • Captured on turn ${field.turnId}`}
+          onClick={() => handleFieldEdit(field, idx)}
+        >
+          {field.valid ? '✅' : '⚠️'} {field.key}: {field.value}
+        </span>
+        <button
+          onClick={() => handleFieldEdit(field, idx)}
+          className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 hover:bg-muted rounded"
+          title="Edit field"
+        >
+          <Edit2 className="w-3 h-3 text-muted-foreground" />
+        </button>
+      </div>
+    );
+  };
 
   const renderRubricRow = (score: RubricScore) => (
     <div key={score.key} data-testid={`rubric-row-${score.key}`} className="grid grid-cols-5 gap-2 text-xs items-center">

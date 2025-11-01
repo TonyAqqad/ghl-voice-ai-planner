@@ -87,6 +87,10 @@ const TrainingHub: React.FC = () => {
   const [editedText, setEditedText] = useState<string>('');
   const [masterAgentContext, setMasterAgentContext] = useState<string>('');
 
+  // Token tracking
+  const [totalTokens, setTotalTokens] = useState(0);
+  const [lastCallTokens, setLastCallTokens] = useState(0);
+
   const selectedAgent = useMemo(() => voiceAgents.find(a => a.id === selectedId), [voiceAgents, selectedId]);
 
   const runSessionEvaluation = useCallback(() => {
@@ -418,6 +422,15 @@ const TrainingHub: React.FC = () => {
       const finalConversation = [...updatedConversation, agentTurn];
       setConversation(finalConversation);
       setTestResult(agentPayload);
+
+      // Track tokens - estimate from conversation length
+      const contextTokens = estimateTokens(
+        finalConversation.map(m => m.text).join('\n')
+      );
+      const promptTokens = estimateTokens(systemPrompt || '');
+      const callTokens = contextTokens + promptTokens;
+      setLastCallTokens(callTokens);
+      setTotalTokens(prev => prev + callTokens);
       
       // Clear input
       setTestMessage('');
@@ -674,8 +687,20 @@ const TrainingHub: React.FC = () => {
     );
     setConversation(updatedConversation);
 
-    // Save correction using new master orchestrator
+    // CRITICAL FIX: Ensure session exists before applying corrections
     try {
+      // Run evaluation if not already done to create the session
+      let session = latestSession;
+      if (!hasEvaluatedSession || !session || session.conversationId !== conversationId) {
+        session = runSessionEvaluation();
+        if (!session) {
+          toast.error('Failed to evaluate session before saving correction');
+          handleCancelEdit();
+          return;
+        }
+      }
+
+      // Now apply the manual fix
       const result = await applyManualFix({
         conversationId,
         turnId: originalMessage.id,
@@ -692,11 +717,11 @@ const TrainingHub: React.FC = () => {
         );
         toast.success(`Saved for Training • ${result.correctionsApplied} corrections applied`);
       } else {
-        toast.success('Message updated in conversation');
+        toast.error('Session not found - evaluation may have failed');
       }
     } catch (error: any) {
       console.error('Failed to save correction:', error);
-      toast.error('Message updated locally, but failed to save correction');
+      toast.error(error.message || 'Failed to save correction');
     }
 
     // Reset edit state
@@ -863,7 +888,14 @@ const TrainingHub: React.FC = () => {
 
       {/* Master AI Insights */}
       <div className="mt-6">
-        <MasterAIInsights sessions={sessions} currentSession={latestSession ?? undefined} />
+        <MasterAIInsights 
+          sessions={sessions} 
+          currentSession={latestSession ?? undefined}
+          onUpdate={(updated) => {
+            setLatestSession(updated);
+            setSessions(prev => prev.map(s => s.conversationId === updated.conversationId ? updated : s));
+          }}
+        />
       </div>
 
       {/* Inline Testing Panel */}
@@ -1152,10 +1184,23 @@ const TrainingHub: React.FC = () => {
             </div>
           )}
 
-          {/* Message Counter */}
+          {/* Message Counter & Token Usage */}
           {conversation.length > 0 && (
-            <div className="mt-2 text-xs text-muted-foreground text-center">
-              {conversation.length} message{conversation.length !== 1 ? 's' : ''} in conversation
+            <div className="mt-2 flex justify-center items-center gap-4 text-xs text-muted-foreground">
+              <span>
+                {conversation.length} message{conversation.length !== 1 ? 's' : ''} in conversation
+              </span>
+              {totalTokens > 0 && (
+                <>
+                  <span>•</span>
+                  <span title={`Last call: ~${lastCallTokens} tokens`}>
+                    📊 Total: ~{totalTokens.toLocaleString()} tokens
+                  </span>
+                  <span title="Estimated cost at $0.002/1K tokens">
+                    💰 ~${((totalTokens / 1000) * 0.002).toFixed(4)}
+                  </span>
+                </>
+              )}
             </div>
           )}
         </div>

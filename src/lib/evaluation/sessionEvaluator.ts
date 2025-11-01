@@ -44,7 +44,7 @@ export function extractFieldCaptures(turns: ConversationTurn[]): FieldCapture[] 
       capturedKeys.add('unique_phone_number');
     }
 
-    // Extract names - improved patterns to handle compound responses
+    // Extract names - improved patterns to handle compound and sequential responses
     const nameWithPrefix = t.text.match(/\b(my name is|it's|i am|i'm)\s+([a-z]+)(\s+([a-z]+))?/i);
     if (nameWithPrefix) {
       if (!capturedKeys.has('first_name')) {
@@ -67,45 +67,53 @@ export function extractFieldCaptures(turns: ConversationTurn[]): FieldCapture[] 
         });
         capturedKeys.add('last_name');
       }
-    } else {
-      // Extract standalone names (even in compound responses like "Himes and 8526356556")
-      // Look for capitalized words that look like names
-      const words = t.text.split(/\s+/);
-      const nameWords = words.filter(w => /^[A-Z][a-z]{1,}$/.test(w));
+    } 
+    // Only attempt standalone name extraction if no prefix was found
+    else {
+      // Extract standalone names - be more flexible with pattern
+      const words = t.text.split(/\s+/).map(w => w.trim()).filter(w => w.length > 0);
+      // Match any word starting with capital letter followed by at least one letter
+      const nameWords = words.filter(w => /^[A-Z][a-zA-Z]+$/.test(w));
       
-      // If we have name-like words and haven't captured first_name yet
-      if (nameWords.length > 0 && !capturedKeys.has('first_name')) {
-        out.push({
-          key: 'first_name',
-          value: nameWords[0],
-          turnId: t.id,
-          valid: true,
-          source: 'detected',
-        });
-        capturedKeys.add('first_name');
+      if (nameWords.length > 0) {
+        // CRITICAL FIX: Check which name field we need FIRST before pushing
+        const needsFirstName = !capturedKeys.has('first_name');
+        const needsLastName = !capturedKeys.has('last_name');
         
-        // If there's a second name-like word and we haven't captured last_name yet
-        if (nameWords.length > 1 && !capturedKeys.has('last_name')) {
+        // If we need first_name, capture it from the first name-like word
+        if (needsFirstName) {
+          out.push({
+            key: 'first_name',
+            value: nameWords[0],
+            turnId: t.id,
+            valid: true,
+            source: 'detected',
+          });
+          capturedKeys.add('first_name');
+          
+          // If there's a second name-like word in the SAME response and we need last_name
+          if (nameWords.length > 1 && needsLastName) {
+            out.push({
+              key: 'last_name',
+              value: nameWords[1],
+              turnId: t.id,
+              valid: true,
+              source: 'detected',
+            });
+            capturedKeys.add('last_name');
+          }
+        }
+        // If we already have first_name but need last_name, capture from first name-like word
+        else if (needsLastName) {
           out.push({
             key: 'last_name',
-            value: nameWords[1],
+            value: nameWords[0],
             turnId: t.id,
             valid: true,
             source: 'detected',
           });
           capturedKeys.add('last_name');
         }
-      }
-      // If we already have first_name but not last_name, and this looks like a single name
-      else if (nameWords.length === 1 && capturedKeys.has('first_name') && !capturedKeys.has('last_name')) {
-        out.push({
-          key: 'last_name',
-          value: nameWords[0],
-          turnId: t.id,
-          valid: true,
-          source: 'detected',
-        });
-        capturedKeys.add('last_name');
       }
     }
 
