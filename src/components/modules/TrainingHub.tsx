@@ -33,6 +33,12 @@ import { getRelevantLearned, formatLearnedForPrompt, getAgentKBStats } from '../
 import { extractSpecFromPrompt, embedSpecInPrompt, hasEmbeddedSpec } from '../../lib/spec/specExtract';
 import { PromptSpec, DEFAULT_SPEC } from '../../lib/spec/specTypes';
 import { buildRequestContext, getTokenStats, formatTurnsForAPI } from '../../lib/runtime/memory';
+import { 
+  validateAgentResponse, 
+  autoCorrectResponse, 
+  createCorrectionEntry,
+  type Violation 
+} from '../../lib/evaluation/autoCorrector';
 
 interface TrainingPayload {
   agentId: string;
@@ -560,12 +566,76 @@ const TrainingHub: React.FC = () => {
 
       // Add agent response to conversation
       const agentTs = Date.now();
-      const agentTurn: SimulatorTurn = {
+      let agentTurn: SimulatorTurn = {
         id: `agent-${agentTs}-${Math.random().toString(36).slice(2, 6)}`,
         role: 'agent',
         text: agentText || 'No response',
         ts: agentTs,
       };
+
+      // 🔥 AUTO-CORRECTION: Validate agent response and auto-fix violations
+      let autoCorrections: string[] = [];
+      if (activeSpec && agentText) {
+        const violations = validateAgentResponse(
+          agentText,
+          agentTurn.id,
+          activeSpec,
+          updatedConversation
+        );
+
+        if (violations.length > 0) {
+          console.log(`🚨 Detected ${violations.length} violation(s) in agent response:`);
+          violations.forEach(v => console.log(`   • [${v.severity}] ${v.type}: ${v.message}`));
+
+          const correctionResult = autoCorrectResponse(violations, updatedConversation, activeSpec);
+
+          if (correctionResult.correctedResponse) {
+            // Apply the correction automatically
+            agentTurn = {
+              ...agentTurn,
+              text: correctionResult.correctedResponse,
+            };
+
+            // Store the correction in knowledge base
+            if (currentScopeId && selectedAgent?.id) {
+              const correctionEntry = createCorrectionEntry(
+                violations[0], // Use primary violation
+                correctionResult.correctedResponse,
+                selectedAgent.id,
+                conversationId
+              );
+
+              console.log(`📝 Auto-correction applied and stored in KB (scope: ${currentScopeId.substring(0, 30)}...)`);
+              
+              // Store in scoped KB for future reference
+              applyScopedCorrections(currentScopeId, conversationId, {
+                turnId: agentTurn.id,
+                correctedResponse: correctionResult.correctedResponse,
+              });
+
+              // Prepare user notification
+              autoCorrections = violations.map(v => `${v.type}: ${v.message}`);
+            }
+
+            // Show auto-correction notification
+            toast(
+              <div className="space-y-1">
+                <p className="font-semibold text-sm">🤖 Self-Healing Applied</p>
+                <p className="text-xs text-muted-foreground">{violations[0].message}</p>
+                <p className="text-xs text-green-600 dark:text-green-400 mt-1">✓ Corrected automatically & saved to KB</p>
+              </div>,
+              {
+                duration: 5000,
+                className: 'pulse',
+                icon: '🔧',
+              }
+            );
+          }
+        } else {
+          console.log('✅ Agent response validated - no violations detected');
+        }
+      }
+
       const finalConversation = [...updatedConversation, agentTurn];
       setConversation(finalConversation);
       setTestResult(agentPayload);
