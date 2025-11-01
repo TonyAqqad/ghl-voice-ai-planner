@@ -11,6 +11,9 @@ import {
   X,
   Check,
   Plus,
+  ThumbsUp,
+  ThumbsDown,
+  MessageSquare,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -165,6 +168,11 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSe
   const [newFieldKey, setNewFieldKey] = React.useState<ContactFieldKey | ''>('');
   const [newFieldValue, setNewFieldValue] = React.useState('');
 
+  // State for transcript feedback
+  const [transcriptFeedback, setTranscriptFeedback] = React.useState<Record<string, 'up' | 'down' | null>>({});
+  const [editingTurnId, setEditingTurnId] = React.useState<string | null>(null);
+  const [editedTurnText, setEditedTurnText] = React.useState('');
+
   const handleFieldEdit = (field: FieldCapture, idx: number) => {
     setEditingFieldIndex(idx);
     setEditedFieldValue(field.value);
@@ -267,6 +275,64 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSe
     setIsAddingField(false);
     setNewFieldKey('');
     setNewFieldValue('');
+  };
+
+  // Transcript feedback handlers
+  const handleTranscriptThumbsUp = (turnId: string) => {
+    setTranscriptFeedback(prev => ({
+      ...prev,
+      [turnId]: prev[turnId] === 'up' ? null : 'up'
+    }));
+    
+    const turn = latest.transcript?.find((t: any) => t.id === turnId);
+    console.log(`👍 Positive feedback for turn ${turnId}:`, turn?.text?.substring(0, 50));
+    toast.success('Marked as good response!');
+  };
+
+  const handleTranscriptThumbsDown = (turnId: string) => {
+    setTranscriptFeedback(prev => ({
+      ...prev,
+      [turnId]: prev[turnId] === 'down' ? null : 'down'
+    }));
+    
+    // If thumbs down is active, open edit interface
+    if (transcriptFeedback[turnId] !== 'down') {
+      const turn = latest.transcript?.find((t: any) => t.id === turnId);
+      if (turn) {
+        setEditingTurnId(turnId);
+        setEditedTurnText(turn.text);
+        console.log(`👎 Negative feedback for turn ${turnId} - opening edit interface`);
+        toast('Edit the response to teach the agent the correct answer', { icon: '📝' });
+      }
+    }
+  };
+
+  const handleSaveTranscriptEdit = () => {
+    if (!editingTurnId) return;
+
+    // Apply the correction through masterStore
+    const updated = applyManualCorrections(latest.conversationId, {
+      turnId: editingTurnId,
+      correctedResponse: editedTurnText,
+    });
+
+    if (updated) {
+      console.log(`✅ Transcript correction saved! Corrections Applied: ${updated.correctionsApplied}`);
+      onUpdate?.(updated);
+      toast.success(`Correction saved! (${updated.correctionsApplied} corrections applied)`);
+    } else {
+      console.error('❌ Failed to save transcript correction - session not found');
+      toast.error('Failed to save correction - session not found');
+    }
+
+    // Reset edit state
+    setEditingTurnId(null);
+    setEditedTurnText('');
+  };
+
+  const handleCancelTranscriptEdit = () => {
+    setEditingTurnId(null);
+    setEditedTurnText('');
   };
 
   const renderFieldChip = (field: FieldCapture, idx: number) => {
@@ -498,6 +564,131 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSe
             {latest.rubric.map(renderRubricRow)}
           </div>
         </div>
+
+        {/* Transcript Review with Feedback */}
+        {latest.transcript && latest.transcript.length > 0 && (
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <MessageSquare className="w-4 h-4 text-primary" />
+              <h3 className="text-sm font-semibold text-foreground">Conversation Transcript</h3>
+              <span className="text-xs text-muted-foreground">
+                ({latest.transcript.length} turns)
+              </span>
+            </div>
+            <div className="space-y-2 max-h-96 overflow-y-auto p-3 bg-muted/30 rounded-lg">
+              {latest.transcript.map((turn: any, idx: number) => {
+                const isEditing = editingTurnId === turn.id;
+                const isAgent = turn.role === 'agent';
+
+                return (
+                  <div 
+                    key={turn.id || idx} 
+                    className={`flex ${isAgent ? 'justify-end' : 'justify-start'} animate-fade-in`}
+                  >
+                    {isEditing ? (
+                      // Edit Mode
+                      <div className="w-full space-y-2 p-3 bg-white dark:bg-gray-800 rounded-lg border-2 border-primary animate-scale-in">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-medium text-muted-foreground">
+                            Editing {isAgent ? 'Agent' : 'Caller'} Response
+                          </span>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={handleSaveTranscriptEdit}
+                              className="p-1 hover:bg-green-100 dark:hover:bg-green-900/30 rounded haptic-light"
+                              title="Save correction"
+                            >
+                              <Check className="w-4 h-4 text-green-600" />
+                            </button>
+                            <button
+                              onClick={handleCancelTranscriptEdit}
+                              className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded haptic-light"
+                              title="Cancel"
+                            >
+                              <X className="w-4 h-4 text-red-600" />
+                            </button>
+                          </div>
+                        </div>
+                        
+                        <textarea
+                          value={editedTurnText}
+                          onChange={(e) => setEditedTurnText(e.target.value)}
+                          className="w-full px-3 py-2 border border-border rounded-md bg-input text-sm min-h-[60px] transition-all duration-200 focus:ring-2 focus:ring-primary focus:border-primary"
+                          placeholder="Edit the correct response..."
+                          autoFocus
+                        />
+                        
+                        <div className="text-xs text-muted-foreground">
+                          💡 Tip: This correction will be saved to the agent's knowledge base for future reference
+                        </div>
+                      </div>
+                    ) : (
+                      // Display Mode
+                      <div className="relative group max-w-[85%]">
+                        <div 
+                          className={`px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
+                            isAgent
+                              ? 'bg-green-100 dark:bg-green-900/30 text-green-900 dark:text-green-100' 
+                              : 'bg-blue-100 dark:bg-blue-900/30 text-blue-900 dark:text-blue-100'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="text-xs opacity-60 font-medium">
+                              {isAgent ? '🤖 Agent' : '👤 Caller'}
+                            </div>
+                            <div className="flex items-center gap-1">
+                              {/* Feedback buttons - only for agent messages */}
+                              {isAgent && (
+                                <>
+                                  <button
+                                    onClick={() => handleTranscriptThumbsUp(turn.id)}
+                                    className={`transition-all duration-200 p-1 rounded haptic-light ${
+                                      transcriptFeedback[turn.id] === 'up'
+                                        ? 'bg-green-500 text-white scale-110'
+                                        : 'opacity-0 group-hover:opacity-100 hover:bg-green-100 dark:hover:bg-green-900/50'
+                                    }`}
+                                    title="Good response"
+                                  >
+                                    <ThumbsUp className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleTranscriptThumbsDown(turn.id)}
+                                    className={`transition-all duration-200 p-1 rounded haptic-light ${
+                                      transcriptFeedback[turn.id] === 'down'
+                                        ? 'bg-red-500 text-white scale-110'
+                                        : 'opacity-0 group-hover:opacity-100 hover:bg-red-100 dark:hover:bg-red-900/50'
+                                    }`}
+                                    title="Needs improvement"
+                                  >
+                                    <ThumbsDown className="w-3 h-3" />
+                                  </button>
+                                </>
+                              )}
+                              <button
+                                onClick={() => {
+                                  setEditingTurnId(turn.id);
+                                  setEditedTurnText(turn.text);
+                                }}
+                                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-white/50 dark:hover:bg-black/30 rounded haptic-light"
+                                title="Edit message"
+                              >
+                                <Edit2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+                          <p className="whitespace-pre-wrap">{turn.text}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">
+              💬 Review and provide feedback on each agent response to improve future interactions
+            </p>
+          </div>
+        )}
 
         {performanceTimeline.length > 1 && (
           <div>
