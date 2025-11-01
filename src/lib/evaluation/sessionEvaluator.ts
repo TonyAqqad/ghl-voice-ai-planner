@@ -8,7 +8,8 @@ import {
 
 const emailRx = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
 const phoneRx = /\b(\+?\d[\d\s\-()]{7,}\d)\b/;
-const tzHints = /(EST|CST|PST|MST|UTC|GMT|time\s*zone)/i;
+// Date/time patterns for class_date__time field
+const dateTimeRx = /(tomorrow|today|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next\s+week|this\s+week|Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|June?|July?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?|\d{1,2}\/\d{1,2}|\d{1,2}-\d{1,2}).*?(\d{1,2}:\d{2}|at\s+\d{1,2}|\d{1,2}\s*(am|pm|AM|PM))/i;
 
 export function extractFieldCaptures(turns: ConversationTurn[]): FieldCapture[] {
   const out: FieldCapture[] = [];
@@ -28,7 +29,7 @@ export function extractFieldCaptures(turns: ConversationTurn[]): FieldCapture[] 
 
     if (phoneRx.test(t.text)) {
       out.push({
-        key: 'phone',
+        key: 'unique_phone_number',
         value: t.text.match(phoneRx)![0],
         turnId: t.id,
         valid: true,
@@ -39,7 +40,7 @@ export function extractFieldCaptures(turns: ConversationTurn[]): FieldCapture[] 
     const name = t.text.match(/\b(my name is|it's|i am|i'm)\s+([a-z]+)(\s+([a-z]+))?/i);
     if (name) {
       out.push({
-        key: 'firstName',
+        key: 'first_name',
         value: name[2],
         turnId: t.id,
         valid: true,
@@ -47,7 +48,7 @@ export function extractFieldCaptures(turns: ConversationTurn[]): FieldCapture[] 
       });
       if (name[4]) {
         out.push({
-          key: 'lastName',
+          key: 'last_name',
           value: name[4],
           turnId: t.id,
           valid: true,
@@ -56,7 +57,7 @@ export function extractFieldCaptures(turns: ConversationTurn[]): FieldCapture[] 
       }
     } else if (/^[A-Z][a-z]{2,}$/.test(t.text.trim())) {
       out.push({
-        key: 'firstName',
+        key: 'first_name',
         value: t.text.trim(),
         turnId: t.id,
         valid: true,
@@ -64,19 +65,10 @@ export function extractFieldCaptures(turns: ConversationTurn[]): FieldCapture[] 
       });
     }
 
-    if (tzHints.test(t.text)) {
+    // Detect class date/time (e.g., "tomorrow at 9am", "Monday 3pm", "Jan 5th at 2pm")
+    if (dateTimeRx.test(t.text)) {
       out.push({
-        key: 'timezone',
-        value: t.text.trim(),
-        turnId: t.id,
-        valid: true,
-        source: 'detected',
-      });
-    }
-
-    if (/confirm|booked|locked\s*in/i.test(t.text)) {
-      out.push({
-        key: 'bookingConfirmed',
+        key: 'class_date__time',
         value: t.text.trim(),
         turnId: t.id,
         valid: true,
@@ -119,7 +111,7 @@ export function evaluateSession(
 
   const rubric: RubricScore[] = [
     scoreBoolean(
-      fields.some((f) => ['firstName', 'phone', 'email'].includes(f.key)),
+      fields.some((f) => ['first_name', 'unique_phone_number', 'email'].includes(f.key)),
       fields.map((f) => f.turnId),
       'fieldCollection',
       'Captured at least one key contact field',

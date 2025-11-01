@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { Zap, TrendingUp, Target, Lightbulb } from 'lucide-react';
+import { Zap, TrendingUp, Target, Lightbulb, Edit2, CheckCircle, AlertCircle } from 'lucide-react';
+import { MinimalContext, validateMinimalContext, truncateContextValues } from '../../lib/prompt/fieldSet';
+import { validateRequiredFields } from '../../lib/prompt/masterOrchestrator';
 
 const AgentOptimizationEngine: React.FC = () => {
   const [suggestions, setSuggestions] = useState([
@@ -7,6 +9,27 @@ const AgentOptimizationEngine: React.FC = () => {
     { id: '2', category: 'Cost', description: 'Reduce API calls by 20%', impact: 'High', status: 'applied' },
     { id: '3', category: 'Quality', description: 'Improve voice clarity', impact: 'Medium', status: 'pending' },
   ]);
+
+  // Context management for 3-layer architecture
+  const [contextData, setContextData] = useState<Partial<MinimalContext>>({
+    biz: {
+      name: 'F45 Training Downtown',
+      address: '123 Main St',
+      state: 'CA',
+      city: 'Los Angeles'
+    },
+    agent: {
+      class_times: 'M-F: 5am, 6am, 12pm, 5pm, 6pm | Sat-Sun: 8am, 9am',
+      location_hours: 'M-F 5am-8pm, Sat-Sun 8am-2pm',
+      trial_offer: 'Free trial class + 30-day challenge',
+      what_to_bring: 'Water bottle, towel, athletic shoes'
+    }
+  });
+  const [editingContext, setEditingContext] = useState(false);
+  const [testResults, setTestResults] = useState<{
+    bookingPass: boolean;
+    fieldsCollected: Array<{ key: string; value: string; valid: boolean }>;
+  } | null>(null);
 
   const voiceBestPractices = [
     'Speak clearly and ask only one question at a time',
@@ -49,6 +72,130 @@ const AgentOptimizationEngine: React.FC = () => {
           <p className="text-sm font-medium text-muted-foreground">Savings</p>
           <p className="text-2xl font-bold">$245</p>
         </div>
+      </div>
+
+      {/* Context Preview Card - 3-Layer Architecture */}
+      <div className="card p-6 mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-semibold">Context Preview</h2>
+          <button
+            onClick={() => setEditingContext(!editingContext)}
+            className="btn btn-sm btn-outline flex items-center gap-1"
+          >
+            <Edit2 className="w-3 h-3" />
+            {editingContext ? 'Done' : 'Edit'}
+          </button>
+        </div>
+        
+        {editingContext ? (
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium mb-2 block">Business Context</label>
+              <div className="grid grid-cols-2 gap-3">
+                <input
+                  placeholder="Business Name"
+                  value={contextData.biz?.name || ''}
+                  onChange={(e) => setContextData({...contextData, biz: {...contextData.biz!, name: e.target.value}})}
+                  className="px-3 py-2 border rounded-md text-sm"
+                />
+                <input
+                  placeholder="City"
+                  value={contextData.biz?.city || ''}
+                  onChange={(e) => setContextData({...contextData, biz: {...contextData.biz!, city: e.target.value}})}
+                  className="px-3 py-2 border rounded-md text-sm"
+                />
+                <input
+                  placeholder="State"
+                  value={contextData.biz?.state || ''}
+                  onChange={(e) => setContextData({...contextData, biz: {...contextData.biz!, state: e.target.value}})}
+                  className="px-3 py-2 border rounded-md text-sm"
+                />
+                <input
+                  placeholder="Address"
+                  value={contextData.biz?.address || ''}
+                  onChange={(e) => setContextData({...contextData, biz: {...contextData.biz!, address: e.target.value}})}
+                  className="px-3 py-2 border rounded-md text-sm"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-2 block">Agent Custom Values</label>
+              <div className="space-y-2">
+                <input
+                  placeholder="Class Times"
+                  value={contextData.agent?.class_times || ''}
+                  onChange={(e) => setContextData({...contextData, agent: {...contextData.agent!, class_times: e.target.value}})}
+                  className="w-full px-3 py-2 border rounded-md text-sm"
+                />
+                <input
+                  placeholder="Location Hours"
+                  value={contextData.agent?.location_hours || ''}
+                  onChange={(e) => setContextData({...contextData, agent: {...contextData.agent!, location_hours: e.target.value}})}
+                  className="w-full px-3 py-2 border rounded-md text-sm"
+                />
+                <input
+                  placeholder="Trial Offer"
+                  value={contextData.agent?.trial_offer || ''}
+                  onChange={(e) => setContextData({...contextData, agent: {...contextData.agent!, trial_offer: e.target.value}})}
+                  className="w-full px-3 py-2 border rounded-md text-sm"
+                />
+                <input
+                  placeholder="What to Bring"
+                  value={contextData.agent?.what_to_bring || ''}
+                  onChange={(e) => setContextData({...contextData, agent: {...contextData.agent!, what_to_bring: e.target.value}})}
+                  className="w-full px-3 py-2 border rounded-md text-sm"
+                />
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-slate-50 dark:bg-slate-900 p-4 rounded-md">
+            <p className="text-xs font-mono text-muted-foreground mb-2">Compact JSON context sent to model:</p>
+            <pre className="text-xs font-mono overflow-x-auto">
+              {JSON.stringify(truncateContextValues(contextData as MinimalContext, 120), null, 2)}
+            </pre>
+            {(() => {
+              const validation = validateMinimalContext(contextData);
+              return !validation.valid && (
+                <div className="mt-3 flex items-start gap-2 text-xs text-amber-600">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <span>Missing fields: {validation.missing.join(', ')}</span>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+        
+        {/* Booking Pass Validation */}
+        {testResults && (
+          <div className="mt-4 p-4 border rounded-md">
+            <div className="flex items-center gap-2 mb-2">
+              {testResults.bookingPass ? (
+                <CheckCircle className="w-5 h-5 text-green-600" />
+              ) : (
+                <AlertCircle className="w-5 h-5 text-amber-600" />
+              )}
+              <span className="text-sm font-medium">
+                Booking Pass: {testResults.bookingPass ? 'Complete ✓' : 'Failed ✗'}
+              </span>
+            </div>
+            {!testResults.bookingPass && (() => {
+              const fieldValidation = validateRequiredFields(testResults.fieldsCollected);
+              return (
+                <div className="text-xs text-muted-foreground space-y-1">
+                  <p>All 5 contact fields must be collected & confirmed before booking:</p>
+                  <p className="font-mono">first_name, last_name, unique_phone_number, email, class_date__time</p>
+                  {fieldValidation.missing.length > 0 && (
+                    <p className="text-amber-600">Missing: {fieldValidation.missing.join(', ')}</p>
+                  )}
+                  {fieldValidation.invalid.length > 0 && (
+                    <p className="text-red-600">Invalid: {fieldValidation.invalid.join(', ')}</p>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        )}
       </div>
 
       <div className="card p-6">

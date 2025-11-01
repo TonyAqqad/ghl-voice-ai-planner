@@ -1,11 +1,9 @@
 export type ContactFieldKey =
-  | 'firstName'
-  | 'lastName'
-  | 'phone'
+  | 'first_name'
+  | 'last_name'
+  | 'unique_phone_number'
   | 'email'
-  | 'timezone'
-  | 'preferredSlot'
-  | 'bookingConfirmed';
+  | 'class_date__time';
 
 export interface ConversationTurn {
   id: string;

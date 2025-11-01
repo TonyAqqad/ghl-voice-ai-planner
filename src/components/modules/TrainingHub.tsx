@@ -12,8 +12,8 @@ import {
   SessionEvaluation,
   ConversationTurn as SessionConversationTurn,
 } from '../../lib/evaluation/types';
-import { evaluateSession } from '../../lib/evaluation/sessionEvaluator';
-import { loadSessions, saveSession, applyManualCorrections } from '../../lib/evaluation/masterAgentStore';
+import { evaluateAfterCall, applyManualFix, estimateTokens } from '../../lib/prompt/masterOrchestrator';
+import { loadSessions, saveSession, applyManualCorrections } from '../../lib/evaluation/masterStore';
 
 interface TrainingPayload {
   agentId: string;
@@ -92,14 +92,13 @@ const TrainingHub: React.FC = () => {
   const runSessionEvaluation = useCallback(() => {
     if (conversation.length === 0) return null;
 
-    const version = ((selectedAgent as any)?.prompt_version || (selectedAgent as any)?.version || 'v1.1') as string;
-    const session = evaluateSession(conversationId, conversation, version);
-    saveSession(session);
+    // Use new master orchestrator for after-call evaluation
+    const session = evaluateAfterCall(conversationId, conversation);
     setSessions((prev) => [session, ...prev.filter((s) => s.conversationId !== session.conversationId)]);
     setLatestSession(session);
     setHasEvaluatedSession(true);
     return session;
-  }, [conversation, conversationId, selectedAgent]);
+  }, [conversation, conversationId]);
 
   const canEvaluateNow = useMemo(() => {
     const hasCaller = conversation.some((t) => t.role === 'caller');
@@ -124,6 +123,26 @@ const TrainingHub: React.FC = () => {
       toast.success('Session evaluated');
     }
   }, [canEvaluateNow, runSessionEvaluation]);
+
+  const handleEndCall = useCallback(() => {
+    if (conversation.length === 0) {
+      toast.error('No conversation to evaluate');
+      return;
+    }
+
+    // Run after-call evaluation
+    const result = evaluateAfterCall(conversationId, conversation);
+    saveSession(result);
+    setSessions([result, ...sessions.filter((s) => s.conversationId !== result.conversationId)]);
+    setLatestSession(result);
+    setHasEvaluatedSession(true);
+
+    toast.success('Call ended - Master AI evaluation complete');
+
+    // Optional: Reset conversation for new call
+    // setConversation([]);
+    // setConversationId(createConversationId());
+  }, [conversation, conversationId, sessions]);
 
   useEffect(() => {
     if (!selectedAgent && voiceAgents.length > 0) {
@@ -521,7 +540,6 @@ const TrainingHub: React.FC = () => {
 
       if (latestSession && latestSession.conversationId === conversationId) {
         const updated = applyManualCorrections(conversationId, {
-          rubric: latestSession.rubric,
           fields: latestSession.collectedFields,
         });
         if (updated) {
@@ -645,26 +663,29 @@ const TrainingHub: React.FC = () => {
     );
     setConversation(updatedConversation);
 
-    // If we have evaluation context, save as a correction with master agent context
-    if (evaluationContext && selectedAgent) {
-      try {
-        const correctionPayload: ManualCorrectionPayload = {
-          originalResponse: originalMessage.text,
-          correctedResponse: editedText,
-          messageIndex: editingMessageIndex,
-          storeIn: ['prompt'],
-          reason: masterAgentContext || 'Message edited for improved response quality'
-        };
+    // Save correction using new master orchestrator
+    try {
+      const result = await applyManualFix({
+        conversationId,
+        turnId: originalMessage.id,
+        correctedResponse: editedText,
+        agentId: selectedAgent?.id,
+        niche: selectedNiche,
+      });
 
-        await handleSaveCorrection(correctionPayload);
-        
-        toast.success('Message updated and context saved to master agent');
-      } catch (error: any) {
-        console.error('Failed to save correction:', error);
-        toast.error('Message updated locally, but failed to save to master agent');
+      if (result) {
+        // Update local session state to show incremented corrections counter
+        setLatestSession(result);
+        setSessions((prev) => 
+          prev.map(s => s.conversationId === result.conversationId ? result : s)
+        );
+        toast.success(`Saved for Training • ${result.correctionsApplied} corrections applied`);
+      } else {
+        toast.success('Message updated in conversation');
       }
-    } else {
-      toast.success('Message updated in conversation');
+    } catch (error: any) {
+      console.error('Failed to save correction:', error);
+      toast.error('Message updated locally, but failed to save correction');
     }
 
     // Reset edit state
@@ -1054,15 +1075,20 @@ const TrainingHub: React.FC = () => {
 
           {/* Message Input */}
           <div className="flex gap-2 mb-3">
-            <input
-              type="text"
-              value={testMessage}
-              onChange={(e) => setTestMessage(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && !syncing && handleDryRun()}
-              className="flex-1 px-3 py-2 border border-border rounded-md bg-input text-sm"
-              placeholder="Type your message..."
-              disabled={syncing}
-            />
+            <div className="flex-1 relative">
+              <input
+                type="text"
+                value={testMessage}
+                onChange={(e) => setTestMessage(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && !syncing && handleDryRun()}
+                className="w-full px-3 py-2 border border-border rounded-md bg-input text-sm"
+                placeholder="Type your message..."
+                disabled={syncing}
+              />
+              <div className="text-xs text-muted-foreground mt-1">
+                ~{estimateTokens(testMessage)} tokens
+              </div>
+            </div>
             <Button 
               size="sm" 
               onClick={handleDryRun} 
@@ -1084,6 +1110,16 @@ const TrainingHub: React.FC = () => {
                 data-testid="evaluate-now"
               >
                 ⚡ Evaluate Now
+              </Button>
+              <Button
+                size="sm"
+                variant="primary"
+                onClick={handleEndCall}
+                disabled={conversation.length === 0}
+                className="flex-1"
+                data-testid="end-call"
+              >
+                📞 End Call
               </Button>
               <Button 
                 variant="outline" 

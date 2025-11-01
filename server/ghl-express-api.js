@@ -2047,6 +2047,42 @@ app.post('/api/webhooks/agent', async (req, res) => {
     const path = require('path');
     
     const distFromEnv = process.env.FRONTEND_DIST_PATH;
+    // ===== MASTER ORCHESTRATOR - Manual Correction Persistence =====
+    // Optional endpoint for syncing manual corrections to database
+    // Controlled by ENABLE_CORRECTION_SYNC env flag
+    app.post('/api/mcp/master/applyFix', express.json(), async (req, res) => {
+      try {
+        // Feature flag check
+        if (process.env.ENABLE_CORRECTION_SYNC !== 'true') {
+          return res.status(204).end();
+        }
+
+        const { agentId, niche, conversationId, patch } = req.body || {};
+        
+        // Only proceed if database pool exists
+        if (!pool) {
+          console.warn('DB pool not available for correction sync');
+          return res.status(204).end();
+        }
+
+        // Upsert into agent_training_data table (if exists)
+        await pool.query(
+          `INSERT INTO agent_training_data (agent_id, niche, conversation_id, patch, created_at)
+           VALUES ($1, $2, $3, $4, NOW())
+           ON CONFLICT (conversation_id, agent_id) 
+           DO UPDATE SET patch = $4, created_at = NOW()`,
+          [agentId || 'system', niche || 'default', conversationId, JSON.stringify(patch)]
+        );
+
+        res.json({ ok: true });
+      } catch (e) {
+        // Non-fatal: don't break client UX
+        console.error('applyFix error:', e?.message);
+        res.status(202).json({ ok: false, message: 'Logged but non-fatal' });
+      }
+    });
+
+    // ===== SERVE REACT APP =====
     const candidates = [
       distFromEnv && path.resolve(distFromEnv),
       '/opt/render/project/src/dist',         // Render root dist (preferred)
