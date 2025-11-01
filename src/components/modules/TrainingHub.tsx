@@ -1081,6 +1081,7 @@ const TrainingHub: React.FC = () => {
                 onClick={handleEvaluateNow}
                 disabled={!canEvaluateNow || evaluationMode !== 'postCall'}
                 className="flex-1"
+                data-testid="evaluate-now"
               >
                 ⚡ Evaluate Now
               </Button>
