@@ -109,7 +109,7 @@ Always be helpful, professional, and focused on understanding their needs first 
         conversationSettings: {
           temperature: 0.7,
           maxTokens: 1000,
-          model: 'gpt-4o-mini'
+          model: 'gpt-5-mini'
         },
         scripts: {
           greeting: 'Hello! Thank you for calling our digital marketing agency. I\'m here to help you grow your business online. How can I assist you today?',

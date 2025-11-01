@@ -56,7 +56,7 @@ class VoiceAgentPrimitive {
       const conversationResult = await this.openai.generateCompletion(
         messages.length > 0 ? messages : 'Hello',
         {
-          model: options.model || 'gpt-4o-mini',
+          model: options.model || 'gpt-5-mini',
           systemPrompt: systemPrompt,
           temperature: options.temperature || 0.7,
           maxTokens: options.maxTokens || 1000
@@ -250,7 +250,7 @@ class VoiceAgentPrimitive {
           const enhanced = await this.openai.generateCompletion(
             `Enhance this Voice AI prompt for GoHighLevel to be more effective. Make it conversational, specific, and actionable while preserving all the guidelines:\n\n${finalPrompt}`,
             {
-              model: 'gpt-4o-mini',
+              model: 'gpt-5-mini',
               systemPrompt: 'You are an expert Voice AI prompt engineer specializing in GoHighLevel Voice AI agents. Enhance prompts to be natural, actionable, and effective for voice conversations.',
               temperature: 0.4,
               maxTokens: 1500

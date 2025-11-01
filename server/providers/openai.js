@@ -5,7 +5,7 @@
 
 const axios = require('axios');
 
-const DEFAULT_CHAT_MODEL = 'gpt-4o-mini';
+const DEFAULT_CHAT_MODEL = 'gpt-5-mini';
 
 class OpenAIProvider {
   constructor(apiKey) {
@@ -346,9 +346,9 @@ Each variant should maintain the core functionality while testing the specific a
         costPerInputToken = 0.00003;
         costPerOutputToken = 0.00006;
         break;
-      case 'gpt-4o-mini':
-        costPerInputToken = 0.0000025;
-        costPerOutputToken = 0.00001;
+      case 'gpt-5-mini':
+        costPerInputToken = 0.00000025;
+        costPerOutputToken = 0.000002;
         break;
       case 'gpt-3.5-turbo':
         costPerInputToken = 0.0000015;

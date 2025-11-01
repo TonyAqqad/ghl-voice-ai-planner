@@ -1052,7 +1052,7 @@ async function enhancePromptWithAI(composedPrompt, openaiApiKey) {
     const enhancementRequest = `Enhance this Voice AI system prompt for GoHighLevel. Make it more conversational, natural, and effective for voice interactions while preserving all guidelines, compliance notes, and structure:\n\n${composedPrompt.system_prompt}`;
     
     const enhanced = await openai.generateCompletion(enhancementRequest, {
-      model: 'gpt-4o-mini',
+      model: 'gpt-5-mini',
       systemPrompt: 'You are an expert Voice AI prompt engineer specializing in GoHighLevel Voice AI agents. Enhance prompts to be natural, actionable, and effective for voice conversations while maintaining all compliance and structural requirements.',
       temperature: 0.4,
       maxTokens: 2000

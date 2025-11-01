@@ -48,7 +48,7 @@ async function exampleVoiceAgentCall() {
         userMessage: 'I need information about your services'
       },
       options: {
-        model: 'gpt-4o-mini',
+        model: 'gpt-5-mini',
         voiceId: 'voice-123',
         temperature: 0.7
       }
