@@ -5,7 +5,7 @@
 
 const axios = require('axios');
 
-const DEFAULT_CHAT_MODEL = 'gpt-5-mini';
+const DEFAULT_CHAT_MODEL = 'gpt-4o-mini';
 
 class OpenAIProvider {
   constructor(apiKey) {

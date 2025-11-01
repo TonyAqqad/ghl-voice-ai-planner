@@ -41,7 +41,7 @@ class CostingService {
    * Calculate LLM cost
    */
   calculateLLMCost(inputTokens, outputTokens, model) {
-    const rates = this.costRates.openai[model] || this.costRates.openai['gpt-5-mini'];
+    const rates = this.costRates.openai[model] || this.costRates.openai['gpt-4o-mini'];
     return (inputTokens * rates.input) + (outputTokens * rates.output);
   }
 
