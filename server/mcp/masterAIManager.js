@@ -71,7 +71,8 @@ Return ONLY the JSON object.`;
       responseFormat: { type: 'json_object' }
     });
 
-    const guidance = JSON.parse(result);
+    // Parse result if it's a string, otherwise use as-is
+    const guidance = typeof result === 'string' ? JSON.parse(result) : result;
 
     // Rules checked
     const rulesChecked = [
@@ -162,7 +163,8 @@ Return ONLY the JSON object.`;
       responseFormat: { type: 'json_object' }
     });
 
-    const review = JSON.parse(result);
+    // Parse result if it's a string, otherwise use as-is
+    const review = typeof result === 'string' ? JSON.parse(result) : result;
 
     // Enforce quality threshold
     if (review.score < qualityThreshold && !goldenDatasetMode) {
@@ -250,7 +252,8 @@ Return ONLY the JSON object.`;
       responseFormat: { type: 'json_object' }
     });
 
-    const intervention = JSON.parse(result);
+    // Parse result if it's a string, otherwise use as-is
+    const intervention = typeof result === 'string' ? JSON.parse(result) : result;
 
     console.log(`✅ Intervention complete [${traceId}]: "${intervention.correctedResponse.substring(0, 50)}..."`);
 
@@ -334,7 +337,8 @@ Return ONLY the JSON object.`;
       responseFormat: { type: 'json_object' }
     });
 
-    const data = JSON.parse(result);
+    // Parse result if it's a string, otherwise use as-is
+    const data = typeof result === 'string' ? JSON.parse(result) : result;
     const latencyMs = Date.now() - startTime;
 
     // Add metadata to patterns
