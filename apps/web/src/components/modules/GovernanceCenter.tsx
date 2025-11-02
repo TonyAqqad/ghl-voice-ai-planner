@@ -335,7 +335,7 @@ const GovernanceCenter: React.FC = () => {
                     <input
                       value={budgetDraft}
                       onChange={(e) => handleBudgetInput(agent.id, e.target.value)}
-                      placeholder={budget ? budget.dailyCap.toString() : '20000'}
+                      placeholder={budget ? budget.dailyCap.toString() : '30000'}
                       className="flex-1 px-3 py-2 border rounded bg-background text-sm"
                     />
                     <button className="btn btn-primary" onClick={() => commitBudget(agent.id)}>

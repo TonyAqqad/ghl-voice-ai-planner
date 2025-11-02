@@ -336,7 +336,7 @@ export const useStore = create<GHLStore>()(
       const ensureBudget = (agentId: string, dailyCap?: number): AgentTokenBudget => {
         const state = get();
         const existing = state.tokenBudgets[agentId];
-        const cap = dailyCap ?? existing?.dailyCap ?? 20000;
+        const cap = dailyCap ?? existing?.dailyCap ?? 30000;
 
         const maybeReset = (budget: AgentTokenBudget): AgentTokenBudget => {
           if (!budget.resetAt || Date.now() > Date.parse(budget.resetAt)) {
