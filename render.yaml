@@ -7,8 +7,7 @@ services:
       npm ci
       npm run build
     startCommand: |
-      cd server
-      node ghl-express-api.js
+      node apps/server/ghl-express-api.js
     envVars:
       # NOTE: Set these in Render Dashboard Environment tab - NEVER commit secrets here!
       # - key: GHL_CLIENT_ID
@@ -20,7 +19,7 @@ services:
       - key: NODE_VERSION
         value: "20.17.0"
       - key: FRONTEND_DIST_PATH
-        value: /opt/render/project/src/dist
+        value: /opt/render/project/src/apps/web/dist
       - key: GHL_REDIRECT_URI
         value: https://ghlvoiceai.captureclient.com/auth/callback
       - key: PORT

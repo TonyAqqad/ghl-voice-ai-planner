@@ -1,38 +1,48 @@
+# Dependencies
 node_modules/
+package-lock.json
+
+# Build outputs
 dist/
+build/
+.vite/
+
+# Environment variables
 .env
 .env.local
-.cursor/local.env
-.cursor/*.local.*
-.DS_Store
-*.log
-coverage/
-.nyc_output/
-build/
+.env.*.local
+
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# Documentation files (keep but don't index)
-*.md
-!README.md
+# OS
+.DS_Store
+Thumbs.db
 
-# Cleanup files
-cleanup-files.bat
-CLEANUP_PLAN.md
-CLEANUP_COMPLETE.md
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# Large data files
-package-lock.json
-api_call_map.json
+# Testing
+coverage/
+.nyc_output/
 
-# Solar appointment agent (reference only)
-solar-appointment-agent/
+# Temporary files
+*.tmp
+.cache/
 
-# Deployment scripts (keep but don't index)
-deploy-to-github.bat
-*.bat
-# Allow build scripts needed for deployment
-!scripts/*.sh
+# Database
+*.db
+*.sqlite
+
+# Archives
+*.tar.gz
+*.zip
+
