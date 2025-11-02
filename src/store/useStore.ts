@@ -1429,7 +1429,7 @@ export const useStore = create<GHLStore>()(
         turnCache: state.turnCache,
         specLocks: state.specLocks,
         specHistory: state.specHistory,
-      })
+      }),
     }
   )
 );
