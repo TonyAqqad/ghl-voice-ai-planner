@@ -15,6 +15,10 @@ import {
   ConversationTurn as SessionConversationTurn,
 } from '../../lib/evaluation/types';
 import { analyzeTurnWithAPI, TurnAnalysis } from '../../lib/evaluation/turnAnalyzer';
+import { useMasterAIManager } from '../../hooks/useMasterAIManager';
+import PreTurnGuidance from '../ui/PreTurnGuidance';
+import QualityGate from '../ui/QualityGate';
+import ObservabilityDashboard from '../ui/ObservabilityDashboard';
 import { 
   evaluateAfterCall, 
   evaluateAfterCallWithSpec, 
@@ -43,7 +47,8 @@ import {
   type Violation 
 } from '../../lib/evaluation/autoCorrector';
 import { lintSpec, formatLintIssues, type SpecLintIssue } from '../../lib/spec/specLinter';
-import { saveGoldenSample, listGoldenSamples, replayGoldenDataset, type GoldenSample, type ReplaySummary } from '../../lib/evaluation/goldenDataset';
+// TODO: Implement golden dataset
+// import { saveGoldenSample, listGoldenSamples, replayGoldenDataset, deleteGoldenSample, type GoldenSample, type ReplaySummary } from '../../lib/evaluation/goldenDataset';
 
 interface TrainingPayload {
   agentId: string;
@@ -137,7 +142,14 @@ const TrainingHub: React.FC = () => {
   const [composedPrompt, setComposedPrompt] = useState<any>(null);
   const [showPreview, setShowPreview] = useState(false);
 
+  // Master AI Manager state
+  const [enableMasterAI, setEnableMasterAI] = useState(false);
+  const [enablePreTurnGuidance, setEnablePreTurnGuidance] = useState(false);
+  const [enableQualityGates, setEnableQualityGates] = useState(false);
+  const [showObservability, setShowObservability] = useState(false);
+
   const mcp = useMCP();
+  
   // Inline test panel state
   const [testMessage, setTestMessage] = useState<string>('Hello');
   const [testResult, setTestResult] = useState<any>(null);
@@ -178,15 +190,44 @@ const TrainingHub: React.FC = () => {
   const [ignoreConfidenceGate, setIgnoreConfidenceGate] = useState(false);
   const [turnViolations, setTurnViolations] = useState<Record<string, Violation[]>>({});
   const [turnInsights, setTurnInsights] = useState<Record<string, LocalTurnInsight>>({});
-  const [goldenSamples, setGoldenSamples] = useState<GoldenSample[]>([]);
-  const [showGoldModal, setShowGoldModal] = useState(false);
-  const [goldTitle, setGoldTitle] = useState('');
-  const [goldNotes, setGoldNotes] = useState('');
-  const [replayResults, setReplayResults] = useState<ReplaySummary[] | null>(null);
-  const [replayRunning, setReplayRunning] = useState(false);
-  const [replayFetchedAt, setReplayFetchedAt] = useState<string | null>(null);
+  
+  // TODO: Implement golden dataset - temporarily commented out
+  // const [goldenSamples, setGoldenSamples] = useState<GoldenSample[]>([]);
+  // const [showGoldModal, setShowGoldModal] = useState(false);
+  // const [goldTitle, setGoldTitle] = useState('');
+  // const [goldNotes, setGoldNotes] = useState('');
+  // const [replayResults, setReplayResults] = useState<ReplaySummary[] | null>(null);
+  // const [replayRunning, setReplayRunning] = useState(false);
+  // const [replayFetchedAt, setReplayFetchedAt] = useState<string | null>(null);
+
+  // const refreshGoldenSamples = useCallback(() => {
+  //   if (!selectedAgent || !promptHash) {
+  //     setGoldenSamples([]);
+  //     return;
+  //   }
+  //   try {
+  //     const samples = listGoldenSamples({ agentId: selectedAgent.id, promptHash });
+  //     setGoldenSamples(samples);
+  //   } catch (error) {
+  //     console.error('Failed to load golden dataset:', error);
+  //     setGoldenSamples([]);
+  //   }
+  // }, [selectedAgent, promptHash]);
 
   const selectedAgent = useMemo(() => voiceAgents.find(a => a.id === selectedId), [voiceAgents, selectedId]);
+  
+  // Master AI Manager Hook (initialized after selectedAgent is defined)
+  const masterAI = useMasterAIManager({
+    agentId: selectedId,
+    niche: selectedNiche,
+    systemPrompt: systemPrompt,
+    enablePreTurnGuidance: enableMasterAI && enablePreTurnGuidance,
+    enableQualityGates: enableMasterAI && enableQualityGates,
+    enableInterventions: enableMasterAI,
+    enableLearning: enableMasterAI,
+    goldenDatasetMode: false, // TODO: hook up to golden dataset mode when active
+  });
+  
   const agentSpecHistory = useMemo(
     () => specHistory.filter((entry) => entry.agentId === selectedId).slice(0, timelineExpanded ? 12 : 5),
     [specHistory, selectedId, timelineExpanded]
@@ -698,6 +739,79 @@ const TrainingHub: React.FC = () => {
   };
 
   const handleSaveState = async () => {
+
+  // TODO: Implement golden dataset - temporarily commented out
+  // const handleSaveGoldenSample = () => {
+  //   if (!selectedAgent || !latestSession || conversation.length === 0) {
+  //     toast.error('Run a simulated call and evaluation before saving a gold sample');
+  //     return;
+  //   }
+  //   if (!promptHash) {
+  //     toast.error('Save the prompt first to lock a version before saving gold samples');
+  //     return;
+  //   }
+  //   const id = `gold-${Date.now()}`;
+  //   const sample: GoldenSample = {
+  //     id,
+  //     agentId: selectedAgent.id,
+  //     niche: selectedNiche,
+  //     promptHash,
+  //     title: goldTitle.trim() || `Sample ${new Date().toLocaleString()}`,
+  //     notes: goldNotes.trim() || undefined,
+  //     createdAt: new Date().toISOString(),
+  //     transcript: conversation.map((turn) => ({ ...turn })),
+  //     expected: {
+  //       collectedFields: latestSession.collectedFields,
+  //       rubric: latestSession.rubric,
+  //       confidence: latestSession.confidence,
+  //     },
+  //     originalEvaluation: latestSession,
+  //   };
+
+  //   try {
+  //     saveGoldenSample(sample);
+  //     toast.success('Saved to golden dataset');
+  //     setGoldTitle('');
+  //     setGoldNotes('');
+  //     setShowGoldModal(false);
+  //     refreshGoldenSamples();
+  //   } catch (error) {
+  //     console.error('Failed to save golden sample:', error);
+  //     toast.error('Could not save golden sample');
+  //   }
+  // };
+
+  // TODO: Implement golden dataset - temporarily commented out
+  // const handleReplayGoldenDataset = async () => {
+  //   if (!selectedAgent) {
+  //     toast.error('Select an agent before replaying');
+  //     return;
+  //   }
+  //   setReplayRunning(true);
+  //   try {
+  //     const results = replayGoldenDataset({
+  //       agentId: selectedAgent.id,
+  //       promptHash,
+  //       niche: selectedNiche,
+  //     }, { spec: activeSpec });
+  //     setReplayResults(results);
+  //     setReplayFetchedAt(new Date().toISOString());
+  //     toast.success(`Replayed ${results.length} golden sample${results.length === 1 ? '' : 's'}`);
+  //   } catch (error) {
+  //     console.error('Failed to replay golden dataset:', error);
+  //     toast.error('Golden dataset replay failed');
+  //   } finally {
+  //     setReplayRunning(false);
+  //   }
+  // };
+
+  // const handleDeleteGoldenSample = (id: string) => {
+  //   deleteGoldenSample(id);
+  //   refreshGoldenSamples();
+  //   toast.success('Removed golden sample');
+  // };
+
+
     if (!payload) return;
     setSaving(true);
     try {
@@ -918,6 +1032,23 @@ const TrainingHub: React.FC = () => {
         return;
       }
 
+      // 🤖 Master AI: Get Pre-Turn Guidance (if enabled)
+      if (enableMasterAI && enablePreTurnGuidance) {
+        try {
+          const guidance = await masterAI.getPreTurnGuidance({
+            conversation: updatedConversation.map(t => ({ role: t.role, text: t.text })),
+            fieldsCollected: [], // TODO: track fields collected
+            conversationId,
+          });
+          if (guidance) {
+            console.log('🎯 Pre-turn guidance:', guidance.recommendedResponse);
+          }
+        } catch (guidanceError) {
+          console.warn('Pre-turn guidance failed:', guidanceError);
+          // Non-fatal, continue
+        }
+      }
+
       const callStart = performance.now();
 
       const callResponse = await mcp.voiceAgentCall(
@@ -950,10 +1081,52 @@ const TrainingHub: React.FC = () => {
       }
 
       const agentTs = Date.now();
+      let agentResponseText = agentText || 'No response';
+
+      // 🛡️ Master AI: Quality Gate Review (if enabled)
+      if (enableMasterAI && enableQualityGates) {
+        try {
+          const review = await masterAI.reviewResponse({
+            response: agentResponseText,
+            conversation: updatedConversation.map(t => ({ role: t.role, text: t.text })),
+            conversationId,
+          });
+
+          if (!review.approved && review.suggestedResponse) {
+            console.warn('🛡️ Quality gate BLOCKED response:', review.blockedReasons);
+            console.log('✅ Using suggested fix:', review.suggestedResponse);
+            
+            // Use the suggested fix instead
+            agentResponseText = review.suggestedResponse;
+            
+            // Log intervention
+            const intervention = await masterAI.intervene({
+              response: agentText || 'No response',
+              issues: review.issues,
+              turnId: `agent-${agentTs}`,
+            });
+            
+            if (intervention) {
+              console.log('🔧 Intervention applied:', intervention.id);
+            }
+            
+            toast.success('Master AI fixed response', { icon: '🛡️' });
+          } else if (!review.approved) {
+            console.warn('🛡️ Quality gate blocked, no fix available');
+            toast.error('Response blocked by quality gate', { icon: '⛔' });
+          } else {
+            console.log('✅ Quality gate: APPROVED (score:', review.score, ')');
+          }
+        } catch (reviewError) {
+          console.warn('Quality gate review failed:', reviewError);
+          // Non-fatal, continue with original response
+        }
+      }
+
       const agentTurn: SimulatorTurn = {
         id: `agent-${agentTs}-${Math.random().toString(36).slice(2, 6)}`,
         role: 'agent',
-        text: agentText || 'No response',
+        text: agentResponseText,
         ts: agentTs,
       };
 
@@ -2035,6 +2208,123 @@ const TrainingHub: React.FC = () => {
                   View Details
                 </Button>
               </div>
+            </div>
+          )}
+
+          {/* Master AI Controls */}
+          <div className="mb-4 p-4 rounded-lg border border-primary/30 bg-gradient-to-br from-purple-50/50 to-blue-50/50 dark:from-purple-900/10 dark:to-blue-900/10">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className={`w-5 h-5 ${enableMasterAI ? 'text-primary animate-pulse' : 'text-muted-foreground'}`} />
+                <span className="font-semibold text-foreground">Master AI Orchestration</span>
+                {enableMasterAI && (
+                  <span className="px-2 py-0.5 rounded-full text-xs bg-primary/10 text-primary font-medium">
+                    ACTIVE
+                  </span>
+                )}
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={enableMasterAI}
+                  onChange={(e) => setEnableMasterAI(e.target.checked)}
+                  className="rounded"
+                />
+                <span className="text-sm text-foreground">Enable</span>
+              </label>
+            </div>
+            
+            {enableMasterAI && (
+              <div className="space-y-2 pl-7 animate-fade-in">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={enablePreTurnGuidance}
+                    onChange={(e) => setEnablePreTurnGuidance(e.target.checked)}
+                    className="rounded"
+                  />
+                  <span className="text-sm text-muted-foreground">Pre-Turn Guidance</span>
+                  <span className="text-xs text-muted-foreground italic">(shows recommended responses)</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={enableQualityGates}
+                    onChange={(e) => setEnableQualityGates(e.target.checked)}
+                    className="rounded"
+                  />
+                  <span className="text-sm text-muted-foreground">Quality Gates</span>
+                  <span className="text-xs text-muted-foreground italic">(blocks/fixes low-quality responses)</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showObservability}
+                    onChange={(e) => setShowObservability(e.target.checked)}
+                    className="rounded"
+                  />
+                  <span className="text-sm text-muted-foreground">Show Observability</span>
+                  <span className="text-xs text-muted-foreground italic">(audit logs, tokens, costs)</span>
+                </label>
+              </div>
+            )}
+          </div>
+
+          {/* Pre-Turn Guidance Panel */}
+          {enableMasterAI && enablePreTurnGuidance && masterAI.guidance && (
+            <div className="mb-4">
+              <PreTurnGuidance 
+                guidance={masterAI.guidance}
+                onUseResponse={(response) => {
+                  setTestMessage(response);
+                  toast.success('Using Master AI recommendation');
+                }}
+              />
+            </div>
+          )}
+
+          {/* Quality Gate Review */}
+          {enableMasterAI && enableQualityGates && masterAI.qualityReview && !masterAI.qualityReview.approved && (
+            <div className="mb-4">
+              <QualityGate
+                review={masterAI.qualityReview}
+                originalResponse={conversation[conversation.length - 1]?.text || ''}
+                onUseSuggestion={() => {
+                  if (masterAI.qualityReview?.suggestedResponse) {
+                    // Already applied in handleDryRun
+                    toast.success('Suggestion applied');
+                  }
+                }}
+              />
+            </div>
+          )}
+
+          {/* Observability Dashboard */}
+          {enableMasterAI && showObservability && masterAI.observabilityEvents.length > 0 && (
+            <div className="mb-4">
+              <ObservabilityDashboard
+                events={masterAI.observabilityEvents}
+                summary={masterAI.getObservabilitySummary()}
+              />
+            </div>
+          )}
+
+          {/* Confidence Gate Warning */}
+          {masterAI.confidenceGateActive && (
+            <div className="mb-4 p-4 rounded-lg border-2 border-red-500 bg-red-50 dark:bg-red-900/20 animate-pulse">
+              <div className="flex items-center gap-2 text-red-700 dark:text-red-300">
+                <AlertTriangle className="w-5 h-5" />
+                <span className="font-semibold">Confidence Gate Active</span>
+              </div>
+              <p className="text-sm text-red-600 dark:text-red-400 mt-1">
+                Agent performance below threshold. Manual review required.
+              </p>
+              <button
+                onClick={() => masterAI.clearConfidenceGate()}
+                className="mt-2 px-3 py-1 text-sm rounded bg-red-600 text-white hover:bg-red-700"
+              >
+                Clear Gate (Testing Only)
+              </button>
             </div>
           )}
 
