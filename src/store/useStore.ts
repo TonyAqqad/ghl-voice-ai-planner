@@ -1408,7 +1408,8 @@ export const useStore = create<GHLStore>()(
           throw error;
         }
       }
-    }),
+    };
+  },
     {
       name: 'ghl-voice-ai-planner',
       partialize: (state) => ({
