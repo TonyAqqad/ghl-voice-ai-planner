@@ -178,6 +178,7 @@ DATABASE_URL=postgresql://...
 MCP_BASE_URL=http://localhost:10000/api/mcp
 CHAINLIT_API_KEY=your_chainlit_key (if using Chainlit)
 CONTEXT7_API_KEY=your_context7_key (if using Context7)
+CONTEXT7_BASE_URL=https://api.context7.ai
 ```
 
 ## Database Setup

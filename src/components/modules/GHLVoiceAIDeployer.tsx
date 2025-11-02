@@ -21,6 +21,16 @@ import {
   FileText
 } from 'lucide-react';
 import { useStore } from '../../store/useStore';
+import { lintSpec, type SpecGuardConfig } from '../../lib/governance/specGuard';
+
+const SPEC_LINTER_CFG: SpecGuardConfig = {
+  disallowedPhrases: [
+    'ignore previous instructions',
+    'as an ai language model',
+    'you are chatgpt'
+  ],
+  requiredFieldOrder: ['name', 'description', 'capabilities', 'guardrails', 'evaluation']
+};
 
 interface Deployment {
   id: string;
@@ -202,6 +212,29 @@ const GHLVoiceAIDeployer: React.FC = () => {
       const agent = voiceAgents.find(a => a.id === deployment.voiceAgent.id);
       if (!agent) {
         alert('Voice agent not found');
+        return;
+      }
+
+      // Deploy Guard: block if confidence gate active, spec drift, or linter issues
+      const storeApi = useStore.getState();
+      const gov = storeApi.ensureAgentGovernance(agent.id);
+      const lock = storeApi.getSpecLock(agent.id);
+      if (gov.isGated) {
+        alert(`Deploy blocked: Confidence gate active. Reason: ${gov.gateReason || 'N/A'}`);
+        return;
+      }
+      if (!lock) {
+        alert('Deploy blocked: Spec lock missing. Save prompt to create a lock.');
+        return;
+      }
+      const specValidation = storeApi.validateSpecLock(agent.id, lock.promptHash, lock.storedSpec);
+      if (specValidation.status && specValidation.status !== 'ok') {
+        alert(`Deploy blocked: Spec drift. ${specValidation.message}`);
+        return;
+      }
+      const issues = lintSpec(lock.storedSpec, SPEC_LINTER_CFG);
+      if (issues.length > 0) {
+        alert(`Deploy blocked: Spec linter issues (e.g., ${issues[0].message}). See Governance Center.`);
         return;
       }
 

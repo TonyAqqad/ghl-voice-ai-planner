@@ -129,6 +129,7 @@ const VoiceAgentBuilder: React.FC = () => {
                             <option value="anthropic">Anthropic</option>
                     <option value="azure">Azure</option>
                             <option value="cohere">Cohere</option>
+                            <option value="context7">Context7</option>
                           </select>
                       </div>
                     </div>

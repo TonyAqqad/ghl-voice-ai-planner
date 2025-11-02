@@ -224,6 +224,7 @@ const TrainingHub: React.FC = () => {
     agentId: selectedId,
     niche: selectedNiche,
     systemPrompt: systemPrompt,
+    llmProvider: selectedAgent?.llmProvider || 'openai',
     enablePreTurnGuidance: enableMasterAI && enablePreTurnGuidance,
     enableQualityGates: enableMasterAI && enableQualityGates,
     enableInterventions: enableMasterAI,

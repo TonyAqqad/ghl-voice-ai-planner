@@ -18,7 +18,7 @@ export interface VoiceAgent {
     language: string;
   };
   voiceProvider: 'elevenlabs' | 'azure' | 'aws' | 'google';
-  llmProvider: 'openai' | 'anthropic' | 'azure' | 'cohere';
+  llmProvider: 'openai' | 'anthropic' | 'azure' | 'cohere' | 'context7';
   defaultLanguage: string;
   systemPrompt?: string;
   specLock?: SpecLock;

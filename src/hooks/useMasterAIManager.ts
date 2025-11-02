@@ -81,6 +81,7 @@ export interface MasterAIConfig {
   agentId: string;
   niche: string;
   systemPrompt: string;
+  llmProvider?: string;
   qualityThreshold?: number; // Default 70
   confidenceThreshold?: number; // Default 70 (for gating)
   enablePreTurnGuidance?: boolean;
@@ -112,6 +113,7 @@ export function useMasterAIManager(config: MasterAIConfig) {
     agentId,
     niche,
     systemPrompt,
+    llmProvider = 'openai',
     qualityThreshold = 70,
     confidenceThreshold = 70,
     enablePreTurnGuidance = true,
@@ -176,6 +178,7 @@ export function useMasterAIManager(config: MasterAIConfig) {
           fieldsCollected: context.fieldsCollected,
           goldenDatasetMode,
           traceId,
+          llmProvider,
         }),
       });
 
@@ -226,7 +229,7 @@ export function useMasterAIManager(config: MasterAIConfig) {
     } finally {
       setIsProcessing(false);
     }
-  }, [agentId, niche, systemPrompt, enablePreTurnGuidance, goldenDatasetMode, generateTraceId, logObservability]);
+  }, [agentId, niche, systemPrompt, llmProvider, enablePreTurnGuidance, goldenDatasetMode, generateTraceId, logObservability]);
 
   /**
    * Review agent response with quality gates
@@ -274,6 +277,7 @@ export function useMasterAIManager(config: MasterAIConfig) {
           confidenceThreshold,
           goldenDatasetMode,
           traceId,
+          llmProvider,
         }),
       });
 
@@ -368,7 +372,7 @@ export function useMasterAIManager(config: MasterAIConfig) {
     } finally {
       setIsProcessing(false);
     }
-  }, [agentId, niche, systemPrompt, qualityThreshold, confidenceThreshold, enableQualityGates, goldenDatasetMode, generateTraceId, logObservability]);
+  }, [agentId, niche, systemPrompt, llmProvider, qualityThreshold, confidenceThreshold, enableQualityGates, goldenDatasetMode, generateTraceId, logObservability]);
 
   /**
    * Apply automatic intervention to fix response
@@ -394,6 +398,7 @@ export function useMasterAIManager(config: MasterAIConfig) {
           issues: context.issues,
           systemPrompt,
           traceId,
+          llmProvider,
         }),
       });
 
@@ -448,7 +453,7 @@ export function useMasterAIManager(config: MasterAIConfig) {
       console.error('❌ Intervention error:', error);
       return null;
     }
-  }, [agentId, niche, systemPrompt, enableInterventions, generateTraceId, logObservability]);
+  }, [agentId, niche, systemPrompt, llmProvider, enableInterventions, generateTraceId, logObservability]);
 
   /**
    * Learn from interaction and generate patterns
@@ -473,6 +478,7 @@ export function useMasterAIManager(config: MasterAIConfig) {
           outcome: context.outcome,
           interventions,
           traceId,
+          llmProvider,
         }),
       });
 
@@ -511,7 +517,7 @@ export function useMasterAIManager(config: MasterAIConfig) {
       console.error('❌ Learning error:', error);
       return [];
     }
-  }, [agentId, niche, interventions, enableLearning, goldenDatasetMode, generateTraceId, logObservability]);
+  }, [agentId, niche, llmProvider, interventions, enableLearning, goldenDatasetMode, generateTraceId, logObservability]);
 
   /**
    * Get observability summary for current session

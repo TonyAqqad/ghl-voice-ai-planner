@@ -5,7 +5,7 @@
  * Provides deep analysis of conversation turns using AI
  */
 
-const OpenAIProvider = require('../providers/openai');
+const { runLLM } = require('../providers/llm-utils');
 
 /**
  * Analyze a single conversation turn
@@ -82,26 +82,22 @@ Focus on:
 
 Return ONLY the JSON object, no other text.`;
 
-    // Call OpenAI for analysis
-    const openai = new OpenAIProvider(process.env.OPENAI_API_KEY);
-    
-    const analysisResult = await openai.generateCompletion(analysisPrompt, {
-      model: 'gpt-4o-mini', // Fast and cheap for analysis
-      temperature: 0.3, // More deterministic
-      maxTokens: 800,
-      responseFormat: { type: 'json_object' }
-    });
-
     let analysis;
+    let usedModel = 'fallback';
     try {
-      analysis = JSON.parse(analysisResult);
+      const { payload, model } = await runLLM(req.body.llmProvider, analysisPrompt, {
+        temperature: 0.3,
+        maxTokens: 800,
+        responseFormat: { type: 'json_object' },
+      });
+      analysis = payload;
+      usedModel = model;
     } catch (parseError) {
-      console.error('Failed to parse AI analysis:', parseError);
-      // Fallback to basic analysis
+      console.error('Failed to parse AI analysis, using fallback:', parseError);
       analysis = createFallbackAnalysis(lastAgentResponse);
     }
 
-    console.log(`✅ Turn analysis complete:`, {
+    console.log(`✅ Turn analysis complete via ${usedModel}:`, {
       score: analysis.compliance?.score,
       violations: analysis.compliance?.violations?.length || 0,
       redFlags: analysis.redFlags?.length || 0
@@ -109,7 +105,8 @@ Return ONLY the JSON object, no other text.`;
 
     return res.json({
       ok: true,
-      analysis
+      analysis,
+      model: usedModel
     });
 
   } catch (error) {

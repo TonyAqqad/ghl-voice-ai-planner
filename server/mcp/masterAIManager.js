@@ -9,7 +9,7 @@
  * - Full observability
  */
 
-const OpenAIProvider = require('../providers/openai');
+const { runLLM } = require('../providers/llm-utils');
 
 /**
  * Generate pre-turn guidance
@@ -63,16 +63,11 @@ Return JSON:
 
 Return ONLY the JSON object.`;
 
-    const openai = new OpenAIProvider(process.env.OPENAI_API_KEY);
-    const result = await openai.generateCompletion(guidancePrompt, {
-      model: 'gpt-4o-mini',
+    const { payload: guidance, usage, model: usedModel } = await runLLM(req.body.llmProvider, guidancePrompt, {
       temperature: 0.3,
       maxTokens: 500,
-      responseFormat: { type: 'json_object' }
+      responseFormat: { type: 'json_object' },
     });
-
-    // Parse result if it's a string, otherwise use as-is
-    const guidance = typeof result === 'string' ? JSON.parse(result) : result;
 
     // Rules checked
     const rulesChecked = [
@@ -82,13 +77,18 @@ Return ONLY the JSON object.`;
       'tone_appropriateness',
     ];
 
-    console.log(`✅ Guidance generated [${traceId}]: "${guidance.recommendedResponse.substring(0, 50)}..."`);
+    console.log(
+      `✅ Guidance generated [${traceId}] via ${usedModel}: "${
+        guidance.recommendedResponse.substring(0, 50)
+      }..."`
+    );
 
     return res.json({
       ok: true,
       guidance,
-      model: 'gpt-4o-mini',
+      model: usedModel,
       rulesChecked,
+      usage,
     });
   } catch (error) {
     console.error('❌ Pre-turn guidance error:', error);
@@ -155,16 +155,11 @@ Critical checks:
 
 Return ONLY the JSON object.`;
 
-    const openai = new OpenAIProvider(process.env.OPENAI_API_KEY);
-    const result = await openai.generateCompletion(reviewPrompt, {
-      model: 'gpt-4o-mini',
+    const { payload: review, usage, model: usedModel } = await runLLM(req.body.llmProvider, reviewPrompt, {
       temperature: 0.2,
       maxTokens: 600,
-      responseFormat: { type: 'json_object' }
+      responseFormat: { type: 'json_object' },
     });
-
-    // Parse result if it's a string, otherwise use as-is
-    const review = typeof result === 'string' ? JSON.parse(result) : result;
 
     // Enforce quality threshold
     if (review.score < qualityThreshold && !goldenDatasetMode) {
@@ -184,13 +179,16 @@ Return ONLY the JSON object.`;
       'field_order',
     ];
 
-    console.log(`✅ Review complete [${traceId}]: ${review.approved ? 'APPROVED' : 'BLOCKED'} (score: ${review.score})`);
+    console.log(
+      `✅ Review complete [${traceId}] via ${usedModel}: ${review.approved ? 'APPROVED' : 'BLOCKED'} (score: ${review.score})`
+    );
 
     return res.json({
       ok: true,
       review,
-      model: 'gpt-4o-mini',
+      model: usedModel,
       rulesChecked,
+      usage,
     });
   } catch (error) {
     console.error('❌ Review error:', error);
@@ -244,23 +242,27 @@ Return JSON:
 Keep it natural, conversational, and appropriate for ${niche}.
 Return ONLY the JSON object.`;
 
-    const openai = new OpenAIProvider(process.env.OPENAI_API_KEY);
-    const result = await openai.generateCompletion(interventionPrompt, {
-      model: 'gpt-4o-mini',
-      temperature: 0.3,
-      maxTokens: 400,
-      responseFormat: { type: 'json_object' }
-    });
+    const { payload: intervention, usage, model: usedModel } = await runLLM(
+      req.body.llmProvider,
+      interventionPrompt,
+      {
+        temperature: 0.3,
+        maxTokens: 400,
+        responseFormat: { type: 'json_object' },
+      }
+    );
 
-    // Parse result if it's a string, otherwise use as-is
-    const intervention = typeof result === 'string' ? JSON.parse(result) : result;
-
-    console.log(`✅ Intervention complete [${traceId}]: "${intervention.correctedResponse.substring(0, 50)}..."`);
+    console.log(
+      `✅ Intervention complete [${traceId}] via ${usedModel}: "${
+        intervention.correctedResponse.substring(0, 50)
+      }..."`
+    );
 
     return res.json({
       ok: true,
       ...intervention,
-      model: 'gpt-4o-mini',
+      model: usedModel,
+      usage,
     });
   } catch (error) {
     console.error('❌ Intervention error:', error);
@@ -327,19 +329,17 @@ Focus on:
 
 Return ONLY the JSON object.`;
 
-    const openai = new OpenAIProvider(process.env.OPENAI_API_KEY);
-    const startTime = Date.now();
-    
-    const result = await openai.generateCompletion(learningPrompt, {
-      model: 'gpt-4o', // Use stronger model for learning
-      temperature: 0.4,
-      maxTokens: 800,
-      responseFormat: { type: 'json_object' }
-    });
-
-    // Parse result if it's a string, otherwise use as-is
-    const data = typeof result === 'string' ? JSON.parse(result) : result;
-    const latencyMs = Date.now() - startTime;
+    const { payload: data, usage, model: usedModel, latencyMs } = await runLLM(
+      req.body.llmProvider,
+      learningPrompt,
+      {
+        // allow override via request model if provided
+        model: req.body.model || undefined,
+        temperature: 0.4,
+        maxTokens: 800,
+        responseFormat: { type: 'json_object' },
+      }
+    );
 
     // Add metadata to patterns
     const patterns = (data.patterns || []).map(p => ({
@@ -351,18 +351,22 @@ Return ONLY the JSON object.`;
       appliedCount: 0,
     }));
 
-    // Estimate cost
-    const tokensUsed = Math.ceil((learningPrompt.length + result.length) / 4);
-    const costUsd = (tokensUsed / 1000) * 0.002; // GPT-4o pricing
+    const promptTokens = usage?.prompt_tokens ?? Math.ceil(learningPrompt.length / 4);
+    const completionTokens = usage?.completion_tokens ?? Math.ceil(JSON.stringify(patterns).length / 4);
+    const tokensUsed = promptTokens + completionTokens;
+    const costUsd = usage?.total_tokens
+      ? (usage.total_tokens / 1000) * 0.002
+      : (tokensUsed / 1000) * 0.002;
 
-    console.log(`✅ Learned ${patterns.length} patterns [${traceId}]`);
+    console.log(`✅ Learned ${patterns.length} patterns [${traceId}] via ${usedModel}`);
 
     return res.json({
       ok: true,
       patterns,
-      model: 'gpt-4o',
+      model: usedModel,
       latencyMs,
       costUsd,
+      usage,
     });
   } catch (error) {
     console.error('❌ Learning error:', error);

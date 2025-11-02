@@ -15,6 +15,16 @@ import {
 import clsx from 'clsx';
 import { toast } from 'react-hot-toast';
 import { useStore } from '../../store/useStore';
+import { lintSpec, type SpecGuardConfig } from '../../lib/governance/specGuard';
+
+const SPEC_LINTER_CFG: SpecGuardConfig = {
+  disallowedPhrases: [
+    'ignore previous instructions',
+    'as an ai language model',
+    'you are chatgpt'
+  ],
+  requiredFieldOrder: ['name', 'description', 'capabilities', 'guardrails', 'evaluation']
+};
 
 interface BundleState {
   status: 'idle' | 'valid' | 'error';
@@ -109,6 +119,14 @@ const GovernanceCenter: React.FC = () => {
     if (budget.usedTokens >= budget.dailyCap) lintErrors.push('Token budget exhausted. Increase cap before deployment.');
     if (!lock) lintErrors.push('Spec lock missing. Save prompt to lock before deployment.');
     if (specValidation.status && specValidation.status !== 'ok') lintErrors.push(`Spec drift: ${specValidation.message}`);
+
+    // Spec linter
+    if (lock?.storedSpec) {
+      try {
+        const issues = lintSpec(lock.storedSpec, SPEC_LINTER_CFG)
+        for (const i of issues) lintErrors.push(i.message)
+      } catch { /* ignore linter failure */ }
+    }
 
     const bundle = {
       agent: {
