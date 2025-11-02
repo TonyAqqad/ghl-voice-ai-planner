@@ -337,7 +337,9 @@ export const useStore = create<GHLStore>()(
       const ensureBudget = (agentId: string, dailyCap?: number): AgentTokenBudget => {
         const state = get();
         const existing = state.tokenBudgets[agentId];
-        const cap = dailyCap ?? existing?.dailyCap ?? 500000;
+        const minCap = 500000;
+        // Automatically upgrade existing budgets to the new minimum cap
+        const cap = dailyCap ?? Math.max(existing?.dailyCap ?? minCap, minCap);
 
         // Budget resets per conversation (not daily)
         const maybeReset = (budget: AgentTokenBudget): AgentTokenBudget => {
