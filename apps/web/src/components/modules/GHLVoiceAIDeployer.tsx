@@ -21,16 +21,7 @@ import {
   FileText
 } from 'lucide-react';
 import { useStore } from '../../store/useStore';
-import { lintSpec, type SpecGuardConfig } from '../../lib/governance/specGuard';
-
-const SPEC_LINTER_CFG: SpecGuardConfig = {
-  disallowedPhrases: [
-    'ignore previous instructions',
-    'as an ai language model',
-    'you are chatgpt'
-  ],
-  requiredFieldOrder: ['name', 'description', 'capabilities', 'guardrails', 'evaluation']
-};
+import { lintSpec } from '../../lib/spec/specLinter';
 
 interface Deployment {
   id: string;
@@ -232,7 +223,7 @@ const GHLVoiceAIDeployer: React.FC = () => {
         alert(`Deploy blocked: Spec drift. ${specValidation.message}`);
         return;
       }
-      const issues = lintSpec(lock.storedSpec, SPEC_LINTER_CFG);
+      const issues = lintSpec(lock.storedSpec);
       if (issues.length > 0) {
         alert(`Deploy blocked: Spec linter issues (e.g., ${issues[0].message}). See Governance Center.`);
         return;

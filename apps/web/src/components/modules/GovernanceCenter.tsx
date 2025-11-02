@@ -15,16 +15,7 @@ import {
 import clsx from 'clsx';
 import { toast } from 'react-hot-toast';
 import { useStore } from '../../store/useStore';
-import { lintSpec, type SpecGuardConfig } from '../../lib/governance/specGuard';
-
-const SPEC_LINTER_CFG: SpecGuardConfig = {
-  disallowedPhrases: [
-    'ignore previous instructions',
-    'as an ai language model',
-    'you are chatgpt'
-  ],
-  requiredFieldOrder: ['name', 'description', 'capabilities', 'guardrails', 'evaluation']
-};
+import { lintSpec } from '../../lib/spec/specLinter';
 
 interface BundleState {
   status: 'idle' | 'valid' | 'error';
@@ -123,7 +114,7 @@ const GovernanceCenter: React.FC = () => {
     // Spec linter
     if (lock?.storedSpec) {
       try {
-        const issues = lintSpec(lock.storedSpec, SPEC_LINTER_CFG)
+        const issues = lintSpec(lock.storedSpec)
         for (const i of issues) lintErrors.push(i.message)
       } catch { /* ignore linter failure */ }
     }
