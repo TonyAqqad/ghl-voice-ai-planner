@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { BookOpen, Save, Upload, RefreshCw, Database, Sparkles, CheckCircle, Link2, Copy, Edit2, X, Check, AlertTriangle, ThumbsUp, ThumbsDown, History } from 'lucide-react';
-import { useStore } from '../../store/useStore';
+import { useStore, SpecValidationResult } from '../../store/useStore';
 import { toast } from 'react-hot-toast';
 import { useMCP } from '../../hooks/useMCP';
 import Button from '../../components/ui/Button';
@@ -113,8 +113,7 @@ const TrainingHub: React.FC = () => {
   // Spec drift and linting
   const [specLintIssues, setSpecLintIssues] = useState<SpecLintIssue[]>([]);
   const [showSpecLinter, setShowSpecLinter] = useState(false);
-  type SpecValidation = ReturnType<typeof useStore.getState()['validateSpecLock']>;
-  const [specValidation, setSpecValidation] = useState<SpecValidation | null>(null);
+  const [specValidation, setSpecValidation] = useState<SpecValidationResult | null>(null);
   const [timelineExpanded, setTimelineExpanded] = useState(false);
 
   // New composer state

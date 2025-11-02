@@ -90,7 +90,7 @@ interface SpecHistoryEntry {
   storedSpec: PromptSpec;
 }
 
-interface SpecValidationResult {
+export interface SpecValidationResult {
   status: 'ok' | 'missing_lock' | 'hash_mismatch' | 'spec_mismatch';
   message: string;
   lock?: SpecLock | null;
