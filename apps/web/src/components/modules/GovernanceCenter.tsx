@@ -38,6 +38,7 @@ const GovernanceCenter: React.FC = () => {
     tokenBudgets,
     observability,
     setTokenBudget,
+    resetTokenBudget,
     clearAgentGate,
     specLocks,
   } = useStore((state) => ({
@@ -46,6 +47,7 @@ const GovernanceCenter: React.FC = () => {
     tokenBudgets: state.tokenBudgets,
     observability: state.observability,
     setTokenBudget: state.setTokenBudget,
+    resetTokenBudget: state.resetTokenBudget,
     clearAgentGate: state.clearAgentGate,
     specLocks: state.specLocks,
   }));
@@ -335,12 +337,23 @@ const GovernanceCenter: React.FC = () => {
                     <input
                       value={budgetDraft}
                       onChange={(e) => handleBudgetInput(agent.id, e.target.value)}
-                      placeholder={budget ? budget.dailyCap.toString() : '30000'}
+                      placeholder={budget ? budget.dailyCap.toString() : '500000'}
                       className="flex-1 px-3 py-2 border rounded bg-background text-sm"
                     />
                     <button className="btn btn-primary" onClick={() => commitBudget(agent.id)}>
                       <Zap className="w-4 h-4 mr-1" />
                       Set
+                    </button>
+                    <button 
+                      className="btn btn-secondary" 
+                      onClick={() => {
+                        resetTokenBudget(agent.id);
+                        setBudgetDrafts((prev) => ({ ...prev, [agent.id]: '' }));
+                        toast.success('Token budget reset for new conversation');
+                      }}
+                      title="Reset token budget for new conversation"
+                    >
+                      Reset
                     </button>
                   </div>
                   {budget && (

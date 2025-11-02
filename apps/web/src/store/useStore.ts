@@ -176,6 +176,7 @@ interface GHLStore {
 
   ensureTokenBudget: (agentId: string, dailyCap?: number) => AgentTokenBudget;
   setTokenBudget: (agentId: string, dailyCap: number) => AgentTokenBudget;
+  resetTokenBudget: (agentId: string) => AgentTokenBudget;
   checkTokenBudget: (agentId: string, estimatedTokens: number) => { allowed: boolean; remaining: number; budget: AgentTokenBudget };
   consumeTokenBudget: (agentId: string, tokens: number) => AgentTokenBudget;
   recordCacheHit: (agentId: string) => void;
@@ -336,18 +337,11 @@ export const useStore = create<GHLStore>()(
       const ensureBudget = (agentId: string, dailyCap?: number): AgentTokenBudget => {
         const state = get();
         const existing = state.tokenBudgets[agentId];
-        const cap = dailyCap ?? existing?.dailyCap ?? 30000;
+        const cap = dailyCap ?? existing?.dailyCap ?? 500000;
 
+        // Budget resets per conversation (not daily)
         const maybeReset = (budget: AgentTokenBudget): AgentTokenBudget => {
-          if (!budget.resetAt || Date.now() > Date.parse(budget.resetAt)) {
-            return {
-              ...budget,
-              usedTokens: 0,
-              cacheHits: 0,
-              resetAt: nextResetIso(),
-              updatedAt: nowIso(),
-            };
-          }
+          // No automatic daily reset - budget persists until manually reset
           return budget;
         };
 
@@ -912,6 +906,24 @@ export const useStore = create<GHLStore>()(
       ensureTokenBudget: (agentId, dailyCap) => ensureBudget(agentId, dailyCap),
 
       setTokenBudget: (agentId, dailyCap) => ensureBudget(agentId, dailyCap),
+
+      resetTokenBudget: (agentId) => {
+        const budget = ensureBudget(agentId);
+        const reset: AgentTokenBudget = {
+          ...budget,
+          usedTokens: 0,
+          cacheHits: 0,
+          resetAt: nextResetIso(),
+          updatedAt: nowIso(),
+        };
+        set((state) => ({
+          tokenBudgets: {
+            ...state.tokenBudgets,
+            [agentId]: reset,
+          },
+        }));
+        return reset;
+      },
 
       checkTokenBudget: (agentId, estimatedTokens) => {
         const budget = ensureBudget(agentId);
