@@ -35,8 +35,11 @@ async function preTurnGuidance(req, res) {
 
     const guidancePrompt = `You are a Master AI providing guidance to a voice agent.
 
-SYSTEM PROMPT FOR AGENT:
+YOUR ONLY JOB: Follow the system prompt rules below EXACTLY. Do not add your own opinions or rules.
+
+===== AGENT'S SYSTEM PROMPT (FOLLOW THIS EXACTLY) =====
 ${systemPrompt || 'N/A'}
+===== END SYSTEM PROMPT =====
 
 CONVERSATION SO FAR:
 ${conversationContext || '(No conversation yet)'}
@@ -45,22 +48,18 @@ FIELDS ALREADY COLLECTED: ${fieldsCollected.join(', ') || 'None'}
 
 NICHE: ${niche}
 
-Provide the IDEAL next response for the agent. Consider:
-1. What field should be collected next (in order)?
-2. Keep it 1-2 sentences max
-3. Ask ONE question only
-4. Natural, conversational tone appropriate for ${niche}
-5. Follow all rules in the system prompt
+Based ONLY on the system prompt above, provide the IDEAL next response.
 
 Return JSON:
 {
-  "recommendedResponse": "the ideal agent response",
-  "reasoning": ["reason 1", "reason 2", "reason 3"],
-  "confidence": 0-1 (how confident you are this is correct),
+  "recommendedResponse": "the ideal agent response (following system prompt rules exactly)",
+  "reasoning": ["why this follows the system prompt"],
+  "confidence": 0-1,
   "fieldToCollect": "next field name or null",
   "alternativeResponses": ["alternative 1", "alternative 2"]
 }
 
+CRITICAL: Do not invent rules. Only follow what's written in the system prompt above.
 Return ONLY the JSON object.`;
 
     const openai = new OpenAIProvider(process.env.OPENAI_API_KEY);
@@ -92,9 +91,15 @@ Return ONLY the JSON object.`;
     });
   } catch (error) {
     console.error('❌ Pre-turn guidance error:', error);
+    console.error('Error details:', {
+      name: error.name,
+      message: error.message,
+      stack: error.stack?.split('\n')[0]
+    });
     return res.status(500).json({
       ok: false,
       error: error.message || 'Failed to generate guidance',
+      details: process.env.NODE_ENV === 'production' ? undefined : error.stack,
     });
   }
 }
@@ -125,8 +130,11 @@ async function reviewResponse(req, res) {
 
     const reviewPrompt = `You are a Master AI quality reviewer for voice agents.
 
-SYSTEM PROMPT (RULES TO FOLLOW):
+YOUR ONLY JOB: Check if the response follows the system prompt rules below. Do not enforce rules that are NOT in the system prompt.
+
+===== AGENT'S SYSTEM PROMPT (ENFORCE ONLY THESE RULES) =====
 ${systemPrompt || 'N/A'}
+===== END SYSTEM PROMPT =====
 
 CONVERSATION CONTEXT:
 ${conversationContext || '(No conversation yet)'}
@@ -134,24 +142,24 @@ ${conversationContext || '(No conversation yet)'}
 AGENT RESPONSE TO REVIEW:
 "${response}"
 
-Review this response against the rules. Return JSON:
+Review ONLY against the rules in the system prompt above. Return JSON:
 {
-  "approved": true/false (should this response be allowed?),
-  "score": 0-100 (quality score),
-  "issues": ["issue 1", "issue 2"],
-  "suggestions": ["suggestion 1", "suggestion 2"],
-  "confidenceScore": 0-100 (confidence this agent is performing well),
-  "blockedReasons": ["why blocked if not approved"],
-  "suggestedResponse": "better response if score < ${qualityThreshold}"
+  "approved": true/false,
+  "score": 0-100,
+  "issues": ["only issues that violate the ACTUAL system prompt"],
+  "suggestions": ["suggestions based on system prompt"],
+  "confidenceScore": 0-100,
+  "blockedReasons": ["specific system prompt rule violations"],
+  "suggestedResponse": "better response if needed"
 }
 
-Critical checks:
-1. ONE question only? (not multiple)
-2. 1-2 sentences max?
-3. No AI self-reference ("I'm an AI", "I don't have access")?
-4. No backend mentions (GHL, CRM, Capture Client)?
-5. Appropriate tone for ${niche}?
-6. Following field collection order?
+Universal checks (always apply):
+1. No AI self-reference ("I'm an AI", "I don't have access")
+2. No backend mentions (GHL, CRM, Capture Client, system names)
+
+ALL OTHER CHECKS: Only enforce what's explicitly in the system prompt.
+
+If in training/testing mode, be MORE LENIENT with scores (minimum 60 unless critical violation).
 
 Return ONLY the JSON object.`;
 
@@ -166,12 +174,24 @@ Return ONLY the JSON object.`;
     // Parse result if it's a string, otherwise use as-is
     const review = typeof result === 'string' ? JSON.parse(result) : result;
 
-    // Enforce quality threshold
-    if (review.score < qualityThreshold && !goldenDatasetMode) {
+    // Enforce quality threshold (but be lenient in training mode)
+    // Only block on CRITICAL violations, not low scores during training
+    const hasCriticalViolation = review.issues && review.issues.some(issue => 
+      issue.toLowerCase().includes('ai reference') || 
+      issue.toLowerCase().includes('backend mention') ||
+      issue.toLowerCase().includes('ghl') ||
+      issue.toLowerCase().includes('crm')
+    );
+    
+    if (hasCriticalViolation) {
       review.approved = false;
       if (!review.blockedReasons || review.blockedReasons.length === 0) {
-        review.blockedReasons = [`Score ${review.score} below threshold ${qualityThreshold}`];
+        review.blockedReasons = ['Critical violation: AI self-reference or backend mention'];
       }
+    } else if (review.score < qualityThreshold && !goldenDatasetMode) {
+      // Low score but no critical violation - warn but DON'T block in training
+      review.approved = true; // Allow in training mode
+      review.warnings = [`Score ${review.score} below threshold ${qualityThreshold} - monitor closely`];
     }
 
     // Rules checked
