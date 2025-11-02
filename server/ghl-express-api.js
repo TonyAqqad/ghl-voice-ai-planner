@@ -2082,6 +2082,11 @@ app.post('/api/webhooks/agent', async (req, res) => {
       }
     });
 
+    // ===== MASTER ORCHESTRATOR - Turn Analysis =====
+    // Real-time analysis of conversation turns
+    const { analyzeTurn } = require('./mcp/turnAnalyzer');
+    app.post('/api/mcp/master/analyzeTurn', express.json(), analyzeTurn);
+
     // ===== SERVE REACT APP =====
     const candidates = [
       distFromEnv && path.resolve(distFromEnv),

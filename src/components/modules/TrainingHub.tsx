@@ -7,12 +7,14 @@ import Button from '../../components/ui/Button';
 import { getApiBaseUrl } from '../../utils/apiBase';
 import EvaluationScorecard from './EvaluationScorecard';
 import MasterAIInsights from './MasterAIInsights';
+import TurnAnalysisNote from '../ui/TurnAnalysisNote';
 import type { VoiceAgent } from '../../types';
 import { ConversationTurn as LegacyConversationTurn, ManualCorrectionPayload } from '../../types/evaluation';
 import {
   SessionEvaluation,
   ConversationTurn as SessionConversationTurn,
 } from '../../lib/evaluation/types';
+import { analyzeTurnWithAPI, TurnAnalysis } from '../../lib/evaluation/turnAnalyzer';
 import { 
   evaluateAfterCall, 
   evaluateAfterCallWithSpec, 
@@ -132,6 +134,8 @@ const TrainingHub: React.FC = () => {
   // Conversation tracking
   const [conversationId, setConversationId] = useState(() => createConversationId());
   const [conversation, setConversation] = useState<SimulatorTurn[]>([]);
+  const [turnAnalyses, setTurnAnalyses] = useState<Record<string, TurnAnalysis>>({});
+  const [analyzingTurn, setAnalyzingTurn] = useState(false);
   const [evaluationMode, setEvaluationMode] = useState<'perMessage' | 'postCall'>('postCall');
   const [sessions, setSessions] = useState<SessionEvaluation[]>(() => loadSessions());
   const [latestSession, setLatestSession] = useState<SessionEvaluation | null>(
@@ -964,6 +968,31 @@ const TrainingHub: React.FC = () => {
 
       if (showEvaluation && evaluationMode === 'perMessage') {
         await evaluateConversation(finalConversation);
+      }
+
+      // Analyze this turn with Master AI
+      setAnalyzingTurn(true);
+      try {
+        const analysis = await analyzeTurnWithAPI({
+          agentId: selectedAgent.id,
+          conversation: finalConversation.map(turn => ({ role: turn.role, text: turn.text })),
+          lastAgentResponse: agentTurn.text,
+          promptSpec: runtimeSpec,
+          systemPrompt: enhancedSystemPrompt,
+          niche: selectedNiche,
+        });
+        
+        setTurnAnalyses(prev => ({
+          ...prev,
+          [agentTurn.id]: analysis,
+        }));
+        
+        console.log('🤖 Turn analysis complete:', analysis);
+      } catch (analysisError) {
+        console.warn('Turn analysis failed:', analysisError);
+        // Non-fatal, continue
+      } finally {
+        setAnalyzingTurn(false);
       }
 
       toast.success('Response generated');
@@ -1881,6 +1910,23 @@ const TrainingHub: React.FC = () => {
                         </div>
                         {msg.text}
                       </div>
+                      
+                      {/* Master AI Turn Analysis - Only for agent messages */}
+                      {msg.role === 'agent' && turnAnalyses[msg.id] && (
+                        <div className="mt-2 ml-4">
+                          <TurnAnalysisNote 
+                            analysis={turnAnalyses[msg.id]} 
+                            collapsed={true}
+                          />
+                        </div>
+                      )}
+                      
+                      {/* Loading indicator while analyzing */}
+                      {msg.role === 'agent' && analyzingTurn && idx === conversation.length - 1 && !turnAnalyses[msg.id] && (
+                        <div className="mt-2 ml-4 px-4 py-2 rounded-lg bg-primary/10 border border-primary/20 text-xs text-muted-foreground animate-pulse">
+                          🤖 Master AI analyzing...
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
