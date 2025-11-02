@@ -12,8 +12,10 @@ import {
   AnalyticsSnapshot,
   AppState,
   Notification,
+  SpecLock,
 } from '../types';
 import type { Violation } from '../lib/evaluation/autoCorrector';
+import type { PromptSpec } from '../lib/spec/specTypes';
 
 interface AgentGovernanceState {
   agentId: string;
@@ -79,6 +81,25 @@ interface ObservabilitySummary {
   recentRuleViolations: ObservabilityViolation[];
 }
 
+interface SpecHistoryEntry {
+  id: string;
+  agentId: string;
+  promptHash: string;
+  savedAt: string;
+  summary: string;
+  storedSpec: PromptSpec;
+}
+
+interface SpecValidationResult {
+  status: 'ok' | 'missing_lock' | 'hash_mismatch' | 'spec_mismatch';
+  message: string;
+  lock?: SpecLock | null;
+  diff?: {
+    missingKeys?: string[];
+    changedFields?: string[];
+  };
+}
+
 interface GHLStore {
   governanceDefaults: {
     confidenceThreshold: number;
@@ -90,6 +111,8 @@ interface GHLStore {
   tokenBudgets: Record<string, AgentTokenBudget>;
   observability: Record<string, ObservabilitySummary>;
   turnCache: Record<string, CachedTurn[]>;
+  specLocks: Record<string, SpecLock>;
+  specHistory: SpecHistoryEntry[];
 
   // App State
   appState: AppState;
@@ -141,6 +164,10 @@ interface GHLStore {
   getCachedTurn: (agentId: string, signature: string) => CachedTurn | null;
   cacheAgentTurn: (agentId: string, signature: string, entry: Omit<CachedTurn, 'signature'>) => void;
   clearAgentCache: (agentId: string) => void;
+
+  saveSpecLock: (agentId: string, lock: SpecLock) => void;
+  getSpecLock: (agentId: string) => SpecLock | null;
+  validateSpecLock: (agentId: string, promptHash: string, currentSpec: PromptSpec | null | undefined) => SpecValidationResult;
   
   // Voice Agents
   addVoiceAgent: (agent: VoiceAgent) => void;
@@ -387,12 +414,66 @@ export const useStore = create<GHLStore>()(
         }));
       };
 
+      const stableSerialize = (value: any): string => {
+        const seen = new WeakSet();
+        const walk = (input: any): any => {
+          if (input && typeof input === 'object') {
+            if (seen.has(input)) return null;
+            seen.add(input);
+            if (Array.isArray(input)) {
+              return input.map(walk);
+            }
+            const keys = Object.keys(input).sort();
+            const out: Record<string, any> = {};
+            keys.forEach((key) => {
+              out[key] = walk(input[key]);
+            });
+            return out;
+          }
+          return input;
+        };
+
+        try {
+          return JSON.stringify(walk(value));
+        } catch (error) {
+          console.warn('Failed to serialize spec for comparison', error);
+          return '';
+        }
+      };
+
+      const diffSpecs = (baseline: PromptSpec, current: PromptSpec) => {
+        const baselineKeys = Object.keys(baseline as Record<string, unknown>);
+        const missingKeys = baselineKeys.filter((key) => !Object.prototype.hasOwnProperty.call(current, key));
+        const trackedKeys = [
+          'required_fields',
+          'field_order',
+          'disallowed_phrases',
+          'question_cadence',
+          'max_words_per_turn',
+          'block_booking_until_fields',
+          'confirmations',
+        ];
+
+        const changedFields = trackedKeys.filter((key) => {
+          const baseValue = (baseline as Record<string, unknown>)[key];
+          const currentValue = (current as Record<string, unknown>)[key];
+          return stableSerialize(baseValue) !== stableSerialize(currentValue);
+        });
+
+        return {
+          missingKeys: missingKeys.length > 0 ? missingKeys : undefined,
+          changedFields: changedFields.length > 0 ? changedFields : undefined,
+        };
+      };
+
       return {
         governanceDefaults: defaults,
         governanceState: {},
         tokenBudgets: {},
         observability: {},
         turnCache: {},
+        specLocks: {},
+        specHistory: [],
 
         // Initial State
         appState: {
@@ -908,6 +989,89 @@ export const useStore = create<GHLStore>()(
         storeCacheEntries(agentId, []);
       },
 
+      saveSpecLock: (agentId, lock) => {
+        const savedAt = lock.savedAt || nowIso();
+        const updatedLock: SpecLock = {
+          ...lock,
+          savedAt,
+        };
+
+        set((state) => {
+          const specLabel = updatedLock.storedSpec?.niche || updatedLock.storedSpec?.agent_type || 'spec';
+          const entry: SpecHistoryEntry = {
+            id: `${agentId}-${updatedLock.promptHash}-${Date.now()}`,
+            agentId,
+            promptHash: updatedLock.promptHash,
+            savedAt,
+            summary: `Spec saved (${specLabel})`,
+            storedSpec: updatedLock.storedSpec,
+          };
+
+          const filteredHistory = state.specHistory.filter(
+            (item) => !(item.agentId === agentId && item.promptHash === updatedLock.promptHash)
+          );
+
+          return {
+            specLocks: {
+              ...state.specLocks,
+              [agentId]: updatedLock,
+            },
+            specHistory: [entry, ...filteredHistory].slice(0, 25),
+          };
+        });
+      },
+
+      getSpecLock: (agentId) => {
+        const lock = get().specLocks[agentId];
+        return lock ?? null;
+      },
+
+      validateSpecLock: (agentId, promptHash, currentSpec) => {
+        const lock = get().specLocks[agentId] ?? null;
+        if (!lock) {
+          return {
+            status: 'missing_lock',
+            message: 'No saved spec found for this agent. Save the prompt to lock it.',
+            lock,
+          };
+        }
+
+        if (lock.promptHash !== promptHash) {
+          return {
+            status: 'hash_mismatch',
+            message: 'Prompt hash differs from the saved spec version.',
+            lock,
+            diff: currentSpec ? diffSpecs(lock.storedSpec, currentSpec) : undefined,
+          };
+        }
+
+        if (!currentSpec) {
+          return {
+            status: 'spec_mismatch',
+            message: 'Prompt is missing embedded SPEC JSON.',
+            lock,
+          };
+        }
+
+        const storedSignature = stableSerialize(lock.storedSpec);
+        const currentSignature = stableSerialize(currentSpec);
+
+        if (storedSignature !== currentSignature) {
+          return {
+            status: 'spec_mismatch',
+            message: 'Stored SPEC and prompt SPEC differ.',
+            lock,
+            diff: diffSpecs(lock.storedSpec, currentSpec),
+          };
+        }
+
+        return {
+          status: 'ok',
+          message: 'Spec lock validated.',
+          lock,
+        };
+      },
+
       // Voice Agents
       addVoiceAgent: (agent) => set((state) => ({
         voiceAgents: [...state.voiceAgents, agent]
@@ -1263,6 +1427,8 @@ export const useStore = create<GHLStore>()(
         tokenBudgets: state.tokenBudgets,
         observability: state.observability,
         turnCache: state.turnCache,
+        specLocks: state.specLocks,
+        specHistory: state.specHistory,
       })
     }
   )

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { BookOpen, Save, Upload, RefreshCw, Database, Sparkles, CheckCircle, Link2, Copy, Edit2, X, Check, AlertTriangle, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { BookOpen, Save, Upload, RefreshCw, Database, Sparkles, CheckCircle, Link2, Copy, Edit2, X, Check, AlertTriangle, ThumbsUp, ThumbsDown, History } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { toast } from 'react-hot-toast';
 import { useMCP } from '../../hooks/useMCP';
@@ -7,6 +7,7 @@ import Button from '../../components/ui/Button';
 import { getApiBaseUrl } from '../../utils/apiBase';
 import EvaluationScorecard from './EvaluationScorecard';
 import MasterAIInsights from './MasterAIInsights';
+import type { VoiceAgent } from '../../types';
 import { ConversationTurn as LegacyConversationTurn, ManualCorrectionPayload } from '../../types/evaluation';
 import {
   SessionEvaluation,
@@ -30,8 +31,8 @@ import {
   getScopedLearnedSnippets
 } from '../../lib/evaluation/masterStore';
 import { getRelevantLearned, formatLearnedForPrompt, getAgentKBStats } from '../../lib/evaluation/knowledgeBase';
-import { extractSpecFromPrompt, embedSpecInPrompt, hasEmbeddedSpec } from '../../lib/spec/specExtract';
-import { PromptSpec, DEFAULT_SPEC } from '../../lib/spec/specTypes';
+import { extractSpecFromPrompt, embedSpecInPrompt } from '../../lib/spec/specExtract';
+import { PromptSpec } from '../../lib/spec/specTypes';
 import { buildRequestContext, getTokenStats, formatTurnsForAPI } from '../../lib/runtime/memory';
 import { 
   validateAgentResponse, 
@@ -39,7 +40,7 @@ import {
   createCorrectionEntry,
   type Violation 
 } from '../../lib/evaluation/autoCorrector';
-import { lintSpec, detectSpecDrift, formatLintIssues, type SpecLintIssue } from '../../lib/spec/specLinter';
+import { lintSpec, formatLintIssues, type SpecLintIssue } from '../../lib/spec/specLinter';
 
 interface TrainingPayload {
   agentId: string;
@@ -89,7 +90,11 @@ const fallbackNiches = [
 ];
 
 const TrainingHub: React.FC = () => {
-  const { voiceAgents, updateVoiceAgent } = useStore();
+  const { voiceAgents, updateVoiceAgent, specHistory } = useStore((state) => ({
+    voiceAgents: state.voiceAgents,
+    updateVoiceAgent: state.updateVoiceAgent,
+    specHistory: state.specHistory,
+  }));
   const [selectedId, setSelectedId] = useState<string>('');
   const [systemPrompt, setSystemPrompt] = useState<string>('');
   const [knowledge, setKnowledge] = useState<string>('');
@@ -106,9 +111,11 @@ const TrainingHub: React.FC = () => {
   const [currentScopeId, setCurrentScopeId] = useState<string>('');
   
   // Spec drift and linting
-  const [savedPromptHash, setSavedPromptHash] = useState<string>('');
   const [specLintIssues, setSpecLintIssues] = useState<SpecLintIssue[]>([]);
   const [showSpecLinter, setShowSpecLinter] = useState(false);
+  type SpecValidation = ReturnType<typeof useStore.getState()['validateSpecLock']>;
+  const [specValidation, setSpecValidation] = useState<SpecValidation | null>(null);
+  const [timelineExpanded, setTimelineExpanded] = useState(false);
 
   // New composer state
   const [selectedNiche, setSelectedNiche] = useState<string>('generic');
@@ -153,6 +160,34 @@ const TrainingHub: React.FC = () => {
   const [lastCallTokens, setLastCallTokens] = useState(0);
 
   const selectedAgent = useMemo(() => voiceAgents.find(a => a.id === selectedId), [voiceAgents, selectedId]);
+  const agentSpecHistory = useMemo(
+    () => specHistory.filter((entry) => entry.agentId === selectedId).slice(0, timelineExpanded ? 12 : 5),
+    [specHistory, selectedId, timelineExpanded]
+  );
+  const formatRelative = useCallback((iso: string) => {
+    if (!iso) return '—';
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return '—';
+    const diffMs = Date.now() - date.getTime();
+    if (diffMs < 60_000) return 'just now';
+    const minutes = Math.round(diffMs / 60_000);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.round(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.round(hours / 24);
+    if (days < 7) return `${days}d ago`;
+    return date.toLocaleDateString();
+  }, []);
+  const evaluationActivity = useMemo(() => {
+    if (!latestSession || !selectedAgent) return null;
+    if (latestSession.agentId && latestSession.agentId !== selectedAgent.id) return null;
+    const endedAt = latestSession.endedAt || latestSession.startedAt;
+    return {
+      id: latestSession.conversationId,
+      summary: `Evaluation • ${latestSession.confidence}% confidence`,
+      savedAt: new Date(endedAt || Date.now()).toISOString(),
+    };
+  }, [latestSession, selectedAgent]);
 
   // Calculate real-time token usage stats
   const tokenStats = useMemo(() => {
@@ -464,12 +499,70 @@ const TrainingHub: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!selectedAgent) return;
-    // Initialize from agent if present
-    setSystemPrompt((selectedAgent as any).systemPrompt || '');
+    if (!selectedAgent) {
+      setSystemPrompt('');
+      setKnowledge('');
+      setPromptHash('');
+      setSpecValidation(null);
+      return;
+    }
+
+    setSystemPrompt((selectedAgent as VoiceAgent).systemPrompt || '');
     const kb = (selectedAgent as any).knowledgeBase as string[] | undefined;
     setKnowledge(kb?.join('\n') || '');
+
+    const storeApi = useStore.getState();
+    const lock = storeApi.getSpecLock(selectedAgent.id);
+    if (lock) {
+      setPromptHash(lock.promptHash);
+      setSpecValidation(storeApi.validateSpecLock(selectedAgent.id, lock.promptHash, lock.storedSpec));
+    } else {
+      setPromptHash('');
+      setSpecValidation({
+        status: 'missing_lock',
+        message: 'No saved spec found – save prompt to lock behaviour.',
+        lock: null,
+      });
+    }
   }, [selectedAgent]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!systemPrompt) {
+      setActiveSpec(null);
+      setSpecLintIssues([]);
+      setPromptHash('');
+      return;
+    }
+
+    const draftSpec = extractSpecFromPrompt(systemPrompt);
+    setActiveSpec(draftSpec);
+    setSpecLintIssues(lintSpec(draftSpec, systemPrompt));
+
+    const computeHash = async () => {
+      const hash = await generatePromptHash(systemPrompt);
+      if (cancelled) return;
+      setPromptHash(hash);
+      if (selectedAgent) {
+        const validation = useStore.getState().validateSpecLock(selectedAgent.id, hash, draftSpec);
+        setSpecValidation(validation);
+      }
+    };
+
+    computeHash();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [systemPrompt, selectedAgent]);
+
+  useEffect(() => {
+    if (!selectedAgent) return;
+    const specToCheck = activeSpec ?? extractSpecFromPrompt(systemPrompt);
+    const validation = useStore.getState().validateSpecLock(selectedAgent.id, promptHash || '', specToCheck);
+    setSpecValidation(validation);
+  }, [specHistory, selectedAgent, activeSpec, systemPrompt, promptHash]);
 
   useEffect(() => {
     if (!showEvaluation) {
@@ -686,6 +779,22 @@ const TrainingHub: React.FC = () => {
     try {
       if (!selectedAgent?.id) {
         throw new Error('No agent selected');
+      }
+
+      const runHash = await generatePromptHash(systemPrompt);
+      setPromptHash(runHash);
+      const runtimeSpec = extractSpecFromPrompt(systemPrompt);
+      const specCheck = storeApi.validateSpecLock(selectedAgent.id, runHash, runtimeSpec);
+      setSpecValidation(specCheck);
+
+      if (specCheck.status !== 'ok') {
+        setSyncing(false);
+        toast.error(specCheck.message, {
+          icon: '⚠️',
+          duration: 5000,
+          className: 'pulse',
+        });
+        return;
       }
 
       // Use scoped learned snippets if we have a currentScopeId, otherwise fallback to legacy KB
@@ -1182,17 +1291,13 @@ const TrainingHub: React.FC = () => {
       // 1. Generate prompt hash for scoping
       const hash = await generatePromptHash(systemPrompt);
       setPromptHash(hash);
-      setSavedPromptHash(hash); // Track saved hash for drift detection
-      
-      // 2. Extract spec from prompt
+
       const spec = extractSpecFromPrompt(systemPrompt);
-      setActiveSpec(spec);
-      
-      // 3. Lint the spec
-      if (spec) {
-        const lintIssues = lintSpec(spec);
-        setSpecLintIssues(lintIssues);
-        
+
+      const lintIssues = lintSpec(spec, systemPrompt);
+      setSpecLintIssues(lintIssues);
+
+      if (lintIssues.length > 0) {
         const errors = lintIssues.filter(i => i.severity === 'error');
         if (errors.length > 0) {
           console.warn(`⚠️ Spec has ${errors.length} error(s):`, errors.map(e => e.message));
@@ -1203,9 +1308,9 @@ const TrainingHub: React.FC = () => {
             </div>,
             { duration: 5000, className: 'warn' }
           );
-        } else {
-          console.log('✅ Spec validation passed - no errors');
         }
+      } else {
+        console.log('✅ Spec validation passed - no lint issues');
       }
       
       // 4. Generate scope ID
@@ -1215,19 +1320,26 @@ const TrainingHub: React.FC = () => {
         promptHash: hash,
       });
       setCurrentScopeId(newScopeId);
-      
-      // 5. Update the agent in the store with the new system prompt
+
+      const savedAt = new Date().toISOString();
+
       updateVoiceAgent(selectedAgent.id, {
-        systemPrompt: systemPrompt as any,
-        // Store hash and spec in agent config for future reference
-        ...(selectedAgent as any).config && {
-          config: {
-            ...(selectedAgent as any).config,
-            promptHash: hash,
-            spec: spec,
-          }
-        }
+        systemPrompt,
+        specLock: {
+          promptHash: hash,
+          storedSpec: spec,
+          savedAt,
+        },
+      } as Partial<VoiceAgent>);
+
+      useStore.getState().saveSpecLock(selectedAgent.id, {
+        promptHash: hash,
+        storedSpec: spec,
+        savedAt,
       });
+
+      const validation = useStore.getState().validateSpecLock(selectedAgent.id, hash, spec);
+      setSpecValidation(validation);
       
       console.log(`💾 System Prompt saved for agent: ${selectedAgent.name}`);
       console.log(`   • Prompt Hash: ${hash}`);
@@ -1305,7 +1417,12 @@ const TrainingHub: React.FC = () => {
           <Button variant="outline" onClick={handleSaveState} disabled={saving || !payload}>
             <Database className="w-4 h-4 mr-2" /> Save State
           </Button>
-          <Button onClick={handleDeploy} disabled={syncing || !payload} loading={syncing}>
+          <Button
+            onClick={handleDeploy}
+            disabled={syncing || !payload || (specValidation && specValidation.status !== 'ok')}
+            loading={syncing}
+            title={specValidation && specValidation.status !== 'ok' ? 'Resolve spec drift before deploying' : undefined}
+          >
             <Upload className="w-4 h-4 mr-2" /> Deploy Agent
           </Button>
         </div>
@@ -1365,80 +1482,113 @@ const TrainingHub: React.FC = () => {
             />
             
             {/* Spec Status & Drift Guard */}
-            <div className="mt-2 space-y-2">
-              {/* Spec Lock Status */}
-              <div className="flex items-center justify-between gap-2">
-                {activeSpec && currentScopeId ? (
-                  <div className="chip ok fadein">
-                    ✅ Spec Locked - Self-Healing Active
+            <div className="mt-3 space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                {specValidation?.status === 'ok' ? (
+                  <div className="chip ok glow-soft" title={specValidation.message}>
+                    ✅ Spec Locked & Verified
+                  </div>
+                ) : specValidation?.status === 'missing_lock' ? (
+                  <div className="chip err pulse" title={specValidation?.message}>
+                    ⚠️ Spec Not Locked
+                  </div>
+                ) : specValidation?.status === 'hash_mismatch' ? (
+                  <div className="chip warn pulse" title={specValidation?.message}>
+                    ⚠️ Prompt Hash Drift
+                  </div>
+                ) : specValidation?.status === 'spec_mismatch' ? (
+                  <div className="chip warn pulse" title={specValidation?.message}>
+                    ⚠️ Spec JSON Drift
                   </div>
                 ) : (
-                  <div className="chip err pulse">
-                    ⚠️ No Spec - Click "Save Prompt" to enable auto-correction
+                  <div className="chip info fadein">Spec status pending…</div>
+                )}
+
+                {specValidation?.diff?.changedFields && specValidation.diff.changedFields.length > 0 && (
+                  <div className="chip warn fadein" title="Spec fields out of sync">
+                    Δ {specValidation.diff.changedFields.join(', ')}
                   </div>
                 )}
-                
-                {/* Drift Detection */}
-                {(() => {
-                  const currentHash = promptHash || '';
-                  const drift = detectSpecDrift(currentHash, savedPromptHash);
-                  return drift.hasDrift ? (
-                    <div className="chip warn fadein" title={drift.message}>
-                      ⚠️ Spec Drift Detected
-                    </div>
-                  ) : null;
-                })()}
-                
-                {/* Linter Issues */}
+
                 {specLintIssues.length > 0 && (
                   <button
                     onClick={() => setShowSpecLinter(!showSpecLinter)}
                     className="chip tap text-xs"
                     title="View spec validation issues"
                   >
-                    {specLintIssues.filter(i => i.severity === 'error').length > 0 ? '❌' : '⚠️'} 
-                    {' '}{specLintIssues.length} issue{specLintIssues.length !== 1 ? 's' : ''}
+                    {specLintIssues.some(i => i.severity === 'error') ? '❌' : '⚠️'} {specLintIssues.length} issue{specLintIssues.length !== 1 ? 's' : ''}
                   </button>
                 )}
               </div>
-              
-              {/* Linter Results Expandable */}
-              {showSpecLinter && specLintIssues.length > 0 && (
-                <div className="p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 rounded-lg fadeinslow">
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="text-xs font-semibold text-amber-900 dark:text-amber-100">
-                      Spec Validation Issues
-                    </h4>
-                    <button 
-                      onClick={() => setShowSpecLinter(false)}
-                      className="text-xs text-amber-600 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-200"
-                    >
-                      ✕ Close
-                    </button>
-                  </div>
-                  <div className="space-y-2">
-                    {specLintIssues.map((issue, idx) => (
-                      <div key={idx} className="text-xs">
-                        <p className="flex items-start gap-2">
-                          <span className={`font-medium ${
-                            issue.severity === 'error' ? 'text-red-600 dark:text-red-400' :
-                            issue.severity === 'warning' ? 'text-amber-600 dark:text-amber-400' :
-                            'text-blue-600 dark:text-blue-400'
-                          }`}>
-                            {issue.severity === 'error' ? '❌' : issue.severity === 'warning' ? '⚠️' : 'ℹ️'}
-                          </span>
-                          <span className="flex-1 text-amber-900 dark:text-amber-100">{issue.message}</span>
-                        </p>
-                        {issue.fix && (
-                          <p className="ml-5 mt-1 text-amber-700 dark:text-amber-300 italic">
-                            Fix: {issue.fix}
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+
+              {specValidation && specValidation.status !== 'ok' && (
+                <div className="spec-alert fadein">
+                  <p className="font-medium">{specValidation.message}</p>
+                  {specValidation.diff?.changedFields && (
+                    <p className="text-xs text-amber-300">
+                      Changed fields: {specValidation.diff.changedFields.join(', ')}
+                    </p>
+                  )}
+                  {specValidation.diff?.missingKeys && (
+                    <p className="text-xs text-amber-300">
+                      Missing keys: {specValidation.diff.missingKeys.join(', ')}
+                    </p>
+                  )}
                 </div>
               )}
+
+              {showSpecLinter && (
+                <div className="spec-lint-panel fadein">
+                  {specLintIssues.length > 0 ? (
+                    <pre className="text-[11px] whitespace-pre-wrap">{formatLintIssues(specLintIssues)}</pre>
+                  ) : (
+                    <span className="text-xs text-emerald-300">No lint issues detected.</span>
+                  )}
+                </div>
+              )}
+
+              <div className="border-t border-border/40 pt-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-2 text-sm font-semibold">
+                    <History className="w-4 h-4" /> Spec Activity Timeline
+                  </span>
+                  {agentSpecHistory.length > 5 && (
+                    <button
+                      className="tap text-xs text-primary"
+                      onClick={() => setTimelineExpanded((prev) => !prev)}
+                    >
+                      {timelineExpanded ? 'Show Less' : 'Show More'}
+                    </button>
+                  )}
+                </div>
+                <ul className="spec-timeline space-y-2">
+                  {evaluationActivity && (
+                    <li key={evaluationActivity.id} className="spec-timeline__item">
+                      <span className="timeline-dot success" />
+                      <div>
+                        <p className="text-sm font-medium">{evaluationActivity.summary}</p>
+                        <p className="text-xs text-muted-foreground">{formatRelative(evaluationActivity.savedAt)}</p>
+                      </div>
+                    </li>
+                  )}
+                  {agentSpecHistory.length === 0 ? (
+                    <li className="spec-timeline__empty text-xs text-muted-foreground">
+                      No spec saves yet.
+                    </li>
+                  ) : (
+                    agentSpecHistory.map((entry) => (
+                      <li key={entry.id} className="spec-timeline__item">
+                        <span className="timeline-dot" />
+                        <div>
+                          <p className="text-sm font-medium">{entry.summary}</p>
+                          <p className="text-xs text-muted-foreground">{formatRelative(entry.savedAt)}</p>
+                        </div>
+                        <span className="timeline-hash">#{entry.promptHash.slice(0, 6)}</span>
+                      </li>
+                    ))
+                  )}
+                </ul>
+              </div>
             </div>
             
             {estimateTokens(systemPrompt) > 1000 && (

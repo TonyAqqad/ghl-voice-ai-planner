@@ -38,6 +38,7 @@ const GovernanceCenter: React.FC = () => {
     observability,
     setTokenBudget,
     clearAgentGate,
+    specLocks,
   } = useStore((state) => ({
     voiceAgents: state.voiceAgents,
     governanceState: state.governanceState,
@@ -45,6 +46,7 @@ const GovernanceCenter: React.FC = () => {
     observability: state.observability,
     setTokenBudget: state.setTokenBudget,
     clearAgentGate: state.clearAgentGate,
+    specLocks: state.specLocks,
   }));
 
   useEffect(() => {
@@ -93,6 +95,10 @@ const GovernanceCenter: React.FC = () => {
     const governance = storeApi.ensureAgentGovernance(agentId);
     const budget = storeApi.ensureTokenBudget(agentId);
     const metrics = storeApi.observability[agentId];
+    const lock = storeApi.getSpecLock(agentId);
+    const specValidation = lock
+      ? storeApi.validateSpecLock(agentId, lock.promptHash, lock.storedSpec)
+      : { status: 'missing_lock', message: 'Spec lock not found', lock: null };
 
     const lintErrors: string[] = [];
 
@@ -101,6 +107,8 @@ const GovernanceCenter: React.FC = () => {
     if (!agent.scripts.fallback?.trim()) lintErrors.push('Fallback script is missing');
     if (governance.isGated) lintErrors.push('Confidence gate active. Resolve evaluation issues before deployment.');
     if (budget.usedTokens >= budget.dailyCap) lintErrors.push('Token budget exhausted. Increase cap before deployment.');
+    if (!lock) lintErrors.push('Spec lock missing. Save prompt to lock before deployment.');
+    if (specValidation.status && specValidation.status !== 'ok') lintErrors.push(`Spec drift: ${specValidation.message}`);
 
     const bundle = {
       agent: {
@@ -123,6 +131,13 @@ const GovernanceCenter: React.FC = () => {
         cacheHits: budget.cacheHits,
         resetAt: budget.resetAt,
       },
+      specLock: lock
+        ? {
+            promptHash: lock.promptHash,
+            savedAt: lock.savedAt,
+            status: specValidation.status,
+          }
+        : null,
       observability: metrics
         ? {
             totalTokens: metrics.totalTokens,
@@ -176,6 +191,10 @@ const GovernanceCenter: React.FC = () => {
         const governance = governanceState[agent.id];
         const budget = tokenBudgets[agent.id];
         const metrics = observability[agent.id];
+        const specLock = specLocks[agent.id];
+        const specStatus = specLock
+          ? useStore.getState().validateSpecLock(agent.id, specLock.promptHash, specLock.storedSpec)
+          : { status: 'missing_lock', message: 'Spec lock not found', lock: null };
         const usagePercent = budget
           ? Math.min(100, Math.round((budget.usedTokens / Math.max(1, budget.dailyCap)) * 100))
           : 0;
@@ -187,12 +206,14 @@ const GovernanceCenter: React.FC = () => {
           governance,
           budget,
           metrics,
+          specLock,
+          specStatus,
           usagePercent,
           remainingTokens,
           lastEvent,
         };
       }),
-    [voiceAgents, governanceState, tokenBudgets, observability]
+    [voiceAgents, governanceState, tokenBudgets, observability, specLocks]
   );
 
   return (
@@ -205,7 +226,7 @@ const GovernanceCenter: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        {agentsData.map(({ agent, governance, budget, metrics, usagePercent, remainingTokens, lastEvent }) => {
+        {agentsData.map(({ agent, governance, budget, metrics, specLock, specStatus, usagePercent, remainingTokens, lastEvent }) => {
           const bundle = bundleState[agent.id];
           const budgetDraft = budgetDrafts[agent.id] ?? '';
           const confidence = governance?.lastConfidence ?? null;
@@ -221,10 +242,23 @@ const GovernanceCenter: React.FC = () => {
                     {agent.name}
                     {gated && <ShieldAlert className="w-4 h-4 text-amber-600" />}
                   </h2>
-                  <p className="text-sm text-muted-foreground">
-                    Confidence {confidence !== null ? `${confidence}%` : '—'} • Threshold {threshold}%
-                  </p>
+                <p className="text-sm text-muted-foreground">
+                  Confidence {confidence !== null ? `${confidence}%` : '—'} • Threshold {threshold}%
+                </p>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  <span
+                    className={`chip ${specStatus?.status === 'ok' ? 'ok' : specStatus?.status === 'missing_lock' ? 'err' : 'warn'} text-xs`}
+                    title={specStatus?.message}
+                  >
+                    {specStatus?.status === 'ok' ? 'Spec lock in sync' : specStatus?.message ?? 'Spec status unknown'}
+                  </span>
+                  {specLock && (
+                    <span className="chip info text-xs" title={`Saved ${new Date(specLock.savedAt).toLocaleString()}`}>
+                      Hash #{specLock.promptHash.slice(0, 6)}
+                    </span>
+                  )}
                 </div>
+              </div>
                 <div className={clsx('px-3 py-1 rounded-full text-xs font-semibold uppercase', gated ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700')}>
                   {gated ? 'Gated' : 'Active'}
                 </div>
@@ -345,14 +379,27 @@ const GovernanceCenter: React.FC = () => {
                     <FileText className="w-4 h-4" />
                     Deployment Guard
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Generate a validated configuration bundle before pushing to GoHighLevel.
-                  </p>
-                  <div className="flex gap-2">
-                    <button className="btn btn-outline flex-1" onClick={() => handleGenerateBundle(agent.id)}>
-                      <PackageCheck className="w-4 h-4 mr-2" />
-                      Generate Bundle
-                    </button>
+                <p className="text-xs text-muted-foreground">
+                  Generate a validated configuration bundle before pushing to GoHighLevel.
+                </p>
+                <div className="flex items-center justify-between text-xs">
+                  <span>Spec lock</span>
+                  {specLock ? (
+                    <span className="font-mono">#{specLock.promptHash.slice(0, 6)}</span>
+                  ) : (
+                    <span className="text-amber-600">Not locked</span>
+                  )}
+                </div>
+                {specStatus && specStatus.status !== 'ok' && (
+                  <div className="spec-alert mt-2 text-xs">
+                    {specStatus.message}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <button className="btn btn-outline flex-1" onClick={() => handleGenerateBundle(agent.id)}>
+                    <PackageCheck className="w-4 h-4 mr-2" />
+                    Generate Bundle
+                  </button>
                     <button
                       className="btn btn-primary flex-1"
                       onClick={() => handleCopyBundle(agent.id)}

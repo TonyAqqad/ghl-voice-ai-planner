@@ -1,5 +1,14 @@
 // Core Data Models for GHL Voice AI Agent Planner
 
+import type { PromptSpec } from '../lib/spec/specTypes';
+
+export interface SpecLock {
+  promptHash: string;
+  storedSpec: PromptSpec;
+  savedAt: string;
+  savedBy?: string;
+}
+
 export interface VoiceAgent {
   id: string;
   name: string;
@@ -11,6 +20,8 @@ export interface VoiceAgent {
   voiceProvider: 'elevenlabs' | 'azure' | 'aws' | 'google';
   llmProvider: 'openai' | 'anthropic' | 'azure' | 'cohere';
   defaultLanguage: string;
+  systemPrompt?: string;
+  specLock?: SpecLock;
   scripts: {
     greeting: string;
     main: string;

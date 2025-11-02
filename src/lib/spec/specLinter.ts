@@ -14,7 +14,7 @@ export interface SpecLintIssue {
 /**
  * Lints a PromptSpec and returns list of issues
  */
-export function lintSpec(spec: PromptSpec): SpecLintIssue[] {
+export function lintSpec(spec: PromptSpec, promptText?: string): SpecLintIssue[] {
   const issues: SpecLintIssue[] = [];
 
   // 1. Check required_fields is not empty
@@ -80,6 +80,35 @@ export function lintSpec(spec: PromptSpec): SpecLintIssue[] {
       message: `Consider blocking these verbose words: ${missingDisallowed.join(', ')}`,
       fix: `Add to disallowed_phrases: ${JSON.stringify(missingDisallowed)}`,
     });
+  }
+
+  const duplicateDisallowed = spec.disallowed_phrases.filter((phrase, idx, arr) =>
+    arr.findIndex(item => item.toLowerCase() === phrase.toLowerCase()) !== idx
+  );
+
+  if (duplicateDisallowed.length > 0) {
+    issues.push({
+      severity: 'warning',
+      category: 'disallowed_phrases',
+      message: `Duplicate disallowed phrases detected: ${[...new Set(duplicateDisallowed)].join(', ')}`,
+      fix: 'Remove duplicates so enforcement stays predictable',
+    });
+  }
+
+  if (promptText && spec.disallowed_phrases.length > 0) {
+    const promptLower = promptText.toLowerCase();
+    const triggered = spec.disallowed_phrases.filter((phrase) =>
+      phrase && promptLower.includes(phrase.toLowerCase())
+    );
+
+    if (triggered.length > 0) {
+      issues.push({
+        severity: 'error',
+        category: 'disallowed_phrases',
+        message: `Prompt still contains disallowed phrase${triggered.length > 1 ? 's' : ''}: ${triggered.join(', ')}`,
+        fix: 'Remove the phrases from the prompt or adjust disallowed_phrases if intentional',
+      });
+    }
   }
 
   // 6. Check question_cadence
