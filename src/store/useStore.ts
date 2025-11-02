@@ -352,21 +352,6 @@ export const useStore = create<GHLStore>()(
         };
 
         if (existing) {
-        if (!existing.operatingMode) {
-          const normalized = {
-            ...existing,
-            operatingMode: existing.isGated ? 'qualification_only' : 'full',
-            lastGateEvent: existing.lastGateEvent,
-            updatedAt: nowIso(),
-          } as AgentGovernanceState;
-          set((current) => ({
-            governanceState: {
-              ...current.governanceState,
-              [agentId]: normalized,
-            },
-          }));
-          return normalized;
-        }
           let updated = existing;
           if (existing.dailyCap !== cap) {
             updated = {
@@ -1044,6 +1029,26 @@ export const useStore = create<GHLStore>()(
         }));
       },
 
+      recordTurnTrace: (agentId, trace) => {
+        const traceId =
+          trace.traceId || `trace-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const entry: TurnTrace = {
+          ...trace,
+          traceId,
+        };
+
+        set((state) => {
+          const existing = state.turnTraces[agentId] ?? [];
+          const updated = [entry, ...existing].slice(0, 100);
+          return {
+            turnTraces: {
+              ...state.turnTraces,
+              [agentId]: updated,
+            },
+          };
+        });
+      },
+
       getCachedTurn: (agentId, signature) => {
         const entries = getCacheEntries(agentId);
         return entries.find((entry) => entry.signature === signature) ?? null;
@@ -1513,5 +1518,4 @@ export const useStore = create<GHLStore>()(
     }
   )
 );
-
 

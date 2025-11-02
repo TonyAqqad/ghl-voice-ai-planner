@@ -47,8 +47,7 @@ import {
   type Violation 
 } from '../../lib/evaluation/autoCorrector';
 import { lintSpec, formatLintIssues, type SpecLintIssue } from '../../lib/spec/specLinter';
-// TODO: Implement golden dataset
-// import { saveGoldenSample, listGoldenSamples, replayGoldenDataset, deleteGoldenSample, type GoldenSample, type ReplaySummary } from '../../lib/evaluation/goldenDataset';
+import { saveGoldenSample, listGoldenSamples, replayGoldenDataset, deleteGoldenSample, type GoldenSample, type ReplaySummary } from '../../lib/evaluation/goldenDataset';
 
 interface TrainingPayload {
   agentId: string;
@@ -66,16 +65,6 @@ type SimulatorTurn = SessionConversationTurn;
 
 type StoreStateSnapshot = ReturnType<typeof useStore.getState>;
 type SpecValidationStatus = ReturnType<StoreStateSnapshot['validateSpecLock']>;
-type LocalTurnInsight = {
-  traceId: string;
-  tokens: { prompt: number; completion: number; total: number };
-  latencyMs: number;
-  rulesChecked: string[];
-  source: 'sandbox' | 'live';
-  model: string;
-  timestamp: string;
-};
-
 const createTurnSignature = (
   agentId: string,
   turns: SimulatorTurn[],
@@ -110,10 +99,12 @@ const fallbackNiches = [
 ];
 
 const TrainingHub: React.FC = () => {
-  const { voiceAgents, updateVoiceAgent, specHistory } = useStore((state) => ({
+  const { voiceAgents, updateVoiceAgent, specHistory, governanceState, clearAgentGate } = useStore((state) => ({
     voiceAgents: state.voiceAgents,
     updateVoiceAgent: state.updateVoiceAgent,
     specHistory: state.specHistory,
+    governanceState: state.governanceState,
+    clearAgentGate: state.clearAgentGate,
   }));
   const [selectedId, setSelectedId] = useState<string>('');
   const [systemPrompt, setSystemPrompt] = useState<string>('');
@@ -129,6 +120,11 @@ const TrainingHub: React.FC = () => {
   const [promptHash, setPromptHash] = useState<string>('');
   const [activeSpec, setActiveSpec] = useState<PromptSpec | null>(null);
   const [currentScopeId, setCurrentScopeId] = useState<string>('');
+  const selectedAgent = useMemo(
+    () => voiceAgents.find((a) => a.id === selectedId),
+    [voiceAgents, selectedId]
+  );
+  const selectedAgentId = selectedAgent?.id ?? '';
   
   // Spec drift and linting
   const [specLintIssues, setSpecLintIssues] = useState<SpecLintIssue[]>([]);
@@ -188,33 +184,40 @@ const TrainingHub: React.FC = () => {
   const [lastCallTokens, setLastCallTokens] = useState(0);
 
   const [ignoreConfidenceGate, setIgnoreConfidenceGate] = useState(false);
-  const [turnViolations, setTurnViolations] = useState<Record<string, Violation[]>>({});
-  const [turnInsights, setTurnInsights] = useState<Record<string, LocalTurnInsight>>({});
-  
-  // TODO: Implement golden dataset - temporarily commented out
-  // const [goldenSamples, setGoldenSamples] = useState<GoldenSample[]>([]);
-  // const [showGoldModal, setShowGoldModal] = useState(false);
-  // const [goldTitle, setGoldTitle] = useState('');
-  // const [goldNotes, setGoldNotes] = useState('');
-  // const [replayResults, setReplayResults] = useState<ReplaySummary[] | null>(null);
-  // const [replayRunning, setReplayRunning] = useState(false);
-  // const [replayFetchedAt, setReplayFetchedAt] = useState<string | null>(null);
+  const gateSnapshot = useMemo(
+    () => (selectedAgentId ? governanceState[selectedAgentId] ?? null : null),
+    [governanceState, selectedAgentId]
+  );
+  const [goldenSamples, setGoldenSamples] = useState<GoldenSample[]>([]);
+  const [showGoldModal, setShowGoldModal] = useState(false);
+  const [goldTitle, setGoldTitle] = useState('');
+  const [goldNotes, setGoldNotes] = useState('');
+  const [replayResults, setReplayResults] = useState<ReplaySummary[] | null>(null);
+  const [replayRunning, setReplayRunning] = useState(false);
+  const [replayFetchedAt, setReplayFetchedAt] = useState<string | null>(null);
 
-  // const refreshGoldenSamples = useCallback(() => {
-  //   if (!selectedAgent || !promptHash) {
-  //     setGoldenSamples([]);
-  //     return;
-  //   }
-  //   try {
-  //     const samples = listGoldenSamples({ agentId: selectedAgent.id, promptHash });
-  //     setGoldenSamples(samples);
-  //   } catch (error) {
-  //     console.error('Failed to load golden dataset:', error);
-  //     setGoldenSamples([]);
-  //   }
-  // }, [selectedAgent, promptHash]);
+  const refreshGoldenSamples = useCallback(() => {
+    if (!selectedAgentId || !promptHash) {
+      setGoldenSamples([]);
+      return;
+    }
+    try {
+      const samples = listGoldenSamples({ agentId: selectedAgentId, promptHash });
+      setGoldenSamples(samples);
+    } catch (error) {
+      console.error('Failed to load golden dataset:', error);
+      setGoldenSamples([]);
+    }
+  }, [selectedAgentId, promptHash]);
 
-  const selectedAgent = useMemo(() => voiceAgents.find(a => a.id === selectedId), [voiceAgents, selectedId]);
+  const gateCardClasses = gateSnapshot?.isGated
+    ? 'border-amber-500/60 bg-amber-500/10'
+    : 'border-emerald-500/40 bg-emerald-500/8';
+  const gateModeLabel =
+    gateSnapshot?.operatingMode === 'qualification_only' ? 'Qualification-only' : 'Full booking';
+  const gateResumeAt = gateSnapshot?.autoResumeAt
+    ? new Date(gateSnapshot.autoResumeAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : null;
   
   // Master AI Manager Hook (initialized after selectedAgent is defined)
   const masterAI = useMasterAIManager({
@@ -305,12 +308,12 @@ const TrainingHub: React.FC = () => {
     
     setSessions((prev) => [session, ...prev.filter((s) => s.conversationId !== session.conversationId)]);
     setLatestSession(session);
-    setHasEvaluatedSession(true);
-    useStore.getState().recordAgentEvaluation(
+   setHasEvaluatedSession(true);
+   useStore.getState().recordAgentEvaluation(
       session.agentId,
       session.confidence,
       session.conversationId,
-      { conversationId: session.conversationId }
+      { conversationId: session.conversationId, sandbox: true }
     );
     return session;
   }, [conversation, conversationId, selectedAgent?.id, selectedNiche, currentScopeId, activeSpec]);
@@ -545,6 +548,21 @@ const TrainingHub: React.FC = () => {
     }
   }, [selectedAgent, voiceAgents]);
 
+  useEffect(() => {
+    refreshGoldenSamples();
+  }, [refreshGoldenSamples]);
+
+  useEffect(() => {
+    if (!selectedAgentId) {
+      setGoldenSamples([]);
+    }
+    setGoldTitle('');
+    setGoldNotes('');
+    setShowGoldModal(false);
+    setReplayResults(null);
+    setReplayFetchedAt(null);
+  }, [selectedAgentId, promptHash]);
+
   // Load available niches on mount
   useEffect(() => {
     const loadNiches = async () => {
@@ -739,79 +757,6 @@ const TrainingHub: React.FC = () => {
   };
 
   const handleSaveState = async () => {
-
-  // TODO: Implement golden dataset - temporarily commented out
-  // const handleSaveGoldenSample = () => {
-  //   if (!selectedAgent || !latestSession || conversation.length === 0) {
-  //     toast.error('Run a simulated call and evaluation before saving a gold sample');
-  //     return;
-  //   }
-  //   if (!promptHash) {
-  //     toast.error('Save the prompt first to lock a version before saving gold samples');
-  //     return;
-  //   }
-  //   const id = `gold-${Date.now()}`;
-  //   const sample: GoldenSample = {
-  //     id,
-  //     agentId: selectedAgent.id,
-  //     niche: selectedNiche,
-  //     promptHash,
-  //     title: goldTitle.trim() || `Sample ${new Date().toLocaleString()}`,
-  //     notes: goldNotes.trim() || undefined,
-  //     createdAt: new Date().toISOString(),
-  //     transcript: conversation.map((turn) => ({ ...turn })),
-  //     expected: {
-  //       collectedFields: latestSession.collectedFields,
-  //       rubric: latestSession.rubric,
-  //       confidence: latestSession.confidence,
-  //     },
-  //     originalEvaluation: latestSession,
-  //   };
-
-  //   try {
-  //     saveGoldenSample(sample);
-  //     toast.success('Saved to golden dataset');
-  //     setGoldTitle('');
-  //     setGoldNotes('');
-  //     setShowGoldModal(false);
-  //     refreshGoldenSamples();
-  //   } catch (error) {
-  //     console.error('Failed to save golden sample:', error);
-  //     toast.error('Could not save golden sample');
-  //   }
-  // };
-
-  // TODO: Implement golden dataset - temporarily commented out
-  // const handleReplayGoldenDataset = async () => {
-  //   if (!selectedAgent) {
-  //     toast.error('Select an agent before replaying');
-  //     return;
-  //   }
-  //   setReplayRunning(true);
-  //   try {
-  //     const results = replayGoldenDataset({
-  //       agentId: selectedAgent.id,
-  //       promptHash,
-  //       niche: selectedNiche,
-  //     }, { spec: activeSpec });
-  //     setReplayResults(results);
-  //     setReplayFetchedAt(new Date().toISOString());
-  //     toast.success(`Replayed ${results.length} golden sample${results.length === 1 ? '' : 's'}`);
-  //   } catch (error) {
-  //     console.error('Failed to replay golden dataset:', error);
-  //     toast.error('Golden dataset replay failed');
-  //   } finally {
-  //     setReplayRunning(false);
-  //   }
-  // };
-
-  // const handleDeleteGoldenSample = (id: string) => {
-  //   deleteGoldenSample(id);
-  //   refreshGoldenSamples();
-  //   toast.success('Removed golden sample');
-  // };
-
-
     if (!payload) return;
     setSaving(true);
     try {
@@ -821,8 +766,8 @@ const TrainingHub: React.FC = () => {
         state: {
           systemPrompt: payload.systemPrompt,
           knowledgeBase: payload.knowledgeBase,
-          qnaPairs: payload.qnaPairs
-        }
+          qnaPairs: payload.qnaPairs,
+        },
       });
       if ((res as any)?.success !== false) {
         toast.success('State saved');
@@ -834,6 +779,87 @@ const TrainingHub: React.FC = () => {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSaveGoldenSample = () => {
+    if (!selectedAgentId || !selectedAgent) {
+      toast.error('Select an agent before saving a golden sample');
+      return;
+    }
+    if (!latestSession || conversation.length === 0) {
+      toast.error('Run a simulated call and evaluation before saving a gold sample');
+      return;
+    }
+    if (!promptHash) {
+      toast.error('Save the prompt first to lock a version before saving gold samples');
+      return;
+    }
+
+    const id = `gold-${Date.now()}`;
+    const sample: GoldenSample = {
+      id,
+      agentId: selectedAgentId,
+      niche: selectedNiche,
+      promptHash,
+      title: goldTitle.trim() || `Sample ${new Date().toLocaleString()}`,
+      notes: goldNotes.trim() || undefined,
+      createdAt: new Date().toISOString(),
+      transcript: conversation.map((turn) => ({ ...turn })),
+      expected: {
+        collectedFields: latestSession.collectedFields,
+        rubric: latestSession.rubric,
+        confidence: latestSession.confidence,
+      },
+      originalEvaluation: latestSession,
+    };
+
+    try {
+      saveGoldenSample(sample);
+      toast.success('Saved to golden dataset');
+      setGoldTitle('');
+      setGoldNotes('');
+      setShowGoldModal(false);
+      refreshGoldenSamples();
+    } catch (error) {
+      console.error('Failed to save golden sample:', error);
+      toast.error('Could not save golden sample');
+    }
+  };
+
+  const handleReplayGoldenDataset = async () => {
+    if (!selectedAgentId) {
+      toast.error('Select an agent before replaying');
+      return;
+    }
+    if (!promptHash) {
+      toast.error('Save the prompt to lock a hash before replaying');
+      return;
+    }
+    setReplayRunning(true);
+    try {
+      const results = replayGoldenDataset(
+        {
+          agentId: selectedAgentId,
+          promptHash,
+          niche: selectedNiche,
+        },
+        { spec: activeSpec }
+      );
+      setReplayResults(results);
+      setReplayFetchedAt(new Date().toISOString());
+      toast.success(`Replayed ${results.length} golden sample${results.length === 1 ? '' : 's'}`);
+    } catch (error) {
+      console.error('Failed to replay golden dataset:', error);
+      toast.error('Golden dataset replay failed');
+    } finally {
+      setReplayRunning(false);
+    }
+  };
+
+  const handleDeleteGoldenSample = (id: string) => {
+    deleteGoldenSample(id);
+    refreshGoldenSamples();
+    toast.success('Removed golden sample');
   };
 
   const handleDeploy = async () => {
@@ -892,17 +918,19 @@ const TrainingHub: React.FC = () => {
     if (!selectedAgent || !testMessage.trim()) return;
 
     const storeApi = useStore.getState();
-    
-    // Confidence gate disabled for sandbox testing
-    // Uncomment to re-enable:
-    // const gateStatus = storeApi.checkAgentGate(selectedAgent.id);
-    // if (gateStatus.isGated) {
-    //   const resumeText = gateStatus.autoResumeAt
-    //     ? ` (auto-resumes ${new Date(gateStatus.autoResumeAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`
-    //     : '';
-    //   toast.error(`Confidence gate active: ${gateStatus.reason || 'Awaiting manual review'}${resumeText}`);
-    //   return;
-    // }
+    if (!ignoreConfidenceGate) {
+      const gateStatus = storeApi.checkAgentGate(selectedAgent.id);
+      if (gateStatus.isGated) {
+        const resumeText = gateStatus.autoResumeAt
+          ? ` (auto-resumes ${new Date(gateStatus.autoResumeAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`
+          : '';
+        toast.error(`Confidence gate active: ${gateStatus.reason || 'Awaiting manual review'}${resumeText}`);
+        return;
+      }
+    } else if (gateSnapshot?.isGated) {
+      storeApi.clearAgentGate(selectedAgent.id);
+      toast('Confidence gate bypassed for sandbox run', { icon: '🛠️', duration: 2500 });
+    }
 
     if (hasEvaluatedSession) {
       setHasEvaluatedSession(false);
@@ -1021,6 +1049,22 @@ const TrainingHub: React.FC = () => {
           latencyMs: cachedTurn.latencyMs,
           source: 'cache',
           conversationId,
+        });
+        storeApi.recordTurnTrace(selectedAgent.id, {
+          traceId: `${conversationId}-${agentTurn.id}`,
+          agentId: selectedAgent.id,
+          conversationId,
+          turnId: agentTurn.id,
+          timestamp: new Date(agentTurn.ts).toISOString(),
+          tokens: {
+            prompt: totalPromptTokens,
+            completion: 0,
+            total: totalPromptTokens,
+          },
+          model: 'cache-hit',
+          latencyMs: cachedTurn.latencyMs,
+          rulesChecked: ['cache-hit'],
+          source: 'sandbox',
         });
         setSyncing(false);
         toast.success('Served from cache');
@@ -1156,6 +1200,31 @@ const TrainingHub: React.FC = () => {
         latencyMs,
         source: 'live',
         conversationId,
+      });
+      const rulesChecked: string[] = ['confidence-gate'];
+      if (specValidation?.status === 'ok') {
+        rulesChecked.push('spec-lock');
+      }
+      if (enableMasterAI) {
+        if (enableQualityGates) rulesChecked.push('quality-gate');
+        if (enablePreTurnGuidance) rulesChecked.push('pre-turn-guidance');
+      }
+      const completionTokens = Math.max(callTokens - totalPromptTokens, 0);
+      storeApi.recordTurnTrace(selectedAgent.id, {
+        traceId: `${conversationId}-${agentTurn.id}`,
+        agentId: selectedAgent.id,
+        conversationId,
+        turnId: agentTurn.id,
+        timestamp: new Date(agentTurn.ts).toISOString(),
+        tokens: {
+          prompt: totalPromptTokens,
+          completion: completionTokens,
+          total: callTokens,
+        },
+        model: agentPayload?.model ?? 'sandbox-sim',
+        latencyMs,
+        rulesChecked,
+        source: 'sandbox',
       });
       storeApi.cacheAgentTurn(selectedAgent.id, signature, {
         response: agentTurn.text,
@@ -1818,6 +1887,181 @@ const TrainingHub: React.FC = () => {
                 </ul>
               </div>
             </div>
+
+            <div className="mt-4 border-t border-border/40 pt-3 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="flex items-center gap-2 text-sm font-semibold">
+                  <Award className="w-4 h-4 text-primary" /> Golden Dataset
+                  {goldenSamples.length > 0 && (
+                    <span className="text-xs text-muted-foreground">
+                      {goldenSamples.length} sample{goldenSamples.length === 1 ? '' : 's'}
+                    </span>
+                  )}
+                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant={showGoldModal ? 'secondary' : 'outline'}
+                    size="sm"
+                    onClick={() => {
+                      if (!selectedAgentId) {
+                        toast.error('Select an agent first');
+                        return;
+                      }
+                      setShowGoldModal((prev) => !prev);
+                    }}
+                    disabled={!selectedAgentId}
+                  >
+                    <Save className="w-3 h-3 mr-1" />
+                    Save Sample
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleReplayGoldenDataset}
+                    disabled={replayRunning || goldenSamples.length === 0}
+                    loading={replayRunning}
+                    title={goldenSamples.length === 0 ? 'Add golden samples first' : undefined}
+                  >
+                    <RefreshCw className="w-3 h-3 mr-1" />
+                    Replay All
+                  </Button>
+                </div>
+              </div>
+
+              {showGoldModal && (
+                <div className="rounded-lg border border-border/40 bg-background/70 p-3 space-y-2 animate-fade-in">
+                  <input
+                    value={goldTitle}
+                    onChange={(e) => setGoldTitle(e.target.value)}
+                    className="w-full px-3 py-2 border border-border rounded-md bg-input text-sm"
+                    placeholder="Sample title (e.g., Perfect qualification call)"
+                  />
+                  <textarea
+                    value={goldNotes}
+                    onChange={(e) => setGoldNotes(e.target.value)}
+                    className="w-full px-3 py-2 border border-border rounded-md bg-input text-sm h-20"
+                    placeholder="Optional notes about why this transcript is golden..."
+                  />
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setShowGoldModal(false);
+                        setGoldTitle('');
+                        setGoldNotes('');
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={handleSaveGoldenSample}
+                      disabled={!latestSession || conversation.length === 0}
+                    >
+                      Save to Dataset
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {goldenSamples.length === 0 ? (
+                <div className="text-xs text-muted-foreground border border-dashed border-border/50 rounded-md p-3">
+                  No golden samples yet. Capture exemplary transcripts to build a regression harness before publishing.
+                </div>
+              ) : (
+                <ul className="space-y-2">
+                  {goldenSamples.map((sample) => (
+                    <li
+                      key={sample.id}
+                      className="rounded-md border border-border/40 bg-muted/20 p-2 text-xs space-y-1"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-medium text-foreground">{sample.title}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatRelative(sample.createdAt)} • Confidence {sample.expected.confidence}%
+                          </p>
+                        </div>
+                        <button
+                          className="tap text-xs text-muted-foreground hover:text-destructive flex items-center gap-1"
+                          onClick={() => handleDeleteGoldenSample(sample.id)}
+                          title="Remove sample"
+                        >
+                          <X className="w-3 h-3" />
+                          Remove
+                        </button>
+                      </div>
+                      {sample.notes && (
+                        <p className="text-xs text-muted-foreground/80">{sample.notes}</p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {replayResults && (
+                <div className="rounded-md border border-border/40 bg-background/80 p-3 space-y-2">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>
+                      Last replay {replayFetchedAt ? formatRelative(replayFetchedAt) : 'just now'}
+                    </span>
+                    <span>
+                      {replayResults.filter((r) => r.status === 'pass').length}/{replayResults.length} passing
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    {replayResults.map((result) => (
+                      <div
+                        key={result.sampleId}
+                        className="flex flex-col gap-1 rounded border border-border/40 p-2 text-xs bg-muted/10"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium text-foreground">{result.title}</span>
+                          <span
+                            className={`chip ${
+                              result.status === 'pass'
+                                ? 'ok'
+                                : result.status === 'warn'
+                                ? 'warn'
+                                : 'err'
+                            }`}
+                          >
+                            {result.status === 'pass'
+                              ? 'Pass'
+                              : result.status === 'warn'
+                              ? 'Warn'
+                              : 'Fail'}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
+                          <span>
+                            Δ {result.confidenceDelta >= 0 ? '+' : ''}
+                            {result.confidenceDelta}%
+                          </span>
+                          {result.missingFields.length > 0 && (
+                            <span className="text-amber-500">
+                              Missing: {result.missingFields.join(', ')}
+                            </span>
+                          )}
+                          {result.rubricChanges.length > 0 && (
+                            <span className="text-amber-500">
+                              Rubric drift:{' '}
+                              {result.rubricChanges.map((change) => change.key).join(', ')}
+                            </span>
+                          )}
+                        </div>
+                        {result.newFields.length > 0 && (
+                          <span className="text-emerald-500">
+                            New: {result.newFields.join(', ')}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
             
             {estimateTokens(systemPrompt) > 1000 && (
               <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1 animate-fade-in">
@@ -2327,6 +2571,78 @@ const TrainingHub: React.FC = () => {
               </button>
             </div>
           )}
+
+          <div className={`mb-4 p-3 rounded-lg border ${gateCardClasses} transition-colors`}>
+            {selectedAgentId ? (
+              <>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-3 text-sm">
+                    <span className="flex items-center gap-2 font-semibold">
+                      {gateSnapshot?.isGated ? (
+                        <>
+                          <AlertTriangle className="w-4 h-4 text-amber-600" />
+                          <span>Confidence gate active</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle className="w-4 h-4 text-emerald-600" />
+                          <span>Confidence gate clear</span>
+                        </>
+                      )}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      Mode: {gateModeLabel}
+                    </span>
+                    {gateSnapshot?.lastConfidence != null && (
+                      <span className="text-xs text-muted-foreground">
+                        Last confidence: {gateSnapshot.lastConfidence}%
+                      </span>
+                    )}
+                    <span className="text-xs text-muted-foreground">
+                      Threshold: {gateSnapshot?.confidenceThreshold ?? '--'}%
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={ignoreConfidenceGate}
+                        onChange={(e) => setIgnoreConfidenceGate(e.target.checked)}
+                        className="rounded"
+                      />
+                      <span>Bypass for sandbox</span>
+                    </label>
+                    {gateSnapshot?.isGated && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (!selectedAgentId) return;
+                          clearAgentGate(selectedAgentId);
+                          toast.success('Confidence gate reset for testing');
+                        }}
+                      >
+                        Reset Gate
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                {(gateSnapshot?.gateReason || gateResumeAt) && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground pt-2">
+                    <Layers className="w-3 h-3" />
+                    <span>
+                      {gateSnapshot?.gateReason || 'No active gate reason'}
+                      {gateResumeAt ? ` • auto-resumes ${gateResumeAt}` : ''}
+                    </span>
+                  </div>
+                )}
+              </>
+            ) : (
+              <span className="text-xs text-muted-foreground">
+                Select an agent to view confidence gate status.
+              </span>
+            )}
+          </div>
 
           {/* Message Input */}
           <div className="flex gap-2 mb-3">
