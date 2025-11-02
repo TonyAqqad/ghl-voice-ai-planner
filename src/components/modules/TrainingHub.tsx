@@ -754,14 +754,17 @@ const TrainingHub: React.FC = () => {
     if (!selectedAgent || !testMessage.trim()) return;
 
     const storeApi = useStore.getState();
-    const gateStatus = storeApi.checkAgentGate(selectedAgent.id);
-    if (gateStatus.isGated) {
-      const resumeText = gateStatus.autoResumeAt
-        ? ` (auto-resumes ${new Date(gateStatus.autoResumeAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`
-        : '';
-      toast.error(`Confidence gate active: ${gateStatus.reason || 'Awaiting manual review'}${resumeText}`);
-      return;
-    }
+    
+    // Confidence gate disabled for sandbox testing
+    // Uncomment to re-enable:
+    // const gateStatus = storeApi.checkAgentGate(selectedAgent.id);
+    // if (gateStatus.isGated) {
+    //   const resumeText = gateStatus.autoResumeAt
+    //     ? ` (auto-resumes ${new Date(gateStatus.autoResumeAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`
+    //     : '';
+    //   toast.error(`Confidence gate active: ${gateStatus.reason || 'Awaiting manual review'}${resumeText}`);
+    //   return;
+    // }
 
     if (hasEvaluatedSession) {
       setHasEvaluatedSession(false);
