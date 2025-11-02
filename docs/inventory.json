@@ -1,0 +1,727 @@
+{
+  "generatedAt": "2025-11-02T17:42:13.927Z",
+  "overview": {
+    "name": "GHL Voice AI Builder",
+    "type": "monorepo",
+    "structure": "npm workspaces"
+  },
+  "apps": [
+    {
+      "name": "server",
+      "path": "apps/server",
+      "language": "JavaScript",
+      "framework": "Express.js",
+      "description": "No description",
+      "scripts": {}
+    },
+    {
+      "name": "web",
+      "path": "apps/web",
+      "language": "TypeScript",
+      "framework": "React + Vite",
+      "description": "No description",
+      "scripts": {
+        "dev": "vite",
+        "build": "vite build",
+        "build:actual": "vite build --mode production",
+        "build:verify": "node scripts/verify-build.js || node -e \"const fs=require('fs');const p=require('path');const d=p.join(process.cwd(),'dist');console.log(fs.existsSync(d)?'✅ dist exists':'❌ dist missing');process.exit(fs.existsSync(d)?0:1);\"",
+        "build:full": "npm run build && npm run build:verify",
+        "build:check": "tsc && vite build",
+        "build:force": "NODE_ENV=production vite build --force",
+        "preview": "vite preview",
+        "start:server": "node server/ghl-express-api.js",
+        "test-connection": "node scripts/test-connection.js",
+        "test": "vitest",
+        "webhook:dev": "nodemon webhook-server.cjs",
+        "webhook:start": "node webhook-server.cjs",
+        "server:dev": "nodemon server/ghl-express-api.js",
+        "server:start": "node server/ghl-express-api.js"
+      }
+    }
+  ],
+  "packages": [
+    {
+      "name": "evaluation",
+      "path": "packages/evaluation",
+      "language": "TypeScript",
+      "description": "No description",
+      "version": "0.0.0"
+    },
+    {
+      "name": "promptkit",
+      "path": "packages/promptkit",
+      "language": "TypeScript",
+      "description": "No description",
+      "version": "0.0.0"
+    },
+    {
+      "name": "shared",
+      "path": "packages/shared",
+      "language": "TypeScript",
+      "description": "No description",
+      "version": "0.0.0"
+    }
+  ],
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/health",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "GET",
+      "path": "/api/monitoring/ghl-status",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "POST",
+      "path": "/api/monitoring/ghl-circuit/reset",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "POST",
+      "path": "/api/monitoring/ghl-circuit/emergency-open",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "POST",
+      "path": "/api/monitoring/ghl-queue/clear",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "GET",
+      "path": "/health/db",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "GET",
+      "path": "/auth/ghl",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "GET",
+      "path": "/auth/callback",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "POST",
+      "path": "/api/voice-ai/process-contact",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "GET",
+      "path": "/health",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tokens/latest",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "GET",
+      "path": "/api/locations",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "GET",
+      "path": "/api/locations/:locationId",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "POST",
+      "path": "/api/ghl/training/sync",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "GET",
+      "path": "/api/ghl/contacts",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "POST",
+      "path": "/api/ghl/contacts/upsert",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "GET",
+      "path": "/api/ghl/contacts/:contactId",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "POST",
+      "path": "/api/ghl/conversations/messages",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "GET",
+      "path": "/api/ghl/conversations",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "POST",
+      "path": "/api/voice-ai/deploy",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "POST",
+      "path": "/api/voice-ai/agents",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "GET",
+      "path": "/api/voice-ai/agents",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "GET",
+      "path": "/api/elevenlabs/voices",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "GET",
+      "path": "/api/elevenlabs/voices/:voiceId",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "POST",
+      "path": "/api/elevenlabs/speech",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "POST",
+      "path": "/api/openai/speech",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "GET",
+      "path": "/api/elevenlabs/usage",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "GET",
+      "path": "/api/voice-ai/agents/:agentId",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/voice-ai/agents/:agentId",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "POST",
+      "path": "/api/voice-ai/agents/:agentId/activate",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "POST",
+      "path": "/api/voice-ai/agents/:agentId/deactivate",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/voice-ai/agents/:agentId",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "GET",
+      "path": "/ghl-api",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "POST",
+      "path": "/api/demo/create-agent",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "POST",
+      "path": "/api/demo/test-conversation",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "GET",
+      "path": "/api/demo/agent-stats/:agentId",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "POST",
+      "path": "/api/voice-ai/agents",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "GET",
+      "path": "/api/voice-ai/agents/:agentId",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/voice-ai/agents/:agentId",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/voice-ai/agents/:agentId",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "POST",
+      "path": "/api/voice-ai/agents/:agentId/custom-actions",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "GET",
+      "path": "/api/voice-ai/agents/:agentId/custom-actions",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/voice-ai/agents/:agentId/custom-actions/:actionId",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/voice-ai/agents/:agentId/custom-actions/:actionId",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "POST",
+      "path": "/api/workflows",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "POST",
+      "path": "/api/voice-ai/generate",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "GET",
+      "path": "/api/templates",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "GET",
+      "path": "/api/templates/:templateId",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "POST",
+      "path": "/api/templates",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "POST",
+      "path": "/api/templates/:templateId/generate",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "GET",
+      "path": "/api/voice-ai/agents/:agentId/costs",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "GET",
+      "path": "/api/voice-ai/agents/:agentId/analytics",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "GET",
+      "path": "/api/voice-ai/agents/:agentId/costs/daily",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "POST",
+      "path": "/api/voice-ai/agents/:agentId/costs/estimate",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "POST",
+      "path": "/api/webhooks/voice-ai",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "POST",
+      "path": "/api/webhooks/agent",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "POST",
+      "path": "/api/mcp/master/applyFix",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "POST",
+      "path": "/api/mcp/master/analyzeTurn",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "POST",
+      "path": "/api/mcp/master/preTurnGuidance",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "POST",
+      "path": "/api/mcp/master/reviewResponse",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "POST",
+      "path": "/api/mcp/master/intervene",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "POST",
+      "path": "/api/mcp/master/learnPattern",
+      "file": "apps/server/server\\ghl-express-api.js"
+    },
+    {
+      "method": "POST",
+      "path": "/voiceAgent/call",
+      "file": "apps/server/server\\mcp\\server.js"
+    },
+    {
+      "method": "POST",
+      "path": "/voiceAgent/generatePrompt",
+      "file": "apps/server/server\\mcp\\server.js"
+    },
+    {
+      "method": "POST",
+      "path": "/ghl/triggerWorkflow",
+      "file": "apps/server/server\\mcp\\server.js"
+    },
+    {
+      "method": "POST",
+      "path": "/webhook/onEvent",
+      "file": "apps/server/server\\mcp\\server.js"
+    },
+    {
+      "method": "POST",
+      "path": "/webhook/processEvent/:eventType",
+      "file": "apps/server/server\\mcp\\server.js"
+    },
+    {
+      "method": "POST",
+      "path": "/contact/extractAndUpdate",
+      "file": "apps/server/server\\mcp\\server.js"
+    },
+    {
+      "method": "POST",
+      "path": "/action/retryIfFail",
+      "file": "apps/server/server\\mcp\\server.js"
+    },
+    {
+      "method": "POST",
+      "path": "/agent/log",
+      "file": "apps/server/server\\mcp\\server.js"
+    },
+    {
+      "method": "POST",
+      "path": "/agent/checkHealth",
+      "file": "apps/server/server\\mcp\\server.js"
+    },
+    {
+      "method": "POST",
+      "path": "/agent/saveState",
+      "file": "apps/server/server\\mcp\\server.js"
+    },
+    {
+      "method": "POST",
+      "path": "/agent/loadState",
+      "file": "apps/server/server\\mcp\\server.js"
+    },
+    {
+      "method": "POST",
+      "path": "/integration/connect",
+      "file": "apps/server/server\\mcp\\server.js"
+    },
+    {
+      "method": "POST",
+      "path": "/agent/autoRecovery",
+      "file": "apps/server/server\\mcp\\server.js"
+    },
+    {
+      "method": "POST",
+      "path": "/agent/anomalyDetect",
+      "file": "apps/server/server\\mcp\\server.js"
+    },
+    {
+      "method": "POST",
+      "path": "/agent/feedbackLoop",
+      "file": "apps/server/server\\mcp\\server.js"
+    },
+    {
+      "method": "POST",
+      "path": "/configDrift/detect",
+      "file": "apps/server/server\\mcp\\server.js"
+    },
+    {
+      "method": "POST",
+      "path": "/agent/liveTrace",
+      "file": "apps/server/server\\mcp\\server.js"
+    },
+    {
+      "method": "GET",
+      "path": "/agent/getTrace/:traceId",
+      "file": "apps/server/server\\mcp\\server.js"
+    },
+    {
+      "method": "POST",
+      "path": "/autoPatch/deploy",
+      "file": "apps/server/server\\mcp\\server.js"
+    },
+    {
+      "method": "POST",
+      "path": "/incidentReport/create",
+      "file": "apps/server/server\\mcp\\server.js"
+    },
+    {
+      "method": "GET",
+      "path": "/incidentReport/getIncidents",
+      "file": "apps/server/server\\mcp\\server.js"
+    },
+    {
+      "method": "GET",
+      "path": "/health",
+      "file": "apps/server/server\\mcp\\server.js"
+    },
+    {
+      "method": "POST",
+      "path": "/prompt/compose",
+      "file": "apps/server/server\\mcp\\server.js"
+    },
+    {
+      "method": "GET",
+      "path": "/prompt/niches",
+      "file": "apps/server/server\\mcp\\server.js"
+    },
+    {
+      "method": "GET",
+      "path": "/prompt/:agentId",
+      "file": "apps/server/server\\mcp\\server.js"
+    },
+    {
+      "method": "GET",
+      "path": "/prompt/:agentId/history",
+      "file": "apps/server/server\\mcp\\server.js"
+    },
+    {
+      "method": "POST",
+      "path": "/prompt/validate",
+      "file": "apps/server/server\\mcp\\server.js"
+    },
+    {
+      "method": "POST",
+      "path": "/agent/ingestTranscript",
+      "file": "apps/server/server\\mcp\\server.js"
+    },
+    {
+      "method": "GET",
+      "path": "/prompt/reviewQueue",
+      "file": "apps/server/server\\mcp\\server.js"
+    },
+    {
+      "method": "POST",
+      "path": "/prompt/applyPatch",
+      "file": "apps/server/server\\mcp\\server.js"
+    },
+    {
+      "method": "POST",
+      "path": "/prompt/rollback",
+      "file": "apps/server/server\\mcp\\server.js"
+    },
+    {
+      "method": "POST",
+      "path": "/agent/batchReview",
+      "file": "apps/server/server\\mcp\\server.js"
+    },
+    {
+      "method": "POST",
+      "path": "/agent/saveCorrection",
+      "file": "apps/server/server\\mcp\\server.js"
+    },
+    {
+      "method": "GET",
+      "path": "/agent/corrections",
+      "file": "apps/server/server\\mcp\\server.js"
+    },
+    {
+      "method": "GET",
+      "path": "/prompt/versions",
+      "file": "apps/server/server\\mcp\\server.js"
+    },
+    {
+      "method": "GET",
+      "path": "/agent/performance",
+      "file": "apps/server/server\\mcp\\server.js"
+    }
+  ],
+  "envVars": [
+    {
+      "name": "DATABASE_URL",
+      "usedIn": [
+        "apps/server/server\\database.js",
+        "apps/server/server\\ghl-express-api.js",
+        "apps/server/server\\test-connection.js",
+        "apps/server/server\\test-render-connection.js"
+      ],
+      "purpose": "Database connection"
+    },
+    {
+      "name": "NODE_ENV",
+      "usedIn": [
+        "apps/server/server\\database.js",
+        "apps/server/server\\ghl-express-api.js",
+        "apps/server/server\\mcp\\promptComposer.js",
+        "apps/server/server\\mcp\\server.js",
+        "apps/server/server\\mcp\\turnAnalyzer.js",
+        "apps/server/server\\test-render-connection.js"
+      ],
+      "purpose": "Environment mode"
+    },
+    {
+      "name": "GHL_CLIENT_ID",
+      "usedIn": [
+        "apps/server/server\\ghl-express-api.js",
+        "apps/server/server\\test-api.js",
+        "apps/server/server\\test-connection.js"
+      ],
+      "purpose": "GHL OAuth client ID"
+    },
+    {
+      "name": "GHL_CLIENT_SECRET",
+      "usedIn": [
+        "apps/server/server\\ghl-express-api.js",
+        "apps/server/server\\test-api.js",
+        "apps/server/server\\test-connection.js"
+      ],
+      "purpose": "GHL OAuth secret"
+    },
+    {
+      "name": "GHL_REDIRECT_URI",
+      "usedIn": [
+        "apps/server/server\\ghl-express-api.js"
+      ],
+      "purpose": "OAuth redirect URL"
+    },
+    {
+      "name": "GHL_WEBHOOK_SECRET",
+      "usedIn": [
+        "apps/server/server\\ghl-express-api.js"
+      ],
+      "purpose": "Unknown"
+    },
+    {
+      "name": "GHL_API_ENABLED",
+      "usedIn": [
+        "apps/server/server\\ghl-express-api.js"
+      ],
+      "purpose": "Unknown"
+    },
+    {
+      "name": "ELEVENLABS_API_KEY",
+      "usedIn": [
+        "apps/server/server\\ghl-express-api.js",
+        "apps/server/server\\mcp\\examples.js",
+        "apps/server/server\\mcp\\server.js",
+        "apps/server/server\\test-api.js"
+      ],
+      "purpose": "Unknown"
+    },
+    {
+      "name": "OPENAI_API_KEY",
+      "usedIn": [
+        "apps/server/server\\ghl-express-api.js",
+        "apps/server/server\\mcp\\examples.js",
+        "apps/server/server\\mcp\\masterAIManager.js",
+        "apps/server/server\\mcp\\promptComposer.js",
+        "apps/server/server\\mcp\\server.js",
+        "apps/server/server\\mcp\\turnAnalyzer.js",
+        "apps/server/server\\test-api.js"
+      ],
+      "purpose": "Unknown"
+    },
+    {
+      "name": "FRONTEND_URL",
+      "usedIn": [
+        "apps/server/server\\ghl-express-api.js"
+      ],
+      "purpose": "Unknown"
+    },
+    {
+      "name": "FRONTEND_DIST_PATH",
+      "usedIn": [
+        "apps/server/server\\ghl-express-api.js"
+      ],
+      "purpose": "Frontend build output path"
+    },
+    {
+      "name": "ENABLE_CORRECTION_SYNC",
+      "usedIn": [
+        "apps/server/server\\ghl-express-api.js"
+      ],
+      "purpose": "Unknown"
+    },
+    {
+      "name": "PORT",
+      "usedIn": [
+        "apps/server/server\\ghl-express-api.js"
+      ],
+      "purpose": "Server port"
+    },
+    {
+      "name": "GHL_BASE_URL",
+      "usedIn": [
+        "apps/server/server\\mcp\\server.js"
+      ],
+      "purpose": "Unknown"
+    },
+    {
+      "name": "NODE_OPTIONS",
+      "usedIn": [
+        "apps/server/server\\test-render-connection.js"
+      ],
+      "purpose": "Unknown"
+    },
+    {
+      "name": "GHL_CIRCUIT_BREAKER_THRESHOLD",
+      "usedIn": [
+        "apps/server/server\\utils\\circuitBreaker.js"
+      ],
+      "purpose": "Unknown"
+    },
+    {
+      "name": "GHL_CIRCUIT_BREAKER_TIMEOUT",
+      "usedIn": [
+        "apps/server/server\\utils\\circuitBreaker.js"
+      ],
+      "purpose": "Unknown"
+    },
+    {
+      "name": "GHL_REQUESTS_PER_SECOND",
+      "usedIn": [
+        "apps/server/server\\utils\\ghlRequestQueue.js"
+      ],
+      "purpose": "Unknown"
+    },
+    {
+      "name": "GHL_MAX_RETRIES",
+      "usedIn": [
+        "apps/server/server\\utils\\ghlRequestQueue.js"
+      ],
+      "purpose": "Unknown"
+    },
+    {
+      "name": "GHL_RETRY_DELAY",
+      "usedIn": [
+        "apps/server/server\\utils\\ghlRequestQueue.js"
+      ],
+      "purpose": "Unknown"
+    }
+  ],
+  "buildCommands": {},
+  "deployment": {
+    "platform": "Render.com",
+    "configFile": "render.yaml",
+    "buildCommand": "npm ci && npm run build",
+    "startCommand": "node apps/server/ghl-express-api.js"
+  }
+}

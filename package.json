@@ -1,64 +1,40 @@
 {
-  "name": "ghl-voice-ai-planner",
-  "private": true,
+  "name": "ghl-voice-ai-builder",
   "version": "1.0.0",
-  "type": "module",
+  "private": true,
+  "description": "GHL Voice AI Builder - Monorepo for voice agent training and deployment",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "engines": {
     "node": "20.x"
   },
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "build:actual": "vite build --mode production",
-    "build:verify": "node scripts/verify-build.js || node -e \"const fs=require('fs');const p=require('path');const d=p.join(process.cwd(),'dist');console.log(fs.existsSync(d)?'✅ dist exists':'❌ dist missing');process.exit(fs.existsSync(d)?0:1);\"",
-    "build:full": "npm run build && npm run build:verify",
-    "build:check": "tsc && vite build",
-    "build:force": "NODE_ENV=production vite build --force",
-    "preview": "vite preview",
-    "start:server": "node server/ghl-express-api.js",
-    "test-connection": "node scripts/test-connection.js",
-    "test": "vitest",
-    "webhook:dev": "nodemon webhook-server.cjs",
-    "webhook:start": "node webhook-server.cjs",
-    "server:dev": "nodemon server/ghl-express-api.js",
-    "server:start": "node server/ghl-express-api.js"
+    "build": "npm -w apps/web run build",
+    "build:verify": "node apps/web/scripts/verify-build.js",
+    "dev:web": "npm -w apps/web run dev",
+    "dev:server": "node apps/server/ghl-express-api.js",
+    "start:server": "node apps/server/ghl-express-api.js",
+    "preview": "npm -w apps/web run preview",
+    "test": "npm -w apps/web run test",
+    "typecheck": "tsc -p apps/web/tsconfig.json --noEmit",
+    "repo:inventory": "node scripts/inventory.js",
+    "lint": "echo 'Linting not configured yet'",
+    "format": "echo 'Formatting not configured yet'"
   },
-  "dependencies": {
-    "@dnd-kit/core": "^6.3.1",
-    "@dnd-kit/sortable": "^10.0.0",
-    "@dnd-kit/utilities": "^3.2.2",
-    "@types/uuid": "^10.0.0",
-    "axios": "^1.6.0",
-    "clsx": "^1.2.1",
-    "cors": "^2.8.5",
-    "date-fns": "^2.29.3",
-    "dotenv": "^17.2.3",
-    "express": "^5.1.0",
-    "express-rate-limit": "^8.1.0",
-    "helmet": "^8.1.0",
-    "lucide-react": "^0.263.1",
-    "nodemon": "^3.1.10",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-hot-toast": "^2.6.0",
-    "react-router-dom": "^6.8.0",
-    "reactflow": "^11.11.4",
-    "uuid": "^13.0.0",
-    "zustand": "^4.3.0"
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TonyAqqad/ghl-voice-ai-planner.git"
   },
-  "devDependencies": {
-    "@testing-library/jest-dom": "^6.9.1",
-    "@testing-library/react": "^14.3.1",
-    "@testing-library/user-event": "^14.6.1",
-    "@types/react": "^18.0.28",
-    "@types/react-dom": "^18.0.11",
-    "@vitejs/plugin-react": "^3.1.0",
-    "autoprefixer": "^10.4.21",
-    "jsdom": "^23.2.0",
-    "postcss": "^8.5.6",
-    "tailwindcss": "^3.4.18",
-    "typescript": "^4.9.3",
-    "vite": "^4.1.0",
-    "vitest": "^0.28.5"
-  }
+  "keywords": [
+    "ghl",
+    "voice-ai",
+    "go-high-level",
+    "conversation-ai",
+    "monorepo"
+  ],
+  "author": "Tony Aqqad",
+  "license": "ISC"
 }
+
