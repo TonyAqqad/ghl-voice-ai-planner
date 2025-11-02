@@ -8,6 +8,37 @@ const ElevenLabsProvider = require('../../providers/elevenlabs');
 const OpenAIProvider = require('../../providers/openai');
 const { pool } = require('../../database');
 
+async function safeQuery(sql, params, { label } = {}) {
+  try {
+    return await pool.query(sql, params);
+  } catch (error) {
+    const message = error?.message || 'Unknown database error';
+    const code = error?.code || error?.errno;
+    const connectionIssue =
+      code === 'ECONNREFUSED' ||
+      /ECONNREFUSED/i.test(message) ||
+      /pool not initialized/i.test(message) ||
+      /connect\s+ECONNREFUSED/i.test(message);
+
+    console.warn(`⚠️  DB query failed${label ? ` (${label})` : ''}: ${message}`);
+    if (connectionIssue) {
+      console.warn('   Falling back to transient in-memory defaults for this request.');
+    }
+    return null;
+  }
+}
+
+function resolveSystemPrompt(agent, context = {}, options = {}, params = {}) {
+  return (
+    context.systemPromptOverride ||
+    context.systemPrompt ||
+    options.systemPrompt ||
+    agent?.system_prompt ||
+    params.systemPrompt ||
+    'You are a helpful voice assistant that follows the provided business rules, keeps responses concise, and always sounds empathetic and professional.'
+  );
+}
+
 class VoiceAgentPrimitive {
   constructor(config) {
     this.elevenlabs = new ElevenLabsProvider(config.elevenlabsApiKey);
@@ -23,18 +54,24 @@ class VoiceAgentPrimitive {
     const { agentId, phoneNumber, context = {}, options = {} } = params;
 
     try {
-      // Get agent configuration from database
-      const agentResult = await pool.query(
+      // Get agent configuration from database (if available)
+      const agentResult = await safeQuery(
         'SELECT * FROM agents WHERE agent_id = $1',
-        [agentId]
+        [agentId],
+        { label: 'fetch-agent' }
       );
 
-      if (agentResult.rows.length === 0) {
-        throw new Error(`Agent ${agentId} not found`);
+      let agent = agentResult?.rows?.[0] || null;
+
+      if (!agent) {
+        if (agentResult) {
+          console.warn(`⚠️  Agent ${agentId} not found in database - using fallback prompt overrides.`);
+        } else {
+          console.warn('⚠️  Database unavailable - using fallback prompt overrides.');
+        }
       }
 
-      const agent = agentResult.rows[0];
-      const systemPrompt = agent.system_prompt || 'You are a helpful assistant.';
+      const systemPrompt = resolveSystemPrompt(agent, context, options, params);
       
       // Build messages array with conversation history support
       const messages = [];
@@ -71,7 +108,7 @@ class VoiceAgentPrimitive {
       
       if (!textOnly && this.elevenlabs.apiKey) {
         try {
-          const voiceId = agent.voice_id || options.voiceId || 'default';
+          const voiceId = agent?.voice_id || options.voiceId || 'default';
           audioBuffer = await this.elevenlabs.generateSpeech(
             assistantMessage,
             voiceId,
@@ -87,7 +124,7 @@ class VoiceAgentPrimitive {
       }
 
       // Log the call
-      await pool.query(
+      await safeQuery(
         'INSERT INTO agent_logs (agent_id, action, payload, context, status, created_at) VALUES ($1, $2, $3, $4, $5, NOW())',
         [
           agentId,
@@ -95,7 +132,8 @@ class VoiceAgentPrimitive {
           JSON.stringify({ phoneNumber, options }),
           JSON.stringify(context),
           'success'
-        ]
+        ],
+        { label: 'log-success' }
       );
 
       return {
@@ -104,13 +142,14 @@ class VoiceAgentPrimitive {
         transcript: assistantMessage,
         mode: textOnly ? 'text' : 'voice',
         audioBuffer: audioBuffer ? Buffer.from(audioBuffer).toString('base64') : null,
-        duration: 0 // Can be calculated from audio buffer length
+        duration: 0,
+        agentConfigSource: agent ? 'database' : 'fallback'
       };
     } catch (error) {
       console.error('voiceAgent.call error:', error);
       
       // Log error
-      await pool.query(
+      await safeQuery(
         'INSERT INTO agent_logs (agent_id, action, payload, context, status, error_message, created_at) VALUES ($1, $2, $3, $4, $5, $6, NOW())',
         [
           agentId,
@@ -119,7 +158,8 @@ class VoiceAgentPrimitive {
           JSON.stringify(context),
           'error',
           error.message
-        ]
+        ],
+        { label: 'log-error' }
       );
 
       throw error;

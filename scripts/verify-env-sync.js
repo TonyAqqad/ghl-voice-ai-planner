@@ -14,7 +14,7 @@ function readMcpJson() {
 
 function collectEnvRefs(obj, acc = new Set()) {
   if (!obj || typeof obj !== 'object') return acc
-  for (const [k, v] of Object.entries(obj)) {
+  for (const [, v] of Object.entries(obj)) {
     if (typeof v === 'string') {
       const m = v.match(/\$\{([A-Z0-9_]+)\}/)
       if (m) acc.add(m[1])
@@ -38,4 +38,3 @@ if (missing.length) {
 } else {
   console.log('All referenced variables in mcp.json are present in environment.')
 }
-
