@@ -2102,10 +2102,10 @@ app.post('/api/webhooks/agent', async (req, res) => {
     // ===== SERVE REACT APP =====
     const candidates = [
       distFromEnv && path.resolve(distFromEnv),
-      '/opt/render/project/src/dist',         // Render root dist (preferred)
-      '/opt/render/project/dist',             // older fallback
-      path.resolve(__dirname, '..', 'dist'),  // local dev fallback
-      path.resolve(__dirname, 'dist')         // very last resort
+      '/opt/render/project/src/apps/web/dist', // Monorepo structure (Render)
+      path.resolve(__dirname, '..', 'web', 'dist'), // Local dev monorepo
+      '/opt/render/project/src/dist',         // Legacy fallback
+      path.resolve(__dirname, '..', 'dist')   // Old local dev fallback
     ].filter(Boolean);
     
     const distDir = candidates.find(p => {
