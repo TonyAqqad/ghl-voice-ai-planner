@@ -52,6 +52,7 @@ import CallAnalyticsDashboard from './components/modules/CallAnalyticsDashboard'
 import WebhookConfigurationManager from './components/modules/WebhookConfigurationManager';
 import PerformanceMonitorDashboard from './components/modules/PerformanceMonitorDashboard';
 import TrainingHub from './components/modules/TrainingHub';
+import GovernanceCenter from './components/modules/GovernanceCenter';
 // GHL-Specific Components
 import GHLVoiceAgentBuilder from './components/modules/GHLVoiceAgentBuilder';
 import GHLWorkflowIntegration from './components/modules/GHLWorkflowIntegration';
@@ -159,6 +160,7 @@ function App() {
                   <Route path="/export" element={<ExportCenter />} />
                   <Route path="/compliance-safety" element={<ComplianceSafety />} />
                   <Route path="/training" element={<TrainingHub />} />
+                  <Route path="/governance" element={<GovernanceCenter />} />
                   {/* GHL-Specific Routes */}
                   <Route path="/ghl-voice-agents" element={<GHLVoiceAgentBuilder />} />
                   <Route path="/ghl-workflows" element={<GHLWorkflowIntegration />} />

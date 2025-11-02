@@ -55,6 +55,26 @@ const createConversationId = () => `conv-${Date.now()}-${Math.random().toString(
 
 type SimulatorTurn = SessionConversationTurn;
 
+const createTurnSignature = (
+  agentId: string,
+  turns: SimulatorTurn[],
+  prompt: string,
+  scopeId?: string | null
+) => {
+  const normalizedPrompt = prompt.replace(/\s+/g, ' ').trim();
+  const recent = turns
+    .slice(-6)
+    .map((turn) => `${turn.role}:${turn.text.trim()}`)
+    .join('|');
+  const basis = `${agentId}|${scopeId ?? 'global'}|${normalizedPrompt}|${recent}`;
+  let hash = 0;
+  for (let i = 0; i < basis.length; i += 1) {
+    hash = (hash << 5) - hash + basis.charCodeAt(i);
+    hash |= 0;
+  }
+  return `sig-${Math.abs(hash).toString(16)}`;
+};
+
 const fallbackNiches = [
   { value: 'fitness_gym', label: 'F45 Training / Fitness Gym' },
   { value: 'martial_arts', label: 'Martial Arts' },
@@ -183,6 +203,12 @@ const TrainingHub: React.FC = () => {
     setSessions((prev) => [session, ...prev.filter((s) => s.conversationId !== session.conversationId)]);
     setLatestSession(session);
     setHasEvaluatedSession(true);
+    useStore.getState().recordAgentEvaluation(
+      session.agentId,
+      session.confidence,
+      session.conversationId,
+      { conversationId: session.conversationId }
+    );
     return session;
   }, [conversation, conversationId, selectedAgent?.id, selectedNiche, currentScopeId, activeSpec]);
 
@@ -254,6 +280,13 @@ const TrainingHub: React.FC = () => {
           `🎓 Master Agent: ${allViolations.length} violation${allViolations.length !== 1 ? 's' : ''} found, ${totalCorrections} correction${totalCorrections !== 1 ? 's' : ''} applied to KB`,
           { duration: 5000, className: 'pulse' }
         );
+
+        if (selectedAgent?.id) {
+          const storeApi = useStore.getState();
+          allViolations.forEach(({ turn, violations }) => {
+            storeApi.recordRuleViolations(selectedAgent.id, conversationId, turn.id, violations);
+          });
+        }
       }
     }
 
@@ -348,6 +381,13 @@ const TrainingHub: React.FC = () => {
             icon: '🎓',
           }
         );
+
+        if (selectedAgent?.id) {
+          const storeApi = useStore.getState();
+          allViolations.forEach(({ turn, violations }) => {
+            storeApi.recordRuleViolations(selectedAgent.id, conversationId, turn.id, violations);
+          });
+        }
       } else {
         console.log('✅ Master Agent review: No violations detected - excellent performance!');
         toast.success('🎉 Perfect call! No corrections needed', {
@@ -617,6 +657,16 @@ const TrainingHub: React.FC = () => {
   const handleDryRun = async () => {
     if (!selectedAgent || !testMessage.trim()) return;
 
+    const storeApi = useStore.getState();
+    const gateStatus = storeApi.checkAgentGate(selectedAgent.id);
+    if (gateStatus.isGated) {
+      const resumeText = gateStatus.autoResumeAt
+        ? ` (auto-resumes ${new Date(gateStatus.autoResumeAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`
+        : '';
+      toast.error(`Confidence gate active: ${gateStatus.reason || 'Awaiting manual review'}${resumeText}`);
+      return;
+    }
+
     if (hasEvaluatedSession) {
       setHasEvaluatedSession(false);
     }
@@ -634,46 +684,35 @@ const TrainingHub: React.FC = () => {
 
     setSyncing(true);
     try {
-      // Retrieve agent-specific learned responses
       if (!selectedAgent?.id) {
         throw new Error('No agent selected');
       }
 
       // Use scoped learned snippets if we have a currentScopeId, otherwise fallback to legacy KB
       let learnedPrompt = '';
-      let learnedCount = 0; // Track number of learned items for logging
-      
+      let learnedCount = 0;
+
       if (currentScopeId) {
-        // NEW: Scoped learning - isolated per location+agent+prompt
         const scopedSnippets = getScopedLearnedSnippets(currentScopeId, 5);
         learnedCount = scopedSnippets.length;
-        
+
         if (scopedSnippets.length > 0) {
           console.log(`📚 Injecting ${scopedSnippets.length} scoped learned snippets for ${currentScopeId.substring(0, 30)}...`);
-          console.log('Scoped snippets:', scopedSnippets);
-          
-          // Format as compact snippets (≤200 chars each)
-          const snippetLines = scopedSnippets.map((s, i) => 
-            `• ${s.originalQuestion.substring(0, 100)} → ${s.correctedResponse.substring(0, 100)}`
-          ).join('\n');
-          
+          const snippetLines = scopedSnippets
+            .map((s) => `• ${s.originalQuestion.substring(0, 100)} → ${s.correctedResponse.substring(0, 100)}`)
+            .join('\n');
+
           learnedPrompt = `\n\n<!-- LEARNED_SNIPPETS_START -->\nPrevious corrections to remember:\n${snippetLines}\n<!-- LEARNED_SNIPPETS_END -->`;
         } else {
           console.log(`📚 No scoped learned snippets yet for scope: ${currentScopeId.substring(0, 30)}...`);
         }
       } else {
-        // FALLBACK: Legacy agent-wide learning (if no scope set yet)
-        const conversationText = updatedConversation.map(m => m.text).join(' ');
-        const learnedResponses = getRelevantLearned(
-          selectedAgent.id,
-          conversationText,
-          3,
-          selectedNiche
-        );
-        
+        const conversationText = updatedConversation.map((m) => m.text).join(' ');
+        const learnedResponses = getRelevantLearned(selectedAgent.id, conversationText, 3, selectedNiche);
+
         learnedCount = learnedResponses.length;
         learnedPrompt = formatLearnedForPrompt(learnedResponses);
-        
+
         if (learnedResponses.length > 0) {
           console.log(`📚 Injecting ${learnedResponses.length} learned responses (legacy KB) for agent ${selectedAgent.id}`);
         } else {
@@ -682,36 +721,95 @@ const TrainingHub: React.FC = () => {
         }
       }
 
-      // Build enhanced system prompt with agent-specific corrections
       const enhancedSystemPrompt = systemPrompt + learnedPrompt;
 
-      const callResponse = await mcp.voiceAgentCall({
-        agentId: selectedAgent.id,
-        phoneNumber: '+10000000000',
-        context: { 
-          userMessage: testMessage,
-          conversationHistory: conversation.map((m) => ({
-            role: m.role === 'caller' ? 'user' : 'assistant',
-            content: m.text,
-          })),
-          systemPromptOverride: enhancedSystemPrompt,
+      const previewConversationText = updatedConversation.map((m) => m.text).join('\n');
+      const previewContextTokens = estimateTokens(previewConversationText);
+      const basePromptTokens = estimateTokens(systemPrompt || '');
+      const learnedTokens = estimateTokens(learnedPrompt);
+      const totalPromptTokens = basePromptTokens + learnedTokens;
+      const estimatedCallTokens = previewContextTokens + totalPromptTokens + 150;
+
+      const budgetCheck = storeApi.checkTokenBudget(selectedAgent.id, estimatedCallTokens);
+      if (!budgetCheck.allowed) {
+        setSyncing(false);
+        toast.error(
+          `Token budget exceeded for ${selectedAgent.name}. Remaining ${budgetCheck.remaining.toLocaleString()} tokens.`,
+          { duration: 5000 }
+        );
+        return;
+      }
+
+      const signature = createTurnSignature(
+        selectedAgent.id,
+        updatedConversation,
+        enhancedSystemPrompt,
+        currentScopeId
+      );
+
+      const cachedTurn = storeApi.getCachedTurn(selectedAgent.id, signature);
+      if (cachedTurn) {
+        const agentTs = Date.now();
+        const agentTurn: SimulatorTurn = {
+          id: `agent-${agentTs}-${Math.random().toString(36).slice(2, 6)}`,
+          role: 'agent',
+          text: cachedTurn.response,
+          ts: agentTs,
+        };
+
+        const finalConversation = [...updatedConversation, agentTurn];
+        setConversation(finalConversation);
+        setTestResult({ cached: true, response: cachedTurn.response });
+        setLastCallTokens(0);
+        storeApi.recordCacheHit(selectedAgent.id);
+        storeApi.recordInvocationMetrics(selectedAgent.id, {
+          tokens: 0,
+          costUsd: 0,
+          latencyMs: cachedTurn.latencyMs,
+          source: 'cache',
+          conversationId,
+        });
+        setSyncing(false);
+        toast.success('Served from cache');
+        setTestMessage('');
+
+        if (showEvaluation && evaluationMode === 'perMessage') {
+          await evaluateConversation(finalConversation);
+        }
+        return;
+      }
+
+      const callStart = performance.now();
+
+      const callResponse = await mcp.voiceAgentCall(
+        {
+          agentId: selectedAgent.id,
+          phoneNumber: '+10000000000',
+          context: {
+            userMessage: testMessage,
+            conversationHistory: conversation.map((m) => ({
+              role: m.role === 'caller' ? 'user' : 'assistant',
+              content: m.text,
+            })),
+            systemPromptOverride: enhancedSystemPrompt,
+          },
+          options: { textOnly: true },
         },
-        options: { textOnly: true }
-      }, { showToast: false });
+        { showToast: false }
+      );
 
       if (!callResponse.success || !callResponse.data) {
         throw new Error(callResponse.error || 'Call simulation failed');
       }
 
+      const latencyMs = performance.now() - callStart;
       const agentPayload: any = callResponse.data.data ?? callResponse.data;
-
       const agentText = (agentPayload?.transcript ?? agentPayload?.response ?? agentPayload?.message ?? '').trim();
 
       if (!agentText) {
         console.warn('⚠️  Agent returned empty response payload:', agentPayload);
       }
 
-      // Add agent response to conversation
       const agentTs = Date.now();
       const agentTurn: SimulatorTurn = {
         id: `agent-${agentTs}-${Math.random().toString(36).slice(2, 6)}`,
@@ -724,32 +822,42 @@ const TrainingHub: React.FC = () => {
       setConversation(finalConversation);
       setTestResult(agentPayload);
 
-      // Track tokens - estimate from conversation length
-      const conversationTextForTokens = finalConversation.map(m => m.text).join('\n');
+      const conversationTextForTokens = finalConversation.map((m) => m.text).join('\n');
       const contextTokens = estimateTokens(conversationTextForTokens);
-      const basePromptTokens = estimateTokens(systemPrompt || '');
-      const learnedTokens = estimateTokens(learnedPrompt);
-      const totalPromptTokens = basePromptTokens + learnedTokens;
       const callTokens = contextTokens + totalPromptTokens;
-      
+      const costUsd = (callTokens / 1000) * 0.00075;
+
       console.log('📊 Token Usage Breakdown:');
       console.log(`  • Conversation: ~${contextTokens} tokens (${conversationTextForTokens.length} chars)`);
       console.log(`  • Base Prompt: ~${basePromptTokens} tokens`);
       console.log(`  • Learned KB: ~${learnedTokens} tokens (${learnedCount} corrections)`);
       console.log(`  • Total Prompt: ~${totalPromptTokens} tokens`);
       console.log(`  • Total This Call: ~${callTokens} tokens`);
-      
+
       setLastCallTokens(callTokens);
-      setTotalTokens(prev => prev + callTokens);
-      
-      // Clear input
+      setTotalTokens((prev) => prev + callTokens);
+
+      storeApi.consumeTokenBudget(selectedAgent.id, callTokens);
+      storeApi.recordInvocationMetrics(selectedAgent.id, {
+        tokens: callTokens,
+        costUsd,
+        latencyMs,
+        source: 'live',
+        conversationId,
+      });
+      storeApi.cacheAgentTurn(selectedAgent.id, signature, {
+        response: agentTurn.text,
+        createdAt: Date.now(),
+        tokens: callTokens,
+        latencyMs,
+      });
+
       setTestMessage('');
-      
-      // Auto-evaluate if enabled
+
       if (showEvaluation && evaluationMode === 'perMessage') {
         await evaluateConversation(finalConversation);
       }
-      
+
       toast.success('Response generated');
     } catch (e: any) {
       console.error('Call simulator error:', e);

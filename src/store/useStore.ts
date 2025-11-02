@@ -1,20 +1,96 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { 
-  VoiceAgent, 
-  Workflow, 
-  PhoneNumber, 
-  CustomField, 
-  CustomValue, 
-  Integration, 
-  ComplianceSettings, 
+import {
+  VoiceAgent,
+  Workflow,
+  PhoneNumber,
+  CustomField,
+  CustomValue,
+  Integration,
+  ComplianceSettings,
   Template,
   AnalyticsSnapshot,
   AppState,
-  Notification
+  Notification,
 } from '../types';
+import type { Violation } from '../lib/evaluation/autoCorrector';
+
+interface AgentGovernanceState {
+  agentId: string;
+  confidenceThreshold: number;
+  lastConfidence: number | null;
+  lastEvaluationId?: string;
+  isGated: boolean;
+  gateReason?: string;
+  gatedAt?: string | null;
+  autoResumeAt?: string | null;
+  consecutiveLow: number;
+  updatedAt: string;
+}
+
+interface AgentTokenBudget {
+  agentId: string;
+  dailyCap: number;
+  usedTokens: number;
+  cacheHits: number;
+  resetAt: string;
+  updatedAt: string;
+}
+
+interface CachedTurn {
+  signature: string;
+  response: string;
+  createdAt: number;
+  tokens: number;
+  latencyMs: number;
+}
+
+interface ObservabilityEvent {
+  id: string;
+  timestamp: string;
+  tokens: number;
+  costUsd: number;
+  latencyMs: number;
+  source: 'live' | 'cache';
+  ruleViolations: number;
+  conversationId?: string;
+}
+
+interface ObservabilityViolation {
+  id: string;
+  type: Violation['type'];
+  severity: Violation['severity'];
+  message: string;
+  turnId?: string;
+  timestamp: string;
+  conversationId?: string;
+}
+
+interface ObservabilitySummary {
+  agentId: string;
+  totalTokens: number;
+  totalCostUsd: number;
+  invocations: number;
+  avgLatencyMs: number;
+  lastLatencyMs: number;
+  lastUpdated: string | null;
+  events: ObservabilityEvent[];
+  totalRuleViolations: number;
+  recentRuleViolations: ObservabilityViolation[];
+}
 
 interface GHLStore {
+  governanceDefaults: {
+    confidenceThreshold: number;
+    autoGateMinutes: number;
+    cacheTtlMs: number;
+    maxCacheEntries: number;
+  };
+  governanceState: Record<string, AgentGovernanceState>;
+  tokenBudgets: Record<string, AgentTokenBudget>;
+  observability: Record<string, ObservabilitySummary>;
+  turnCache: Record<string, CachedTurn[]>;
+
   // App State
   appState: AppState;
   
@@ -42,6 +118,29 @@ interface GHLStore {
   addNotification: (notification: Omit<Notification, 'id' | 'timestamp'>) => void;
   removeNotification: (id: string) => void;
   markNotificationRead: (id: string) => void;
+
+  // Governance & Observability
+  ensureAgentGovernance: (agentId: string) => AgentGovernanceState;
+  setConfidenceThreshold: (agentId: string, threshold: number) => void;
+  recordAgentEvaluation: (agentId: string, confidence: number, evaluationId: string, meta?: { conversationId?: string }) => AgentGovernanceState;
+  clearAgentGate: (agentId: string) => void;
+  checkAgentGate: (agentId: string) => { isGated: boolean; reason?: string; autoResumeAt?: string | null; threshold: number };
+
+  ensureTokenBudget: (agentId: string, dailyCap?: number) => AgentTokenBudget;
+  setTokenBudget: (agentId: string, dailyCap: number) => AgentTokenBudget;
+  checkTokenBudget: (agentId: string, estimatedTokens: number) => { allowed: boolean; remaining: number; budget: AgentTokenBudget };
+  consumeTokenBudget: (agentId: string, tokens: number) => AgentTokenBudget;
+  recordCacheHit: (agentId: string) => void;
+
+  recordInvocationMetrics: (
+    agentId: string,
+    metrics: { tokens: number; costUsd: number; latencyMs: number; source: 'live' | 'cache'; ruleViolations?: number; conversationId?: string }
+  ) => void;
+  recordRuleViolations: (agentId: string, conversationId: string, turnId: string, violations: Violation[]) => void;
+
+  getCachedTurn: (agentId: string, signature: string) => CachedTurn | null;
+  cacheAgentTurn: (agentId: string, signature: string, entry: Omit<CachedTurn, 'signature'>) => void;
+  clearAgentCache: (agentId: string) => void;
   
   // Voice Agents
   addVoiceAgent: (agent: VoiceAgent) => void;
@@ -104,9 +203,199 @@ interface GHLStore {
 
 export const useStore = create<GHLStore>()(
   persist(
-    (set, get) => ({
-      // Initial State
-      appState: {
+    (set, get) => {
+      const defaults = {
+        confidenceThreshold: 70,
+        autoGateMinutes: 30,
+        cacheTtlMs: 15 * 60 * 1000,
+        maxCacheEntries: 25,
+      };
+
+      const nowIso = () => new Date().toISOString();
+
+      const nextResetIso = () => {
+        const next = new Date();
+        next.setHours(24, 0, 0, 0);
+        return next.toISOString();
+      };
+
+      const ensureGovernance = (agentId: string): AgentGovernanceState => {
+        const state = get();
+        const existing = state.governanceState[agentId];
+        if (existing) {
+          if (typeof existing.confidenceThreshold !== 'number') {
+            const updated = {
+              ...existing,
+              confidenceThreshold: state.governanceDefaults?.confidenceThreshold ?? defaults.confidenceThreshold,
+              updatedAt: nowIso(),
+            };
+            set((current) => ({
+              governanceState: {
+                ...current.governanceState,
+                [agentId]: updated,
+              },
+            }));
+            return updated;
+          }
+          return existing;
+        }
+
+        const created: AgentGovernanceState = {
+          agentId,
+          confidenceThreshold: state.governanceDefaults?.confidenceThreshold ?? defaults.confidenceThreshold,
+          lastConfidence: null,
+          lastEvaluationId: undefined,
+          isGated: false,
+          gateReason: undefined,
+          gatedAt: null,
+          autoResumeAt: null,
+          consecutiveLow: 0,
+          updatedAt: nowIso(),
+        };
+
+        set((current) => ({
+          governanceState: {
+            ...current.governanceState,
+            [agentId]: created,
+          },
+        }));
+
+        return created;
+      };
+
+      const ensureBudget = (agentId: string, dailyCap?: number): AgentTokenBudget => {
+        const state = get();
+        const existing = state.tokenBudgets[agentId];
+        const cap = dailyCap ?? existing?.dailyCap ?? 20000;
+
+        const maybeReset = (budget: AgentTokenBudget): AgentTokenBudget => {
+          if (!budget.resetAt || Date.now() > Date.parse(budget.resetAt)) {
+            return {
+              ...budget,
+              usedTokens: 0,
+              cacheHits: 0,
+              resetAt: nextResetIso(),
+              updatedAt: nowIso(),
+            };
+          }
+          return budget;
+        };
+
+        if (existing) {
+          let updated = existing;
+          if (existing.dailyCap !== cap) {
+            updated = {
+              ...updated,
+              dailyCap: cap,
+              updatedAt: nowIso(),
+            };
+          }
+
+          const reset = maybeReset(updated);
+
+          if (
+            reset !== existing &&
+            (
+              reset.dailyCap !== existing.dailyCap ||
+              reset.usedTokens !== existing.usedTokens ||
+              reset.cacheHits !== existing.cacheHits ||
+              reset.resetAt !== existing.resetAt
+            )
+          ) {
+            set((current) => ({
+              tokenBudgets: {
+                ...current.tokenBudgets,
+                [agentId]: reset,
+              },
+            }));
+          }
+
+          return reset;
+        }
+
+        const created: AgentTokenBudget = {
+          agentId,
+          dailyCap: cap,
+          usedTokens: 0,
+          cacheHits: 0,
+          resetAt: nextResetIso(),
+          updatedAt: nowIso(),
+        };
+
+        set((current) => ({
+          tokenBudgets: {
+            ...current.tokenBudgets,
+            [agentId]: created,
+          },
+        }));
+
+        return created;
+      };
+
+      const ensureObservability = (agentId: string): ObservabilitySummary => {
+        const state = get();
+        const existing = state.observability[agentId];
+        if (existing) return existing;
+
+        const created: ObservabilitySummary = {
+          agentId,
+          totalTokens: 0,
+          totalCostUsd: 0,
+          invocations: 0,
+          avgLatencyMs: 0,
+          lastLatencyMs: 0,
+          lastUpdated: null,
+          events: [],
+          totalRuleViolations: 0,
+          recentRuleViolations: [],
+        };
+
+        set((current) => ({
+          observability: {
+            ...current.observability,
+            [agentId]: created,
+          },
+        }));
+
+        return created;
+      };
+
+      const getCacheEntries = (agentId: string): CachedTurn[] => {
+        const state = get();
+        const entries = state.turnCache[agentId] ?? [];
+        if (entries.length === 0) return [];
+        const ttl = state.governanceDefaults?.cacheTtlMs ?? defaults.cacheTtlMs;
+        const cutoff = Date.now() - ttl;
+        const fresh = entries.filter((entry) => entry.createdAt >= cutoff);
+        if (fresh.length !== entries.length) {
+          set((current) => ({
+            turnCache: {
+              ...current.turnCache,
+              [agentId]: fresh,
+            },
+          }));
+        }
+        return fresh;
+      };
+
+      const storeCacheEntries = (agentId: string, entries: CachedTurn[]) => {
+        set((current) => ({
+          turnCache: {
+            ...current.turnCache,
+            [agentId]: entries,
+          },
+        }));
+      };
+
+      return {
+        governanceDefaults: defaults,
+        governanceState: {},
+        tokenBudgets: {},
+        observability: {},
+        turnCache: {},
+
+        // Initial State
+        appState: {
         currentModule: 'voice-agents',
         darkMode: false,
         sidebarOpen: true,
@@ -349,7 +638,276 @@ export const useStore = create<GHLStore>()(
           )
         }
       })),
-      
+
+      // Governance & Observability
+      ensureAgentGovernance: (agentId) => ensureGovernance(agentId),
+
+      setConfidenceThreshold: (agentId, threshold) => {
+        const governance = ensureGovernance(agentId);
+        if (governance.confidenceThreshold === threshold) return;
+
+        const updated: AgentGovernanceState = {
+          ...governance,
+          confidenceThreshold: threshold,
+          updatedAt: nowIso(),
+        };
+
+        set((state) => ({
+          governanceState: {
+            ...state.governanceState,
+            [agentId]: updated,
+          },
+        }));
+      },
+
+      recordAgentEvaluation: (agentId, confidence, evaluationId, meta) => {
+        const governance = ensureGovernance(agentId);
+        const threshold = governance.confidenceThreshold ?? get().governanceDefaults?.confidenceThreshold ?? defaults.confidenceThreshold;
+        const now = nowIso();
+        let isGated = governance.isGated;
+        let gateReason = governance.gateReason;
+        let autoResumeAt = governance.autoResumeAt;
+        let gatedAt = governance.gatedAt;
+        let consecutiveLow = governance.consecutiveLow;
+
+        if (confidence < threshold) {
+          consecutiveLow += 1;
+          isGated = true;
+          gateReason = `Confidence ${confidence}% below ${threshold}% threshold`;
+          const resumeMs = (get().governanceDefaults?.autoGateMinutes ?? defaults.autoGateMinutes) * 60 * 1000;
+          autoResumeAt = new Date(Date.now() + resumeMs).toISOString();
+          gatedAt = now;
+        } else {
+          consecutiveLow = 0;
+          if (isGated && confidence >= threshold + 5) {
+            isGated = false;
+            gateReason = undefined;
+            autoResumeAt = null;
+            gatedAt = null;
+          }
+        }
+
+        const updated: AgentGovernanceState = {
+          ...governance,
+          lastConfidence: confidence,
+          lastEvaluationId: evaluationId,
+          isGated,
+          gateReason,
+          autoResumeAt,
+          gatedAt,
+          consecutiveLow,
+          updatedAt: now,
+        };
+
+        set((state) => ({
+          governanceState: {
+            ...state.governanceState,
+            [agentId]: updated,
+          },
+        }));
+
+        return updated;
+      },
+
+      clearAgentGate: (agentId) => {
+        const governance = ensureGovernance(agentId);
+        if (!governance.isGated && !governance.gateReason) return;
+
+        const updated: AgentGovernanceState = {
+          ...governance,
+          isGated: false,
+          gateReason: undefined,
+          autoResumeAt: null,
+          gatedAt: null,
+          consecutiveLow: 0,
+          updatedAt: nowIso(),
+        };
+
+        set((state) => ({
+          governanceState: {
+            ...state.governanceState,
+            [agentId]: updated,
+          },
+        }));
+      },
+
+      checkAgentGate: (agentId) => {
+        const governance = ensureGovernance(agentId);
+        if (governance.isGated && governance.autoResumeAt) {
+          const resumeAt = Date.parse(governance.autoResumeAt);
+          if (!Number.isNaN(resumeAt) && Date.now() > resumeAt) {
+            const updated: AgentGovernanceState = {
+              ...governance,
+              isGated: false,
+              gateReason: undefined,
+              autoResumeAt: null,
+              gatedAt: null,
+              consecutiveLow: 0,
+              updatedAt: nowIso(),
+            };
+
+            set((state) => ({
+              governanceState: {
+                ...state.governanceState,
+                [agentId]: updated,
+              },
+            }));
+
+            return { isGated: false, reason: undefined, autoResumeAt: null, threshold: updated.confidenceThreshold };
+          }
+        }
+
+        return {
+          isGated: governance.isGated,
+          reason: governance.gateReason,
+          autoResumeAt: governance.autoResumeAt ?? null,
+          threshold: governance.confidenceThreshold,
+        };
+      },
+
+      ensureTokenBudget: (agentId, dailyCap) => ensureBudget(agentId, dailyCap),
+
+      setTokenBudget: (agentId, dailyCap) => ensureBudget(agentId, dailyCap),
+
+      checkTokenBudget: (agentId, estimatedTokens) => {
+        const budget = ensureBudget(agentId);
+        const remaining = Math.max(0, budget.dailyCap - budget.usedTokens);
+        if (estimatedTokens > remaining) {
+          return { allowed: false, remaining, budget };
+        }
+        return { allowed: true, remaining: remaining - estimatedTokens, budget };
+      },
+
+      consumeTokenBudget: (agentId, tokens) => {
+        const budget = ensureBudget(agentId);
+        const updated: AgentTokenBudget = {
+          ...budget,
+          usedTokens: Math.max(0, budget.usedTokens + Math.max(0, tokens)),
+          updatedAt: nowIso(),
+        };
+
+        set((state) => ({
+          tokenBudgets: {
+            ...state.tokenBudgets,
+            [agentId]: updated,
+          },
+        }));
+
+        return updated;
+      },
+
+      recordCacheHit: (agentId) => {
+        const budget = ensureBudget(agentId);
+        const updated: AgentTokenBudget = {
+          ...budget,
+          cacheHits: budget.cacheHits + 1,
+          updatedAt: nowIso(),
+        };
+
+        set((state) => ({
+          tokenBudgets: {
+            ...state.tokenBudgets,
+            [agentId]: updated,
+          },
+        }));
+      },
+
+      recordInvocationMetrics: (agentId, metrics) => {
+        const summary = ensureObservability(agentId);
+        const now = nowIso();
+        const invocations = summary.invocations + 1;
+        const tokens = Math.max(0, metrics.tokens);
+        const costUsd = Math.max(0, metrics.costUsd);
+        const latencyMs = Math.max(0, metrics.latencyMs);
+        const avgLatency =
+          invocations === 0 ? 0 : ((summary.avgLatencyMs * summary.invocations) + latencyMs) / invocations;
+
+        const event: ObservabilityEvent = {
+          id: `obs-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          timestamp: now,
+          tokens,
+          costUsd,
+          latencyMs,
+          source: metrics.source,
+          ruleViolations: metrics.ruleViolations ?? 0,
+          conversationId: metrics.conversationId,
+        };
+
+        const events = [event, ...summary.events].slice(0, 25);
+
+        const updated: ObservabilitySummary = {
+          ...summary,
+          totalTokens: summary.totalTokens + tokens,
+          totalCostUsd: summary.totalCostUsd + costUsd,
+          invocations,
+          avgLatencyMs: avgLatency,
+          lastLatencyMs: latencyMs,
+          lastUpdated: now,
+          events,
+        };
+
+        set((state) => ({
+          observability: {
+            ...state.observability,
+            [agentId]: updated,
+          },
+        }));
+      },
+
+      recordRuleViolations: (agentId, conversationId, turnId, violations) => {
+        if (!violations || violations.length === 0) return;
+        const summary = ensureObservability(agentId);
+        const now = nowIso();
+        const entries: ObservabilityViolation[] = violations.map((violation) => ({
+          id: `${turnId}-${violation.type}-${Math.random().toString(36).slice(2, 6)}`,
+          type: violation.type,
+          severity: violation.severity,
+          message: violation.message,
+          turnId,
+          timestamp: now,
+          conversationId,
+        }));
+
+        const recent = [...entries, ...summary.recentRuleViolations].slice(0, 25);
+
+        const updated: ObservabilitySummary = {
+          ...summary,
+          totalRuleViolations: summary.totalRuleViolations + violations.length,
+          recentRuleViolations: recent,
+          lastUpdated: now,
+        };
+
+        set((state) => ({
+          observability: {
+            ...state.observability,
+            [agentId]: updated,
+          },
+        }));
+      },
+
+      getCachedTurn: (agentId, signature) => {
+        const entries = getCacheEntries(agentId);
+        return entries.find((entry) => entry.signature === signature) ?? null;
+      },
+
+      cacheAgentTurn: (agentId, signature, entry) => {
+        const entries = getCacheEntries(agentId).filter((cacheEntry) => cacheEntry.signature !== signature);
+        const newEntry: CachedTurn = {
+          signature,
+          response: entry.response,
+          createdAt: entry.createdAt,
+          tokens: entry.tokens,
+          latencyMs: entry.latencyMs,
+        };
+
+        const maxEntries = get().governanceDefaults?.maxCacheEntries ?? defaults.maxCacheEntries;
+        storeCacheEntries(agentId, [newEntry, ...entries].slice(0, maxEntries));
+      },
+
+      clearAgentCache: (agentId) => {
+        storeCacheEntries(agentId, []);
+      },
+
       // Voice Agents
       addVoiceAgent: (agent) => set((state) => ({
         voiceAgents: [...state.voiceAgents, agent]
@@ -699,7 +1257,12 @@ export const useStore = create<GHLStore>()(
         compliance: state.compliance,
         templates: state.templates,
         analytics: state.analytics,
-        darkMode: state.darkMode
+        darkMode: state.darkMode,
+        governanceDefaults: state.governanceDefaults,
+        governanceState: state.governanceState,
+        tokenBudgets: state.tokenBudgets,
+        observability: state.observability,
+        turnCache: state.turnCache,
       })
     }
   )
