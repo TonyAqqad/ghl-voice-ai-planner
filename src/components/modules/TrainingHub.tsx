@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { BookOpen, Save, Upload, RefreshCw, Database, Sparkles, CheckCircle, Link2, Copy, Edit2, X, Check, AlertTriangle, ThumbsUp, ThumbsDown, History } from 'lucide-react';
-import { useStore, SpecValidationResult } from '../../store/useStore';
+import { BookOpen, Save, Upload, RefreshCw, Database, Sparkles, CheckCircle, Link2, Copy, Edit2, X, Check, AlertTriangle, ThumbsUp, ThumbsDown, History, BarChart3, Award, Layers } from 'lucide-react';
+import { useStore } from '../../store/useStore';
 import { toast } from 'react-hot-toast';
 import { useMCP } from '../../hooks/useMCP';
 import Button from '../../components/ui/Button';
@@ -43,6 +43,7 @@ import {
   type Violation 
 } from '../../lib/evaluation/autoCorrector';
 import { lintSpec, formatLintIssues, type SpecLintIssue } from '../../lib/spec/specLinter';
+import { saveGoldenSample, listGoldenSamples, replayGoldenDataset, type GoldenSample, type ReplaySummary } from '../../lib/evaluation/goldenDataset';
 
 interface TrainingPayload {
   agentId: string;
@@ -57,6 +58,18 @@ const defaultQnA = [{ q: 'What are your hours?', a: 'We are open Monday–Friday
 const createConversationId = () => `conv-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 type SimulatorTurn = SessionConversationTurn;
+
+type StoreStateSnapshot = ReturnType<typeof useStore.getState>;
+type SpecValidationStatus = ReturnType<StoreStateSnapshot['validateSpecLock']>;
+type LocalTurnInsight = {
+  traceId: string;
+  tokens: { prompt: number; completion: number; total: number };
+  latencyMs: number;
+  rulesChecked: string[];
+  source: 'sandbox' | 'live';
+  model: string;
+  timestamp: string;
+};
 
 const createTurnSignature = (
   agentId: string,
@@ -115,7 +128,7 @@ const TrainingHub: React.FC = () => {
   // Spec drift and linting
   const [specLintIssues, setSpecLintIssues] = useState<SpecLintIssue[]>([]);
   const [showSpecLinter, setShowSpecLinter] = useState(false);
-  const [specValidation, setSpecValidation] = useState<SpecValidationResult | null>(null);
+  const [specValidation, setSpecValidation] = useState<SpecValidationStatus | null>(null);
   const [timelineExpanded, setTimelineExpanded] = useState(false);
 
   // New composer state
@@ -161,6 +174,17 @@ const TrainingHub: React.FC = () => {
   // Token tracking
   const [totalTokens, setTotalTokens] = useState(0);
   const [lastCallTokens, setLastCallTokens] = useState(0);
+
+  const [ignoreConfidenceGate, setIgnoreConfidenceGate] = useState(false);
+  const [turnViolations, setTurnViolations] = useState<Record<string, Violation[]>>({});
+  const [turnInsights, setTurnInsights] = useState<Record<string, LocalTurnInsight>>({});
+  const [goldenSamples, setGoldenSamples] = useState<GoldenSample[]>([]);
+  const [showGoldModal, setShowGoldModal] = useState(false);
+  const [goldTitle, setGoldTitle] = useState('');
+  const [goldNotes, setGoldNotes] = useState('');
+  const [replayResults, setReplayResults] = useState<ReplaySummary[] | null>(null);
+  const [replayRunning, setReplayRunning] = useState(false);
+  const [replayFetchedAt, setReplayFetchedAt] = useState<string | null>(null);
 
   const selectedAgent = useMemo(() => voiceAgents.find(a => a.id === selectedId), [voiceAgents, selectedId]);
   const agentSpecHistory = useMemo(

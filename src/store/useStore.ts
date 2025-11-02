@@ -27,6 +27,12 @@ interface AgentGovernanceState {
   gatedAt?: string | null;
   autoResumeAt?: string | null;
   consecutiveLow: number;
+  operatingMode: "full" | "qualification_only";
+  lastGateEvent?: {
+    reason: string;
+    confidence: number;
+    at: string;
+  };
   updatedAt: string;
 }
 
@@ -81,6 +87,24 @@ interface ObservabilitySummary {
   recentRuleViolations: ObservabilityViolation[];
 }
 
+interface TurnTrace {
+  traceId: string;
+  agentId: string;
+  conversationId: string;
+  turnId: string;
+  timestamp: string;
+  tokens: {
+    prompt: number;
+    completion: number;
+    total: number;
+  };
+  model: string;
+  latencyMs: number;
+  rulesChecked: string[];
+  source: 'sandbox' | 'live';
+  metadata?: Record<string, unknown>;
+}
+
 interface SpecHistoryEntry {
   id: string;
   agentId: string;
@@ -111,6 +135,7 @@ interface GHLStore {
   tokenBudgets: Record<string, AgentTokenBudget>;
   observability: Record<string, ObservabilitySummary>;
   turnCache: Record<string, CachedTurn[]>;
+  turnTraces: Record<string, TurnTrace[]>;
   specLocks: Record<string, SpecLock>;
   specHistory: SpecHistoryEntry[];
 
@@ -145,7 +170,7 @@ interface GHLStore {
   // Governance & Observability
   ensureAgentGovernance: (agentId: string) => AgentGovernanceState;
   setConfidenceThreshold: (agentId: string, threshold: number) => void;
-  recordAgentEvaluation: (agentId: string, confidence: number, evaluationId: string, meta?: { conversationId?: string }) => AgentGovernanceState;
+  recordAgentEvaluation: (agentId: string, confidence: number, evaluationId: string, meta?: { conversationId?: string; sandbox?: boolean }) => AgentGovernanceState;
   clearAgentGate: (agentId: string) => void;
   checkAgentGate: (agentId: string) => { isGated: boolean; reason?: string; autoResumeAt?: string | null; threshold: number };
 
@@ -160,6 +185,7 @@ interface GHLStore {
     metrics: { tokens: number; costUsd: number; latencyMs: number; source: 'live' | 'cache'; ruleViolations?: number; conversationId?: string }
   ) => void;
   recordRuleViolations: (agentId: string, conversationId: string, turnId: string, violations: Violation[]) => void;
+  recordTurnTrace: (agentId: string, trace: TurnTrace) => void;
 
   getCachedTurn: (agentId: string, signature: string) => CachedTurn | null;
   cacheAgentTurn: (agentId: string, signature: string, entry: Omit<CachedTurn, 'signature'>) => void;
@@ -250,6 +276,21 @@ export const useStore = create<GHLStore>()(
         const state = get();
         const existing = state.governanceState[agentId];
         if (existing) {
+        if (!existing.operatingMode) {
+          const normalized = {
+            ...existing,
+            operatingMode: existing.isGated ? 'qualification_only' : 'full',
+            lastGateEvent: existing.lastGateEvent,
+            updatedAt: nowIso(),
+          } as AgentGovernanceState;
+          set((current) => ({
+            governanceState: {
+              ...current.governanceState,
+              [agentId]: normalized,
+            },
+          }));
+          return normalized;
+        }
           if (typeof existing.confidenceThreshold !== 'number') {
             const updated = {
               ...existing,
@@ -277,6 +318,8 @@ export const useStore = create<GHLStore>()(
           gatedAt: null,
           autoResumeAt: null,
           consecutiveLow: 0,
+          operatingMode: 'full',
+          lastGateEvent: undefined,
           updatedAt: nowIso(),
         };
 
@@ -309,6 +352,21 @@ export const useStore = create<GHLStore>()(
         };
 
         if (existing) {
+        if (!existing.operatingMode) {
+          const normalized = {
+            ...existing,
+            operatingMode: existing.isGated ? 'qualification_only' : 'full',
+            lastGateEvent: existing.lastGateEvent,
+            updatedAt: nowIso(),
+          } as AgentGovernanceState;
+          set((current) => ({
+            governanceState: {
+              ...current.governanceState,
+              [agentId]: normalized,
+            },
+          }));
+          return normalized;
+        }
           let updated = existing;
           if (existing.dailyCap !== cap) {
             updated = {
@@ -472,6 +530,7 @@ export const useStore = create<GHLStore>()(
         tokenBudgets: {},
         observability: {},
         turnCache: {},
+        turnTraces: {},
         specLocks: {},
         specHistory: [],
 
@@ -745,11 +804,14 @@ export const useStore = create<GHLStore>()(
         const governance = ensureGovernance(agentId);
         const threshold = governance.confidenceThreshold ?? get().governanceDefaults?.confidenceThreshold ?? defaults.confidenceThreshold;
         const now = nowIso();
+        const sandboxRun = Boolean(meta?.sandbox);
         let isGated = governance.isGated;
         let gateReason = governance.gateReason;
         let autoResumeAt = governance.autoResumeAt;
         let gatedAt = governance.gatedAt;
         let consecutiveLow = governance.consecutiveLow;
+        let operatingMode = governance.operatingMode ?? 'full';
+        let lastGateEvent = governance.lastGateEvent;
 
         if (confidence < threshold) {
           consecutiveLow += 1;
@@ -758,6 +820,14 @@ export const useStore = create<GHLStore>()(
           const resumeMs = (get().governanceDefaults?.autoGateMinutes ?? defaults.autoGateMinutes) * 60 * 1000;
           autoResumeAt = new Date(Date.now() + resumeMs).toISOString();
           gatedAt = now;
+          if (!sandboxRun) {
+            operatingMode = 'qualification_only';
+            lastGateEvent = {
+              reason: gateReason,
+              confidence,
+              at: now,
+            };
+          }
         } else {
           consecutiveLow = 0;
           if (isGated && confidence >= threshold + 5) {
@@ -765,6 +835,10 @@ export const useStore = create<GHLStore>()(
             gateReason = undefined;
             autoResumeAt = null;
             gatedAt = null;
+            if (!sandboxRun) {
+              operatingMode = 'full';
+              lastGateEvent = undefined;
+            }
           }
         }
 
@@ -777,6 +851,8 @@ export const useStore = create<GHLStore>()(
           autoResumeAt,
           gatedAt,
           consecutiveLow,
+          operatingMode,
+          lastGateEvent,
           updatedAt: now,
         };
 
@@ -801,6 +877,8 @@ export const useStore = create<GHLStore>()(
           autoResumeAt: null,
           gatedAt: null,
           consecutiveLow: 0,
+          operatingMode: 'full',
+          lastGateEvent: undefined,
           updatedAt: nowIso(),
         };
 
@@ -1428,6 +1506,7 @@ export const useStore = create<GHLStore>()(
         tokenBudgets: state.tokenBudgets,
         observability: state.observability,
         turnCache: state.turnCache,
+        turnTraces: state.turnTraces,
         specLocks: state.specLocks,
         specHistory: state.specHistory,
       }),

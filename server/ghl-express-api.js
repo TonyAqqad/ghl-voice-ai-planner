@@ -2087,6 +2087,18 @@ app.post('/api/webhooks/agent', async (req, res) => {
     const { analyzeTurn } = require('./mcp/turnAnalyzer');
     app.post('/api/mcp/master/analyzeTurn', express.json(), analyzeTurn);
 
+    // ===== MASTER AI MANAGER - Orchestration Endpoints =====
+    const {
+      preTurnGuidance,
+      reviewResponse,
+      intervene,
+      learnPattern,
+    } = require('./mcp/masterAIManager');
+    app.post('/api/mcp/master/preTurnGuidance', express.json(), preTurnGuidance);
+    app.post('/api/mcp/master/reviewResponse', express.json(), reviewResponse);
+    app.post('/api/mcp/master/intervene', express.json(), intervene);
+    app.post('/api/mcp/master/learnPattern', express.json(), learnPattern);
+
     // ===== SERVE REACT APP =====
     const candidates = [
       distFromEnv && path.resolve(distFromEnv),
