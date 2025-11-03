@@ -439,6 +439,23 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Debug endpoint for environment diagnostics (REMOVE IN PRODUCTION)
+app.get('/api/debug/config', (req, res) => {
+  const fs = require('fs');
+  res.json({
+    envFileExists: fs.existsSync(path.join(__dirname, '.env')),
+    hasOpenAI: !!process.env.OPENAI_API_KEY,
+    openAIKeyPrefix: process.env.OPENAI_API_KEY?.slice(0, 7),
+    openAIKeyLength: process.env.OPENAI_API_KEY?.length,
+    hasContext7: !!process.env.CONTEXT7_API_KEY,
+    context7KeyPrefix: process.env.CONTEXT7_API_KEY?.slice(0, 7),
+    ghlEnabled: process.env.GHL_API_ENABLED,
+    nodeEnv: process.env.NODE_ENV,
+    mcpEnabled: mcpEnabled,
+    timestamp: new Date().toISOString()
+  });
+});
+
 // ============================================
 // 🛡️ LAYER 5: GHL API Protection Monitoring Dashboard
 // ============================================
@@ -2121,10 +2138,28 @@ app.post('/api/webhooks/agent', async (req, res) => {
     console.log(`   DATABASE_URL: ${process.env.DATABASE_URL ? '✅ Set' : '❌ Missing'}`);
     console.log(`   GHL_CLIENT_ID: ${process.env.GHL_CLIENT_ID ? '✅ Set' : '❌ Missing'}`);
     console.log(`   GHL_CLIENT_SECRET: ${process.env.GHL_CLIENT_SECRET ? '✅ Set' : '❌ Missing'}`);
+    console.log(`   OPENAI_API_KEY: ${process.env.OPENAI_API_KEY ? '✅ Set' : '❌ Missing'}`);
+    console.log(`   OPENAI_KEY_PREFIX: ${process.env.OPENAI_API_KEY?.slice(0, 7)}`);
+    console.log(`   CONTEXT7_API_KEY: ${process.env.CONTEXT7_API_KEY ? '✅ Set' : '❌ Missing'}`);
     
     // Initialize database tables
     await initializeDatabase();
     console.log('✅ Database connected and initialized');
+    
+    // Test OpenAI provider initialization
+    if (process.env.OPENAI_API_KEY) {
+      try {
+        const OpenAIProvider = require('./providers/openai');
+        const testProvider = new OpenAIProvider(process.env.OPENAI_API_KEY);
+        console.log('✅ OpenAI provider initialized successfully');
+      } catch (error) {
+        console.error('❌ OpenAI provider initialization failed:', error.message);
+        console.error('   This will cause Training Hub Master AI features to fail');
+      }
+    } else {
+      console.warn('⚠️  OPENAI_API_KEY not set - Master AI features will not work');
+      console.warn('   Training Hub guidance, review, and intervention endpoints will fail');
+    }
     
     // ---- Serve built frontend (Vite) in production ----
     const fs = require('fs');
