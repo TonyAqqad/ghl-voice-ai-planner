@@ -5,14 +5,25 @@
  * 1. Master composes Client/Voice agent prompt
  * 2. Client runs conversation
  * 3. Master evaluates after-call
+ * 4. Runtime context compilation with attestation (Step C verification)
  */
 
 import { MinimalContext, truncateContextValues, CONTACT_KEYS } from './fieldSet';
 import { ConversationTurn, SessionEvaluation } from '../evaluation/types';
 import { evaluateSession } from '../evaluation/sessionEvaluator';
-import { applyManualCorrections as storeManualCorrections, saveSession } from '../evaluation/masterStore';
+import { applyManualCorrections as storeManualCorrections, saveSession, getScopedLearnedSnippets } from '../evaluation/masterStore';
 import { PromptSpec } from '../spec/specTypes';
 import { extractSpecFromPrompt } from '../spec/specExtract';
+import { TurnAttestation, AppliedSnippet } from '../verification/attestationTypes';
+import { generateTurnAttestation, AssembledContext, AttestationConfig } from '../verification/attestationGenerator';
+import { attestationStore } from '../verification/attestationStore';
+
+const SPEC_BLOCK_REGEX = /<!--\s*SPEC_JSON_START\s*-->[\s\S]*?<!--\s*SPEC_JSON_END\s*-->/gi;
+
+function stripSpecFromPrompt(prompt: string): string {
+  if (!prompt) return '';
+  return prompt.replace(SPEC_BLOCK_REGEX, '').trim();
+}
 
 /**
  * Compose compact client prompt (≤600 tokens)
@@ -264,5 +275,327 @@ export function evaluateAfterCallWithSpec(
   saveSession(evaluation);
   
   return evaluation;
+}
+
+// ============================================================================
+// STEP C: RUNTIME CONTEXT COMPILATION WITH ATTESTATION
+// ============================================================================
+
+/**
+ * Request parameters for runtime context compilation
+ */
+export interface RuntimeContextRequest {
+  locationId: string;
+  agentId: string;
+  systemPrompt: string;
+  contextJson: string;
+  conversationSummary?: string;
+  lastTurns?: string[];
+  model?: string;
+  temperature?: number;
+  maxTokens?: number;
+  snippetsEnabled?: boolean;
+  guardEnabled?: boolean;
+  turnId: string;
+  snippetScopeHash?: string;
+}
+
+/**
+ * Compiled runtime context with attestation
+ * This is the core of Step C - proving what the model saw
+ */
+export interface CompiledRuntimeContext {
+  /** Final messages array to send to model */
+  messages: Array<{ role: string; content: string }>;
+  /** Attestation receipt proving what was assembled */
+  attestation: TurnAttestation;
+  /** Scope identifier */
+  scopeId: string;
+  /** Scope id used to resolve learned snippets (may differ when running ablations) */
+  snippetScopeId: string;
+  /** Prompt hash */
+  promptHash: string;
+  /** SPEC hash */
+  specHash: string;
+  /** Copy of effective prompt (for debugging) */
+  effectivePrompt: string;
+  /** System prompt applied to the model after spec stripping */
+  systemPromptForModel: string;
+}
+
+/**
+ * Compile runtime context with attestation
+ * 
+ * This is the CORE FUNCTION for Step C verification:
+ * 1. Generates scopeId from location + agent + prompt hash
+ * 2. Extracts SPEC and computes specHash
+ * 3. Loads learned snippets for this scope (if enabled)
+ * 4. Assembles messages in STRICT ORDER: SYSTEM → SPEC → SNIPPETS → CONTEXT → SUMMARY → LAST_TURNS
+ * 5. Generates attestation receipt proving what the model saw
+ * 6. Stores attestation for audit/debugging
+ * 
+ * SOLID Principles:
+ * - Single Responsibility: Assembles context and generates attestation
+ * - Open/Closed: Extensible via configuration parameters
+ * - Dependency Inversion: Depends on attestation abstractions
+ */
+export async function compileRuntimeContext(
+  request: RuntimeContextRequest
+): Promise<CompiledRuntimeContext> {
+  const {
+    locationId,
+    agentId,
+    systemPrompt,
+    contextJson,
+    conversationSummary = '',
+    lastTurns = [],
+    model = 'gpt-4o-mini',
+    temperature = 0.7,
+  maxTokens = 4096,
+  snippetsEnabled = true,
+  guardEnabled = true,
+  turnId,
+  snippetScopeHash,
+} = request;
+  
+  // Step 1: Generate prompt hash and runtime/snippet scope identifiers
+  const promptHash = await generatePromptHash(systemPrompt);
+  const runtimeScopeId = scopeId({ locationId, agentId, promptHash });
+  const snippetHash = snippetScopeHash || promptHash;
+  const snippetScopeId = scopeId({ locationId, agentId, promptHash: snippetHash });
+  const systemPromptForModel = stripSpecFromPrompt(systemPrompt);
+  
+  console.log(`📊 compileRuntimeContext`);
+  console.log(`   • runtime scopeId: ${runtimeScopeId}`);
+  console.log(`   • snippet scopeId: ${snippetScopeId}`);
+  console.log(`   • promptHash: ${promptHash}`);
+  
+  // Step 2: Extract SPEC and compute specHash
+  const spec = extractSpecFromPrompt(systemPrompt);
+  const specJson = JSON.stringify(spec);
+  const specHash = await generatePromptHash(specJson);
+  
+  console.log(`📊 specHash=${specHash}, niche=${spec.niche}`);
+  
+  // Step 3: Load learned snippets for this scope (if enabled)
+  const learnedSnippets: AppliedSnippet[] = [];
+  if (snippetsEnabled) {
+    const rawSnippets = getScopedLearnedSnippets(snippetScopeId, 5); // Max 5 snippets
+    
+    for (const raw of rawSnippets) {
+      learnedSnippets.push({
+        id: `snippet-${raw.appliedAt}`,
+        trigger: raw.originalQuestion,
+        content: raw.correctedResponse,
+        charLength: raw.correctedResponse.length,
+        appliedAt: raw.appliedAt,
+        source: 'voice-agent', // Default source
+      });
+    }
+    
+    console.log(`📊 Loaded ${learnedSnippets.length} learned snippets from ${snippetScopeId}`);
+  }
+  
+  // Step 4: Assemble messages in STRICT ORDER
+  // Order matters! Snippets MUST come before conversation to be effective
+  const messages: Array<{ role: string; content: string }> = [];
+  
+  // 4.1: SPEC (embedded JSON for grader alignment)
+  if (spec && specJson) {
+    messages.push({
+      role: 'system',
+      content: `<!-- SPEC FOR EVALUATION -->\n${specJson}`,
+    });
+  }
+  
+  // 4.2: LEARNED SNIPPETS (corrections and improvements)
+  if (learnedSnippets.length > 0) {
+    const snippetsContent = learnedSnippets
+      .map(
+        (s, idx) =>
+          `LEARNED CORRECTION ${idx + 1}:\nQ: ${s.trigger}\nA: ${s.content}`
+      )
+      .join('\n\n');
+    
+    messages.push({
+      role: 'system',
+      content: `<!-- LEARNED IMPROVEMENTS -->\n${snippetsContent}`,
+    });
+  }
+  
+  // 4.3: CONTEXT (business/location data)
+  if (contextJson) {
+    messages.push({
+      role: 'system',
+      content: `<!-- CONTEXT DATA -->\n${contextJson}`,
+    });
+  }
+  
+  // 4.4: CONVERSATION SUMMARY (if exists)
+  if (conversationSummary) {
+    messages.push({
+      role: 'system',
+      content: `<!-- CONVERSATION SUMMARY -->\n${conversationSummary}`,
+    });
+  }
+  
+  // 4.5: LAST N TURNS (recent conversation)
+  for (const turn of lastTurns) {
+    // Assume turn is formatted as "USER: ... \n ASSISTANT: ..."
+    // Parse and add as separate messages
+    if (turn.includes('USER:') && turn.includes('ASSISTANT:')) {
+      const parts = turn.split('ASSISTANT:');
+      const userPart = parts[0].replace('USER:', '').trim();
+      const assistantPart = parts[1].trim();
+      
+      messages.push({ role: 'user', content: userPart });
+      messages.push({ role: 'assistant', content: assistantPart });
+    } else {
+      // Fallback: treat as user message
+      messages.push({ role: 'user', content: turn });
+    }
+  }
+  
+  // Step 5: Generate attestation
+  const assembledContext: AssembledContext = {
+    systemPrompt: systemPromptForModel,
+    specJson,
+    snippets: learnedSnippets,
+    contextJson,
+    summary: conversationSummary,
+    lastTurns,
+  };
+  
+  const config: AttestationConfig = {
+    locationId,
+    agentId,
+    systemPrompt: systemPromptForModel,
+    model,
+    temperature,
+    maxTokens,
+    snippetsEnabled,
+    guardEnabled,
+  };
+  
+  const attestation = await generateTurnAttestation(
+    turnId,
+    config,
+    assembledContext
+  );
+  
+  // Step 6: Store attestation for audit
+  attestation.snippetScopeId = snippetScopeId;
+  attestationStore.saveTurnAttestation(attestation);
+  
+  console.log(`✅ Attestation generated and stored for turn ${turnId}`);
+  console.log(`   • Runtime scopeId: ${attestation.scopeId}`);
+  console.log(`   • Snippet scopeId: ${snippetScopeId}`);
+  console.log(`   • Snippets applied: ${attestation.snippetsApplied.length}`);
+  console.log(`   • Token budget: ${attestation.tokenBudget.total} / ${attestation.tokenBudget.maxTokens}`);
+  console.log(`   • Diagnostics: ${attestation.diagnostics.length}`);
+  
+  // Step 7: Build effective prompt (for copy/debug)
+  const effectivePrompt = [
+    `[SYSTEM]\n${systemPromptForModel}`,
+    ...messages.map((m) => `[${m.role.toUpperCase()}]\n${m.content}`),
+  ].join('\n\n---\n\n');
+  
+  return {
+    messages,
+    attestation,
+    scopeId: attestation.scopeId,
+    snippetScopeId,
+    promptHash,
+    specHash,
+    effectivePrompt,
+    systemPromptForModel,
+  };
+}
+
+/**
+ * Response guard - enforces SPEC rules even if model forgets
+ * 
+ * Guards:
+ * 1. One question per turn (max 2 sentences)
+ * 2. Block booking until all required fields collected & confirmed
+ * 3. No AI self-reference ("I'm an AI")
+ * 4. No backend mentions ("GHL", "CRM")
+ */
+export function guardResponse(
+  spec: PromptSpec,
+  collectedFields: Array<{ key: string; value: string; valid: boolean }>,
+  candidateResponse: string
+): {
+  approved: boolean;
+  reason?: string;
+  blockedViolation?: string;
+  modifiedResponse?: string;
+} {
+  // Guard 1: Check for AI self-reference (CRITICAL VIOLATION)
+  const aiSelfRefPattern = /(i'm an ai|i am an ai|as an ai|as a language model)/i;
+  if (aiSelfRefPattern.test(candidateResponse)) {
+    return {
+      approved: false,
+      reason: 'AI self-reference detected (critical violation)',
+      blockedViolation: 'AI_SELF_REFERENCE',
+    };
+  }
+  
+  // Guard 2: Check for backend mentions (CRITICAL VIOLATION)
+  const backendPattern = /(ghl|go high level|crm system|backend|database)/i;
+  if (backendPattern.test(candidateResponse)) {
+    return {
+      approved: false,
+      reason: 'Backend system mention detected (critical violation)',
+      blockedViolation: 'BACKEND_MENTION',
+    };
+  }
+  
+  // Guard 3: Check for booking attempt before fields collected
+  const bookingPattern = /(booked|scheduled|reserved|confirmed your appointment)/i;
+  const requiredFields = spec.required_fields || [];
+  const missingFields = requiredFields.filter(
+    (field) => !collectedFields.find((f) => f.key === field && f.valid)
+  );
+  
+  if (bookingPattern.test(candidateResponse) && missingFields.length > 0) {
+    return {
+      approved: false,
+      reason: `Attempted booking with missing fields: ${missingFields.join(', ')}`,
+      blockedViolation: 'EARLY_BOOKING',
+    };
+  }
+  
+  // Guard 4: Check for multiple questions (warn but allow)
+  const questionCount = (candidateResponse.match(/\?/g) || []).length;
+  if (questionCount > 1) {
+    // Trim to first question
+    const firstQuestionEnd = candidateResponse.indexOf('?') + 1;
+    const modifiedResponse = candidateResponse.substring(0, firstQuestionEnd);
+    
+    return {
+      approved: true,
+      reason: 'Multiple questions detected, trimmed to first question',
+      modifiedResponse,
+    };
+  }
+  
+  // Guard 5: Check response length (warn but allow)
+  const sentences = candidateResponse.split(/[.!?]/).filter((s) => s.trim().length > 0);
+  if (sentences.length > 2) {
+    // Trim to first 2 sentences
+    const firstTwoSentences = sentences.slice(0, 2).join('. ') + '.';
+    
+    return {
+      approved: true,
+      reason: 'Response too long, trimmed to 2 sentences',
+      modifiedResponse: firstTwoSentences,
+    };
+  }
+  
+  // All guards passed
+  return {
+    approved: true,
+  };
 }
 

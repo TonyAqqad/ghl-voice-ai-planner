@@ -19,27 +19,28 @@ import { useMasterAIManager } from '../../hooks/useMasterAIManager';
 import PreTurnGuidance from '../ui/PreTurnGuidance';
 import QualityGate from '../ui/QualityGate';
 import ObservabilityDashboard from '../ui/ObservabilityDashboard';
-import { 
-  evaluateAfterCall, 
-  evaluateAfterCallWithSpec, 
-  applyManualFix, 
-  estimateTokens, 
-  scopeId, 
-  generatePromptHash 
+import {
+  evaluateAfterCall,
+  evaluateAfterCallWithSpec,
+  applyManualFix,
+  estimateTokens,
+  scopeId,
+  generatePromptHash,
+  compileRuntimeContext,
+  guardResponse,
 } from '../../lib/prompt/masterOrchestrator';
-import { 
-  loadSessions, 
-  saveSession, 
+import {
+  loadSessions,
+  saveSession,
   applyManualCorrections,
   saveScopedSession,
   loadScopedSessions,
   applyScopedCorrections,
-  getScopedLearnedSnippets
 } from '../../lib/evaluation/masterStore';
-import { getRelevantLearned, formatLearnedForPrompt, getAgentKBStats } from '../../lib/evaluation/knowledgeBase';
 import { extractSpecFromPrompt, embedSpecInPrompt } from '../../lib/spec/specExtract';
 import { PromptSpec } from '../../lib/spec/specTypes';
-import { buildRequestContext, getTokenStats, formatTurnsForAPI } from '../../lib/runtime/memory';
+import { generateRollingSummary, getRecentTurns, truncateContext } from '../../lib/runtime/memory';
+import type { TurnAttestation } from '../../lib/verification/attestationTypes';
 import { 
   validateAgentResponse, 
   autoCorrectResponse, 
@@ -65,6 +66,11 @@ type SimulatorTurn = SessionConversationTurn;
 
 type StoreStateSnapshot = ReturnType<typeof useStore.getState>;
 type SpecValidationStatus = ReturnType<StoreStateSnapshot['validateSpecLock']>;
+type GuardEvent = {
+  status: 'ok' | 'modified' | 'blocked';
+  message?: string;
+  violation?: string;
+};
 const createTurnSignature = (
   agentId: string,
   turns: SimulatorTurn[],
@@ -97,6 +103,61 @@ const fallbackNiches = [
   { value: 'real_estate', label: 'Real Estate' },
   { value: 'saas_onboarding', label: 'SaaS Onboarding' }
 ];
+
+const inferCollectedFieldsFromConversation = (
+  turns: SimulatorTurn[]
+): Array<{ key: string; value: string; valid: boolean }> => {
+  const results: Record<string, { value: string; valid: boolean }> = {};
+  const phoneRegex = /\b(?:\+1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?){2}\d{4}\b/;
+  const emailRegex = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
+
+  for (const turn of turns) {
+    if (turn.role !== 'caller') continue;
+    const text = turn.text.trim();
+
+    if (!results.first_name) {
+      const nameMatch = text.match(/\bmy name is\s+([A-Za-z]+)/i);
+      if (nameMatch) {
+        results.first_name = { value: nameMatch[1], valid: true };
+      } else if (/^[A-Za-z]+$/.test(text) && text.length <= 20) {
+        results.first_name = { value: text, valid: true };
+      }
+    }
+
+    if (!results.last_name) {
+      const lastMatch = text.match(/\b(last name|surname)\s+(is|=)\s+([A-Za-z]+)/i);
+      if (lastMatch) {
+        results.last_name = { value: lastMatch[3], valid: true };
+      }
+    }
+
+    if (!results.unique_phone_number) {
+      const phoneMatch = text.match(phoneRegex);
+      if (phoneMatch) {
+        results.unique_phone_number = { value: phoneMatch[0], valid: true };
+      }
+    }
+
+    if (!results.email) {
+      const emailMatch = text.match(emailRegex);
+      if (emailMatch) {
+        results.email = { value: emailMatch[0], valid: true };
+      }
+    }
+
+    if (!results.class_date__time) {
+      if (/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today|next week|next|this)\b/i.test(text)) {
+        results.class_date__time = { value: text, valid: true };
+      }
+    }
+  }
+
+  return Object.entries(results).map(([key, value]) => ({
+    key,
+    value: value.value,
+    valid: value.valid,
+  }));
+};
 
 const TrainingHub: React.FC = () => {
   const { voiceAgents, updateVoiceAgent, specHistory, governanceState, clearAgentGate } = useStore((state) => ({
@@ -157,6 +218,11 @@ const TrainingHub: React.FC = () => {
   const [conversation, setConversation] = useState<SimulatorTurn[]>([]);
   const [turnAnalyses, setTurnAnalyses] = useState<Record<string, TurnAnalysis>>({});
   const [analyzingTurn, setAnalyzingTurn] = useState(false);
+  const [runtimeAttestation, setRuntimeAttestation] = useState<TurnAttestation | null>(null);
+  const [effectivePrompt, setEffectivePrompt] = useState<string>('');
+  const [useLearnedSnippets, setUseLearnedSnippets] = useState<boolean>(true);
+  const [snippetScopeHashOverride, setSnippetScopeHashOverride] = useState<string>('');
+  const [lastGuardEvent, setLastGuardEvent] = useState<GuardEvent | null>(null);
   const [evaluationMode, setEvaluationMode] = useState<'perMessage' | 'postCall'>('postCall');
   const [sessions, setSessions] = useState<SessionEvaluation[]>(() => loadSessions());
   const [latestSession, setLatestSession] = useState<SessionEvaluation | null>(
@@ -263,19 +329,22 @@ const TrainingHub: React.FC = () => {
 
   // Calculate real-time token usage stats
   const tokenStats = useMemo(() => {
-    if (conversation.length === 0) return null;
-    
-    // Get learned snippets for token calculation
-    let learnedSnippets = '';
-    if (currentScopeId) {
-      const snippets = getScopedLearnedSnippets(currentScopeId, 5);
-      if (snippets.length > 0) {
-        learnedSnippets = snippets.map(s => `${s.originalQuestion} → ${s.correctedResponse}`).join('\n');
-      }
-    }
-    
-    return getTokenStats(conversation, systemPrompt, learnedSnippets);
-  }, [conversation, systemPrompt, currentScopeId]);
+    if (!runtimeAttestation) return null;
+    const { tokenBudget } = runtimeAttestation;
+    const promptTokens = tokenBudget.systemPrompt + tokenBudget.spec;
+    const learnedTokens = tokenBudget.snippets;
+    const conversationTokens = tokenBudget.lastTurns;
+    const totalTokens = tokenBudget.total;
+    const costEstimate = (totalTokens / 1000) * 0.00075;
+
+    return {
+      conversationTokens,
+      promptTokens,
+      learnedTokens,
+      totalTokens,
+      costEstimate,
+    };
+  }, [runtimeAttestation]);
 
   const runSessionEvaluation = useCallback(() => {
     if (conversation.length === 0) return null;
@@ -970,48 +1039,49 @@ const TrainingHub: React.FC = () => {
         return;
       }
 
-      // Use scoped learned snippets if we have a currentScopeId, otherwise fallback to legacy KB
-      let learnedPrompt = '';
-      let learnedCount = 0;
+      const snippetHashForRun = useLearnedSnippets ? (snippetScopeHashOverride || '') : '';
+      const contextPayload = truncateContext({
+        sandbox: true,
+        locationId,
+        agentId: selectedAgent.id,
+        niche: selectedNiche,
+        conversationLength: updatedConversation.length,
+        lastCallerMessage: testMessage,
+        snippetScopeHash: snippetHashForRun || 'current',
+      });
+      const contextJson = JSON.stringify(contextPayload);
+      const conversationSummary = generateRollingSummary(updatedConversation);
+      const lastTurns = getRecentTurns(updatedConversation, 8).map(
+        (turn) => `${turn.role === 'caller' ? 'USER' : 'ASSISTANT'}: ${turn.text}`
+      );
 
-      if (currentScopeId) {
-        const scopedSnippets = getScopedLearnedSnippets(currentScopeId, 5);
-        learnedCount = scopedSnippets.length;
+      const compiled = await compileRuntimeContext({
+        locationId,
+        agentId: selectedAgent.id,
+        systemPrompt,
+        contextJson,
+        conversationSummary,
+        lastTurns,
+        model: 'gpt-4o-mini',
+        temperature: 0.7,
+        maxTokens: 4096,
+        snippetsEnabled: useLearnedSnippets,
+        guardEnabled: true,
+        turnId: callerTurn.id,
+        snippetScopeHash: useLearnedSnippets ? (snippetScopeHashOverride || undefined) : undefined,
+      });
 
-        if (scopedSnippets.length > 0) {
-          console.log(`📚 Injecting ${scopedSnippets.length} scoped learned snippets for ${currentScopeId.substring(0, 30)}...`);
-          const snippetLines = scopedSnippets
-            .map((s) => `• ${s.originalQuestion.substring(0, 100)} → ${s.correctedResponse.substring(0, 100)}`)
-            .join('\n');
+      setRuntimeAttestation(compiled.attestation);
+      setEffectivePrompt(compiled.effectivePrompt);
 
-          learnedPrompt = `\n\n<!-- LEARNED_SNIPPETS_START -->\nPrevious corrections to remember:\n${snippetLines}\n<!-- LEARNED_SNIPPETS_END -->`;
-        } else {
-          console.log(`📚 No scoped learned snippets yet for scope: ${currentScopeId.substring(0, 30)}...`);
-        }
-      } else {
-        const conversationText = updatedConversation.map((m) => m.text).join(' ');
-        const learnedResponses = getRelevantLearned(selectedAgent.id, conversationText, 3, selectedNiche);
+      const signature = createTurnSignature(
+        selectedAgent.id,
+        updatedConversation,
+        compiled.systemPromptForModel,
+        compiled.snippetScopeId
+      );
 
-        learnedCount = learnedResponses.length;
-        learnedPrompt = formatLearnedForPrompt(learnedResponses);
-
-        if (learnedResponses.length > 0) {
-          console.log(`📚 Injecting ${learnedResponses.length} learned responses (legacy KB) for agent ${selectedAgent.id}`);
-        } else {
-          const stats = getAgentKBStats(selectedAgent.id);
-          console.log(`📚 No relevant learned responses (agent has ${stats.totalCorrections} total corrections)`);
-        }
-      }
-
-      const enhancedSystemPrompt = systemPrompt + learnedPrompt;
-
-      const previewConversationText = updatedConversation.map((m) => m.text).join('\n');
-      const previewContextTokens = estimateTokens(previewConversationText);
-      const basePromptTokens = estimateTokens(systemPrompt || '');
-      const learnedTokens = estimateTokens(learnedPrompt);
-      const totalPromptTokens = basePromptTokens + learnedTokens;
-      const estimatedCallTokens = previewContextTokens + totalPromptTokens + 150;
-
+      const estimatedCallTokens = compiled.attestation.tokenBudget.total + 150;
       const budgetCheck = storeApi.checkTokenBudget(selectedAgent.id, estimatedCallTokens);
       if (!budgetCheck.allowed) {
         setSyncing(false);
@@ -1021,13 +1091,6 @@ const TrainingHub: React.FC = () => {
         );
         return;
       }
-
-      const signature = createTurnSignature(
-        selectedAgent.id,
-        updatedConversation,
-        enhancedSystemPrompt,
-        currentScopeId
-      );
 
       const cachedTurn = storeApi.getCachedTurn(selectedAgent.id, signature);
       if (cachedTurn) {
@@ -1058,15 +1121,22 @@ const TrainingHub: React.FC = () => {
           turnId: agentTurn.id,
           timestamp: new Date(agentTurn.ts).toISOString(),
           tokens: {
-            prompt: totalPromptTokens,
+            prompt: compiled.attestation.tokenBudget.total,
             completion: 0,
-            total: totalPromptTokens,
+            total: compiled.attestation.tokenBudget.total,
           },
           model: 'cache-hit',
           latencyMs: cachedTurn.latencyMs,
           rulesChecked: ['cache-hit'],
           source: 'sandbox',
+          metadata: {
+            attestation: compiled.attestation,
+            cacheHit: true,
+          },
         });
+        setRuntimeAttestation((prev) =>
+          prev ? { ...prev, model: 'cache-hit' } : compiled.attestation
+        );
         setSyncing(false);
         toast.success('Served from cache');
         setTestMessage('');
@@ -1102,11 +1172,8 @@ const TrainingHub: React.FC = () => {
           phoneNumber: '+10000000000',
           context: {
             userMessage: testMessage,
-            conversationHistory: conversation.map((m) => ({
-              role: m.role === 'caller' ? 'user' : 'assistant',
-              content: m.text,
-            })),
-            systemPromptOverride: enhancedSystemPrompt,
+            conversationHistory: compiled.messages,
+            systemPromptOverride: compiled.systemPromptForModel || 'You are a helpful voice assistant that follows the provided business rules.',
           },
           options: { textOnly: true },
         },
@@ -1127,6 +1194,39 @@ const TrainingHub: React.FC = () => {
 
       const agentTs = Date.now();
       let agentResponseText = agentText || 'No response';
+
+      let guardStatus: GuardEvent = { status: 'ok' };
+      try {
+        const guardFields = inferCollectedFieldsFromConversation(updatedConversation);
+        const guardOutcome = guardResponse(runtimeSpec, guardFields, agentResponseText);
+
+        if (!guardOutcome.approved) {
+          guardStatus = {
+            status: guardOutcome.modifiedResponse ? 'modified' : 'blocked',
+            message: guardOutcome.reason,
+            violation: guardOutcome.blockedViolation || undefined,
+          };
+
+          if (guardOutcome.modifiedResponse) {
+            agentResponseText = guardOutcome.modifiedResponse;
+            toast('Runtime guard adjusted the response', { icon: '🛡️', duration: 2500 });
+          } else {
+            agentResponseText = 'Thanks! Before we continue, I just need to confirm a couple more details first.';
+            toast.error(guardOutcome.reason || 'Runtime guard blocked this response', { icon: '🛡️' });
+          }
+        } else if (guardOutcome.modifiedResponse) {
+          guardStatus = {
+            status: 'modified',
+            message: guardOutcome.reason,
+            violation: guardOutcome.blockedViolation || undefined,
+          };
+          agentResponseText = guardOutcome.modifiedResponse;
+          toast('Runtime guard trimmed the response', { icon: '🛡️', duration: 2000 });
+        }
+      } catch (guardError) {
+        console.warn('Runtime guard check failed:', guardError);
+      }
+      setLastGuardEvent(guardStatus);
 
       // 🛡️ Master AI: Quality Gate Review (if enabled)
       if (enableMasterAI && enableQualityGates) {
@@ -1179,16 +1279,14 @@ const TrainingHub: React.FC = () => {
       setConversation(finalConversation);
       setTestResult(agentPayload);
 
-      const conversationTextForTokens = finalConversation.map((m) => m.text).join('\n');
-      const contextTokens = estimateTokens(conversationTextForTokens);
-      const callTokens = contextTokens + totalPromptTokens;
+      const promptTokenEstimate = compiled.attestation.tokenBudget.total;
+      const completionTokensEstimate = estimateTokens(agentResponseText);
+      const callTokens = promptTokenEstimate + completionTokensEstimate;
       const costUsd = (callTokens / 1000) * 0.00075;
 
       console.log('📊 Token Usage Breakdown:');
-      console.log(`  • Conversation: ~${contextTokens} tokens (${conversationTextForTokens.length} chars)`);
-      console.log(`  • Base Prompt: ~${basePromptTokens} tokens`);
-      console.log(`  • Learned KB: ~${learnedTokens} tokens (${learnedCount} corrections)`);
-      console.log(`  • Total Prompt: ~${totalPromptTokens} tokens`);
+      console.log(`  • Prompt Context: ~${promptTokenEstimate} tokens`);
+      console.log(`  • Completion (est): ~${completionTokensEstimate} tokens`);
       console.log(`  • Total This Call: ~${callTokens} tokens`);
 
       setLastCallTokens(callTokens);
@@ -1210,7 +1308,6 @@ const TrainingHub: React.FC = () => {
         if (enableQualityGates) rulesChecked.push('quality-gate');
         if (enablePreTurnGuidance) rulesChecked.push('pre-turn-guidance');
       }
-      const completionTokens = Math.max(callTokens - totalPromptTokens, 0);
       storeApi.recordTurnTrace(selectedAgent.id, {
         traceId: `${conversationId}-${agentTurn.id}`,
         agentId: selectedAgent.id,
@@ -1218,14 +1315,18 @@ const TrainingHub: React.FC = () => {
         turnId: agentTurn.id,
         timestamp: new Date(agentTurn.ts).toISOString(),
         tokens: {
-          prompt: totalPromptTokens,
-          completion: completionTokens,
+          prompt: promptTokenEstimate,
+          completion: completionTokensEstimate,
           total: callTokens,
         },
         model: agentPayload?.model ?? 'sandbox-sim',
         latencyMs,
         rulesChecked,
         source: 'sandbox',
+        metadata: {
+          attestation: compiled.attestation,
+          guard: guardStatus,
+        },
       });
       storeApi.cacheAgentTurn(selectedAgent.id, signature, {
         response: agentTurn.text,
@@ -1233,6 +1334,10 @@ const TrainingHub: React.FC = () => {
         tokens: callTokens,
         latencyMs,
       });
+
+      setRuntimeAttestation((prev) =>
+        prev ? { ...prev, model: agentPayload?.model ?? prev.model } : compiled.attestation
+      );
 
       setTestMessage('');
 
@@ -1248,7 +1353,7 @@ const TrainingHub: React.FC = () => {
           conversation: finalConversation.map(turn => ({ role: turn.role, text: turn.text })),
           lastAgentResponse: agentTurn.text,
           promptSpec: runtimeSpec,
-          systemPrompt: enhancedSystemPrompt,
+          systemPrompt: compiled.systemPromptForModel,
           niche: selectedNiche,
         });
         
@@ -1440,6 +1545,9 @@ const TrainingHub: React.FC = () => {
         
         // Reset conversation after successful save
         setConversation([]);
+        setRuntimeAttestation(null);
+        setEffectivePrompt('');
+        setLastGuardEvent(null);
         setMessageFeedback({});
         setConversationId(createConversationId());
         setHasEvaluatedSession(false);
@@ -1470,6 +1578,9 @@ const TrainingHub: React.FC = () => {
     }
 
     setConversation([]);
+    setRuntimeAttestation(null);
+    setEffectivePrompt('');
+    setLastGuardEvent(null);
     setMessageFeedback({});
     setConversationId(createConversationId());
     setHasEvaluatedSession(false);
@@ -2010,57 +2121,63 @@ const TrainingHub: React.FC = () => {
                       Last replay {replayFetchedAt ? formatRelative(replayFetchedAt) : 'just now'}
                     </span>
                     <span>
-                      {replayResults.filter((r) => r.status === 'pass').length}/{replayResults.length} passing
+                      {replayResults.filter((r) => r.deltas.confidence >= 0 && r.deltas.missingFields.length === 0).length}/{replayResults.length} passing
                     </span>
                   </div>
                   <div className="space-y-2">
-                    {replayResults.map((result) => (
-                      <div
-                        key={result.sampleId}
-                        className="flex flex-col gap-1 rounded border border-border/40 p-2 text-xs bg-muted/10"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-medium text-foreground">{result.title}</span>
-                          <span
-                            className={`chip ${
-                              result.status === 'pass'
-                                ? 'ok'
-                                : result.status === 'warn'
-                                ? 'warn'
-                                : 'err'
-                            }`}
-                          >
-                            {result.status === 'pass'
-                              ? 'Pass'
-                              : result.status === 'warn'
-                              ? 'Warn'
-                              : 'Fail'}
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
-                          <span>
-                            Δ {result.confidenceDelta >= 0 ? '+' : ''}
-                            {result.confidenceDelta}%
-                          </span>
-                          {result.missingFields.length > 0 && (
-                            <span className="text-amber-500">
-                              Missing: {result.missingFields.join(', ')}
+                    {replayResults.map((result) => {
+                      const isPass = result.deltas.confidence >= 0 && result.deltas.missingFields.length === 0 && result.deltas.degradedRubrics.length === 0;
+                      const isWarn = result.deltas.confidence >= 0 && (result.deltas.missingFields.length > 0 || result.deltas.degradedRubrics.length > 0);
+                      const isFail = result.deltas.confidence < 0;
+                      
+                      return (
+                        <div
+                          key={result.sample.id}
+                          className="flex flex-col gap-1 rounded border border-border/40 p-2 text-xs bg-muted/10"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-medium text-foreground">{result.sample.title}</span>
+                            <span
+                              className={`chip ${
+                                isPass
+                                  ? 'ok'
+                                  : isWarn
+                                  ? 'warn'
+                                  : 'err'
+                              }`}
+                            >
+                              {isPass
+                                ? 'Pass'
+                                : isWarn
+                                ? 'Warn'
+                                : 'Fail'}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
+                            <span>
+                              Δ {result.deltas.confidence >= 0 ? '+' : ''}
+                              {result.deltas.confidence}%
+                            </span>
+                            {result.deltas.missingFields.length > 0 && (
+                              <span className="text-amber-500">
+                                Missing: {result.deltas.missingFields.join(', ')}
+                              </span>
+                            )}
+                            {result.deltas.degradedRubrics.length > 0 && (
+                              <span className="text-amber-500">
+                                Rubric drift:{' '}
+                                {result.deltas.degradedRubrics.join(', ')}
+                              </span>
+                            )}
+                          </div>
+                          {result.evaluation.collectedFields.some((f: any) => !result.sample.expected.collectedFields.some((ef: any) => ef.key === f.key)) && (
+                            <span className="text-emerald-500">
+                              New: {result.evaluation.collectedFields.filter((f: any) => !result.sample.expected.collectedFields.some((ef: any) => ef.key === f.key)).map((f: any) => f.key).join(', ')}
                             </span>
                           )}
-                          {result.rubricChanges.length > 0 && (
-                            <span className="text-amber-500">
-                              Rubric drift:{' '}
-                              {result.rubricChanges.map((change) => change.key).join(', ')}
-                            </span>
-                          )}
                         </div>
-                        {result.newFields.length > 0 && (
-                          <span className="text-emerald-500">
-                            New: {result.newFields.join(', ')}
-                          </span>
-                        )}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -2529,6 +2646,145 @@ const TrainingHub: React.FC = () => {
               />
             </div>
           )}
+
+          {/* Runtime Attestation & Controls */}
+          <div className="mb-4 p-4 rounded-lg border border-border bg-muted/30">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Runtime Context</p>
+                <p className="text-sm font-semibold text-foreground">
+                  {runtimeAttestation ? runtimeAttestation.scopeId : 'No sandbox run yet'}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (!effectivePrompt) return;
+                    navigator.clipboard.writeText(effectivePrompt);
+                    toast.success('Effective prompt copied');
+                  }}
+                  disabled={!effectivePrompt}
+                >
+                  <Copy className="w-3 h-3 mr-1" />
+                  Copy Effective Prompt
+                </Button>
+              </div>
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={useLearnedSnippets}
+                  onChange={(e) => setUseLearnedSnippets(e.target.checked)}
+                  className="rounded"
+                />
+                <span className="text-sm text-foreground">Use Learned Snippets</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Prompt Hash</span>
+                <select
+                  value={snippetScopeHashOverride}
+                  onChange={(e) => setSnippetScopeHashOverride(e.target.value)}
+                  className="px-2 py-1 rounded border border-border bg-input text-sm"
+                >
+                  <option value="">{promptHash ? `Current (${promptHash})` : 'Current draft'}</option>
+                  {agentSpecHistory.map((entry) => (
+                    <option key={entry.id} value={entry.promptHash}>
+                      {entry.promptHash} • {formatRelative(entry.savedAt)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {runtimeAttestation ? (
+              <div className="mt-4 space-y-3 text-xs text-muted-foreground">
+                <div className="grid gap-2 md:grid-cols-2">
+                  <div>
+                    Scope:&nbsp;
+                    <span className="text-foreground">{runtimeAttestation.scopeId}</span>
+                  </div>
+                  <div>
+                    Snippet Scope:&nbsp;
+                    <span className="text-foreground">
+                      {runtimeAttestation.snippetScopeId || runtimeAttestation.scopeId}
+                    </span>
+                  </div>
+                  <div>
+                    Prompt Hash:&nbsp;
+                    <span className="text-foreground">{runtimeAttestation.promptHash}</span>
+                  </div>
+                  <div>
+                    Spec Hash:&nbsp;
+                    <span className="text-foreground">{runtimeAttestation.specHash}</span>
+                  </div>
+                </div>
+
+                <div className="grid gap-2 md:grid-cols-2">
+                  <div>
+                    Prompt Tokens:&nbsp;
+                    <span className="text-foreground">
+                      {runtimeAttestation.tokenBudget.systemPrompt + runtimeAttestation.tokenBudget.spec}
+                    </span>
+                  </div>
+                  <div>
+                    Learned Tokens:&nbsp;
+                    <span className="text-foreground">{runtimeAttestation.tokenBudget.snippets}</span>
+                  </div>
+                  <div>
+                    Diagnostics:&nbsp;
+                    <span className="text-foreground">{runtimeAttestation.diagnostics.length}</span>
+                  </div>
+                  <div>
+                    Snippets Applied:&nbsp;
+                    <span className="text-foreground">{runtimeAttestation.snippetsApplied.length}</span>
+                  </div>
+                </div>
+
+                {lastGuardEvent && (
+                  <div>
+                    Guard:&nbsp;
+                    <span
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded ${
+                        lastGuardEvent.status === 'blocked'
+                          ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-200'
+                          : lastGuardEvent.status === 'modified'
+                          ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200'
+                          : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200'
+                      }`}
+                    >
+                      {lastGuardEvent.status.toUpperCase()}
+                      {lastGuardEvent.message && <span className="text-[11px]">{lastGuardEvent.message}</span>}
+                    </span>
+                  </div>
+                )}
+
+                {runtimeAttestation.snippetsApplied.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground">Applied Snippets</p>
+                    <ul className="mt-1 space-y-1">
+                      {runtimeAttestation.snippetsApplied.map((snippet) => (
+                        <li
+                          key={snippet.id}
+                          className="rounded bg-muted/40 px-2 py-1 text-foreground"
+                        >
+                          <span className="font-medium">Q:</span> {snippet.trigger}{' '}
+                          <span className="font-medium">→</span> {snippet.content}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="mt-3 text-xs text-muted-foreground">
+                Run the sandbox simulator to generate an attestation receipt.
+              </p>
+            )}
+          </div>
 
           {/* Quality Gate Review */}
           {enableMasterAI && enableQualityGates && masterAI.qualityReview && !masterAI.qualityReview.approved && (
