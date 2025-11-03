@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
-import { BookOpen, Save, Upload, RefreshCw, Database, Sparkles, CheckCircle, Link2, Copy, Edit2, X, Check, AlertTriangle, ThumbsUp, ThumbsDown, History, BarChart3, Award, Layers, Shield } from 'lucide-react';
+import { BookOpen, Save, Upload, RefreshCw, Database, Sparkles, CheckCircle, Link2, Copy, Edit2, X, Check, AlertTriangle, ThumbsUp, ThumbsDown, History, BarChart3, Award, Layers, Shield, ChevronDown, FileText } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { toast } from 'react-hot-toast';
 import { useMCP } from '../../hooks/useMCP';
@@ -16,6 +16,7 @@ import {
 } from '../../lib/evaluation/types';
 import { analyzeTurnWithAPI, TurnAnalysis } from '../../lib/evaluation/turnAnalyzer';
 import { useMasterAIManager } from '../../hooks/useMasterAIManager';
+import type { QualityReview } from '../../hooks/useMasterAIManager';
 import { useHaptics } from '../../hooks/useHaptics';
 import PreTurnGuidance from '../ui/PreTurnGuidance';
 import QualityGate from '../ui/QualityGate';
@@ -72,6 +73,27 @@ type GuardEvent = {
   message?: string;
   violation?: string;
 };
+
+interface CallReviewResult {
+  approved: boolean;
+  score: number;
+  confidenceScore: number;
+  summary: string;
+  issues: string[];
+  suggestions: string[];
+  blockedReasons: string[];
+  keyMoments: string[];
+  handoffRecommended: boolean;
+  suggestedTranscript: string | null;
+}
+
+interface QualityReviewSnapshot {
+  review: QualityReview;
+  originalResponse: string;
+  finalResponse: string;
+  suggestionApplied: boolean;
+  correctedManually?: boolean;
+}
 const createTurnSignature = (
   agentId: string,
   turns: SimulatorTurn[],
@@ -187,6 +209,12 @@ const TrainingHub: React.FC = () => {
     [voiceAgents, selectedId]
   );
   const selectedAgentId = selectedAgent?.id ?? '';
+  useEffect(() => {
+    setCallReview(null);
+    setCallReviewError(null);
+    setCallReviewLoading(false);
+    setQualityReviewHistory({});
+  }, [selectedAgentId]);
   
   // Spec drift and linting
   const [specLintIssues, setSpecLintIssues] = useState<SpecLintIssue[]>([]);
@@ -203,12 +231,33 @@ const TrainingHub: React.FC = () => {
   const previousQualityBlocked = useRef<boolean | null>(null);
   const previousConfidenceGate = useRef<boolean | null>(null);
   const previousGateState = useRef<boolean | null>(null);
+  const pendingAgentOverrideRef = useRef<string | null>(null);
+  const [callReview, setCallReview] = useState<CallReviewResult | null>(null);
+  const [callReviewLoading, setCallReviewLoading] = useState(false);
+  const [callReviewError, setCallReviewError] = useState<string | null>(null);
+  const [qualityReviewHistory, setQualityReviewHistory] = useState<Record<string, QualityReviewSnapshot>>({});
 
   // Master AI Manager state
   const [enableMasterAI, setEnableMasterAI] = useState(false);
   const [enablePreTurnGuidance, setEnablePreTurnGuidance] = useState(false);
   const [enableQualityGates, setEnableQualityGates] = useState(false);
   const [showObservability, setShowObservability] = useState(false);
+  
+  // UI Collapsible Sections state
+  const [expandedSections, setExpandedSections] = useState({
+    preTurnGuidance: false,
+    qualityGate: false,
+    transcript: false,
+    insightsDetails: false,
+    observability: false,
+  });
+  
+  // Diagnostic state for Master AI sync
+  const [guidanceMismatch, setGuidanceMismatch] = useState(false);
+  
+  const toggleSection = useCallback((section: keyof typeof expandedSections) => {
+    setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
+  }, []);
 
   const mcp = useMCP();
   
@@ -300,21 +349,35 @@ const TrainingHub: React.FC = () => {
       ? 'Manual review required'
       : 'Sandbox ready';
   const gateConfidence = gateSnapshot?.lastConfidence;
-  const statusTokenSummary = tokenStats
-    ? `~${tokenStats.totalTokens.toLocaleString()}t`
-    : observabilitySummary
-    ? `~${Math.round(observabilitySummary.totalTokens).toLocaleString()}t`
-    : '—';
-  const statusCostSummary = observabilitySummary
-    ? `$${observabilitySummary.totalCost.toFixed(3)}`
-    : tokenStats
-    ? `$${tokenStats.costEstimate.toFixed(3)}`
-    : '—';
-  const statusLatencySummary =
-    observabilitySummary && observabilitySummary.avgLatency > 0
-      ? `${Math.round(observabilitySummary.avgLatency)}ms`
-      : '—';
   
+  // Calculate real-time token usage stats (moved here to avoid "used before initialization" error)
+  const tokenStats = useMemo(() => {
+    if (!runtimeAttestation) return null;
+    const { tokenBudget } = runtimeAttestation;
+    const promptTokens = tokenBudget.systemPrompt + tokenBudget.spec;
+    const learnedTokens = tokenBudget.snippets;
+    const conversationTokens = tokenBudget.lastTurns;
+    const totalTokens = tokenBudget.total;
+    const costEstimate = (totalTokens / 1000) * 0.00075;
+
+    return {
+      promptTokens,
+      learnedTokens,
+      conversationTokens,
+      totalTokens,
+      costEstimate,
+    };
+  }, [runtimeAttestation]);
+
+  useEffect(() => {
+    if (conversation.length === 0) {
+      setCallReview(null);
+      setCallReviewError(null);
+      setCallReviewLoading(false);
+      setQualityReviewHistory({});
+    }
+  }, [conversation.length]);
+
   // Master AI Manager Hook (initialized after selectedAgent is defined)
   const masterAI = useMasterAIManager({
     agentId: selectedId,
@@ -356,25 +419,6 @@ const TrainingHub: React.FC = () => {
       savedAt: new Date(endedAt || Date.now()).toISOString(),
     };
   }, [latestSession, selectedAgent]);
-
-  // Calculate real-time token usage stats
-  const tokenStats = useMemo(() => {
-    if (!runtimeAttestation) return null;
-    const { tokenBudget } = runtimeAttestation;
-    const promptTokens = tokenBudget.systemPrompt + tokenBudget.spec;
-    const learnedTokens = tokenBudget.snippets;
-    const conversationTokens = tokenBudget.lastTurns;
-    const totalTokens = tokenBudget.total;
-    const costEstimate = (totalTokens / 1000) * 0.00075;
-
-    return {
-      conversationTokens,
-      promptTokens,
-      learnedTokens,
-      totalTokens,
-      costEstimate,
-    };
-  }, [runtimeAttestation]);
   const observabilitySummary = useMemo(() => {
     if (!enableMasterAI || !showObservability || !masterAI.getObservabilitySummary) {
       return null;
@@ -386,6 +430,22 @@ const TrainingHub: React.FC = () => {
       return null;
     }
   }, [enableMasterAI, masterAI, showObservability]);
+  
+  // Status summary calculations (moved here after observabilitySummary is defined)
+  const statusTokenSummary = tokenStats
+    ? `~${tokenStats.totalTokens.toLocaleString()}t`
+    : observabilitySummary
+    ? `~${Math.round(observabilitySummary.totalTokens).toLocaleString()}t`
+    : '—';
+  const statusCostSummary = observabilitySummary
+    ? `$${observabilitySummary.totalCost.toFixed(3)}`
+    : tokenStats
+    ? `$${tokenStats.costEstimate.toFixed(3)}`
+    : '—';
+  const statusLatencySummary =
+    observabilitySummary && observabilitySummary.avgLatency > 0
+      ? `${Math.round(observabilitySummary.avgLatency)}ms`
+      : '—';
 
   useEffect(() => {
     const qualityBlocked = Boolean(masterAI.qualityReview && !masterAI.qualityReview.approved);
@@ -465,11 +525,81 @@ const TrainingHub: React.FC = () => {
     return session;
   }, [conversation, conversationId, selectedAgent?.id, selectedNiche, currentScopeId, activeSpec]);
 
+  const performPostCallReview = useCallback(
+    async (transcript: SimulatorTurn[]): Promise<CallReviewResult | null> => {
+      if (evaluationMode !== 'postCall') {
+        return null;
+      }
+      if (!selectedAgent || transcript.length === 0) {
+        return null;
+      }
+
+      setCallReviewLoading(true);
+      setCallReviewError(null);
+      setCallReview(null);
+
+      const traceId = `postcall-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+      try {
+        const response = await fetch('/api/mcp/master/reviewCall', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            agentId: selectedAgent.id,
+            niche: selectedNiche,
+            systemPrompt,
+            conversation: transcript.map((turn) => ({
+              role: turn.role,
+              text: turn.text,
+            })),
+            qualityThreshold: 70,
+            confidenceThreshold: 70,
+            llmProvider: selectedAgent.llmProvider || 'openai',
+            traceId,
+          }),
+        });
+
+        const data = await response.json().catch(() => null);
+        if (!response.ok || !data?.ok) {
+          const message =
+            data?.error || `Post-call review failed (status ${response.status})`;
+          throw new Error(message);
+        }
+
+        const review = data.review as CallReviewResult;
+        setCallReview(review);
+        return review;
+      } catch (error: any) {
+        const message = error?.message || 'Failed to run post-call review';
+        setCallReviewError(message);
+        toast.error(message, { icon: '⚠️' });
+        return null;
+      } finally {
+        setCallReviewLoading(false);
+      }
+    },
+    [evaluationMode, selectedAgent, selectedNiche, systemPrompt],
+  );
+
   const canEvaluateNow = useMemo(() => {
     const hasCaller = conversation.some((t) => t.role === 'caller');
     const hasAgent = conversation.some((t) => t.role === 'agent');
     return hasCaller && hasAgent;
   }, [conversation]);
+
+  const latestAgentTurn = useMemo(() => {
+    for (let i = conversation.length - 1; i >= 0; i -= 1) {
+      if (conversation[i].role === 'agent') {
+        return conversation[i];
+      }
+    }
+    return null;
+  }, [conversation]);
+
+  const hasAgentReviewData = useMemo(
+    () => conversation.some((turn) => turn.role === 'agent' && qualityReviewHistory[turn.id]),
+    [conversation, qualityReviewHistory],
+  );
 
   const legacyConversation = useMemo<LegacyConversationTurn[]>(
     () =>
@@ -481,7 +611,7 @@ const TrainingHub: React.FC = () => {
     [conversation],
   );
 
-  const handleEvaluateNow = useCallback(() => {
+  const handleEvaluateNow = useCallback(async () => {
     if (!canEvaluateNow) return;
 
     // 🔥 POST-CALL AUTO-CORRECTION: Analyze entire transcript for violations
@@ -546,10 +676,23 @@ const TrainingHub: React.FC = () => {
     const session = runSessionEvaluation();
     if (session) {
       toast.success('Session evaluated');
+      if (evaluationMode === 'postCall') {
+        await performPostCallReview(conversation);
+      }
     }
-  }, [canEvaluateNow, runSessionEvaluation, conversation, conversationId, activeSpec, currentScopeId, selectedAgent?.id]);
+  }, [
+    canEvaluateNow,
+    runSessionEvaluation,
+    conversation,
+    conversationId,
+    activeSpec,
+    currentScopeId,
+    selectedAgent?.id,
+    evaluationMode,
+    performPostCallReview,
+  ]);
 
-  const handleEndCall = useCallback(() => {
+  const handleEndCall = useCallback(async () => {
     if (conversation.length === 0) {
       toast.error('No conversation to evaluate');
       return;
@@ -683,11 +826,21 @@ const TrainingHub: React.FC = () => {
     setSessions([result, ...sessions.filter((s) => s.conversationId !== result.conversationId)]);
     setLatestSession(result);
     setHasEvaluatedSession(true);
+    await performPostCallReview(conversation);
 
     // Optional: Reset conversation for new call
     // setConversation([]);
     // setConversationId(createConversationId());
-  }, [conversation, conversationId, sessions, selectedAgent?.id, selectedNiche, activeSpec, currentScopeId]);
+  }, [
+    conversation,
+    conversationId,
+    sessions,
+    selectedAgent?.id,
+    selectedNiche,
+    activeSpec,
+    currentScopeId,
+    performPostCallReview,
+  ]);
 
   useEffect(() => {
     if (!selectedAgent && voiceAgents.length > 0) {
@@ -1238,7 +1391,16 @@ const TrainingHub: React.FC = () => {
             conversationId,
           });
           if (guidance) {
-            console.log('🎯 Pre-turn guidance:', guidance.recommendedResponse);
+            console.log('🎯 Pre-Turn Guidance Payload:', {
+              systemPrompt: systemPrompt.substring(0, 100) + '...',
+              conversation: updatedConversation.map(t => `${t.role}: ${t.text.substring(0, 30)}...`),
+              llmProvider: selectedAgent?.llmProvider || 'openai',
+              temperature: 0.3,
+              guidance: guidance.recommendedResponse.substring(0, 50) + '...',
+              confidence: guidance.confidence,
+            });
+            // Auto-expand guidance when it arrives
+            setExpandedSections(prev => ({ ...prev, preTurnGuidance: true }));
           }
         } catch (guidanceError) {
           console.warn('Pre-turn guidance failed:', guidanceError);
@@ -1274,9 +1436,16 @@ const TrainingHub: React.FC = () => {
         console.warn('⚠️  Agent returned empty response payload:', agentPayload);
       }
 
+      const rawAgentResponse = agentText || 'No response';
       const agentTs = Date.now();
-      let agentResponseText = agentText || 'No response';
+      let agentResponseText = rawAgentResponse;
+      if (pendingAgentOverrideRef.current) {
+        agentResponseText = pendingAgentOverrideRef.current;
+        pendingAgentOverrideRef.current = null;
+      }
 
+      let qualityReviewResult: QualityReview | null = null;
+      let suggestionApplied = false;
       let guardStatus: GuardEvent = { status: 'ok' };
       try {
         const guardFields = inferCollectedFieldsFromConversation(updatedConversation);
@@ -1319,12 +1488,46 @@ const TrainingHub: React.FC = () => {
             conversationId,
           });
 
+          qualityReviewResult = review;
+          
+          console.log('🔍 Quality Review Payload:', {
+            systemPrompt: systemPrompt.substring(0, 100) + '...',
+            conversation: [...updatedConversation, { role: 'agent', text: agentResponseText }].map(t => `${t.role}: ${t.text.substring(0, 30)}...`),
+            response: agentResponseText.substring(0, 50) + '...',
+            llmProvider: selectedAgent?.llmProvider || 'openai',
+            temperature: 0.2,
+            review: {
+              approved: review.approved,
+              score: review.score,
+              confidenceScore: review.confidenceScore,
+              issues: review.issues,
+              blockedReasons: review.blockedReasons,
+            },
+          });
+
+          // Check for guidance/gate mismatch
+          if (
+            !review.approved && 
+            masterAI.guidance?.recommendedResponse &&
+            agentResponseText.toLowerCase().includes(masterAI.guidance.recommendedResponse.toLowerCase().substring(0, 20))
+          ) {
+            setGuidanceMismatch(true);
+            console.warn('⚠️ MISMATCH DETECTED: Guidance approved, but gate blocked!');
+            console.warn('  Guidance recommended:', masterAI.guidance.recommendedResponse.substring(0, 100));
+            console.warn('  Gate blocked:', agentResponseText.substring(0, 100));
+            console.warn('  Blocked reasons:', review.blockedReasons);
+            console.warn('  This may indicate spec drift or conflicting rules in your system prompt');
+          } else {
+            setGuidanceMismatch(false);
+          }
+
           if (!review.approved && review.suggestedResponse) {
             console.warn('🛡️ Quality gate BLOCKED response:', review.blockedReasons);
             console.log('✅ Using suggested fix:', review.suggestedResponse);
             
             // Use the suggested fix instead
             agentResponseText = review.suggestedResponse;
+            suggestionApplied = true;
             
             // Log intervention
             const intervention = await masterAI.intervene({
@@ -1350,8 +1553,9 @@ const TrainingHub: React.FC = () => {
         }
       }
 
+      const agentTurnId = `agent-${agentTs}-${Math.random().toString(36).slice(2, 6)}`;
       const agentTurn: SimulatorTurn = {
-        id: `agent-${agentTs}-${Math.random().toString(36).slice(2, 6)}`,
+        id: agentTurnId,
         role: 'agent',
         text: agentResponseText,
         ts: agentTs,
@@ -1360,6 +1564,11 @@ const TrainingHub: React.FC = () => {
       const finalConversation = [...updatedConversation, agentTurn];
       setConversation(finalConversation);
       setTestResult(agentPayload);
+      
+      // Auto-hide pre-turn guidance once agent responds
+      if (enablePreTurnGuidance) {
+        setExpandedSections(prev => ({ ...prev, preTurnGuidance: false }));
+      }
 
       const promptTokenEstimate = compiled.attestation.tokenBudget.total;
       const completionTokensEstimate = estimateTokens(agentResponseText);
@@ -1373,6 +1582,18 @@ const TrainingHub: React.FC = () => {
 
       setLastCallTokens(callTokens);
       setTotalTokens((prev) => prev + callTokens);
+
+      if (qualityReviewResult) {
+        setQualityReviewHistory((prev) => ({
+          ...prev,
+          [agentTurnId]: {
+            review: qualityReviewResult,
+            originalResponse: rawAgentResponse,
+            finalResponse: agentResponseText,
+            suggestionApplied,
+          },
+        }));
+      }
 
       storeApi.consumeTokenBudget(selectedAgent.id, callTokens);
       storeApi.recordInvocationMetrics(selectedAgent.id, {
@@ -1522,6 +1743,101 @@ const TrainingHub: React.FC = () => {
     }
   };
 
+  const applyAgentResponseOverride = useCallback(
+    async (responseText: string): Promise<boolean> => {
+      if (conversation.length === 0) return false;
+
+      const updatedConversation = [...conversation];
+      let targetIndex = -1;
+      for (let i = updatedConversation.length - 1; i >= 0; i -= 1) {
+        if (updatedConversation[i].role === 'agent') {
+          targetIndex = i;
+          break;
+        }
+      }
+
+      if (targetIndex === -1) {
+        return false;
+      }
+
+      const targetTurn = updatedConversation[targetIndex];
+      updatedConversation[targetIndex] = {
+        ...targetTurn,
+        text: responseText,
+        edited: true,
+      };
+
+      pendingAgentOverrideRef.current = null;
+      setConversation(updatedConversation);
+      setQualityReviewHistory((prev) => {
+        if (!targetTurn.id || !prev[targetTurn.id]) {
+          return prev;
+        }
+        return {
+          ...prev,
+          [targetTurn.id]: {
+            ...prev[targetTurn.id],
+            finalResponse: responseText,
+            correctedManually: true,
+          },
+        };
+      });
+
+      if (targetTurn.id) {
+        setTurnAnalyses((prev) => {
+          if (!prev[targetTurn.id]) return prev;
+          const next = { ...prev };
+          delete next[targetTurn.id];
+          return next;
+        });
+      }
+
+      triggerHaptic('quality-approved');
+      toast.success('Agent response updated');
+
+      if (showEvaluation && evaluationMode === 'perMessage') {
+        evaluateConversation(updatedConversation);
+      }
+
+      if (enableMasterAI && enableQualityGates) {
+        try {
+          await masterAI.reviewResponse({
+            response: responseText,
+            conversation: updatedConversation.map((t) => ({ role: t.role, text: t.text })),
+            conversationId,
+          });
+        } catch (err) {
+          console.warn('Failed to refresh quality review after applying override:', err);
+        }
+      }
+
+      return true;
+    },
+    [
+      conversation,
+      triggerHaptic,
+      showEvaluation,
+      evaluationMode,
+      evaluateConversation,
+      enableMasterAI,
+      enableQualityGates,
+      masterAI,
+      conversationId,
+    ]
+  );
+
+  const handleApplyAgentResponse = useCallback(
+    async (responseText: string) => {
+      const applied = await applyAgentResponseOverride(responseText);
+      if (!applied) {
+        pendingAgentOverrideRef.current = responseText;
+        triggerHaptic('guidance-apply');
+        toast.success('Will use this response for the next agent turn');
+      }
+    },
+    [applyAgentResponseOverride, triggerHaptic]
+  );
+
   const handleSaveCorrection = useCallback(async (payload: ManualCorrectionPayload) => {
     if (!selectedAgent) {
       throw new Error('Please select an agent before saving corrections.');
@@ -1645,10 +1961,14 @@ const TrainingHub: React.FC = () => {
         
         // Reset conversation after successful save
         setConversation([]);
+        setQualityReviewHistory({});
         setRuntimeAttestation(null);
         setEffectivePrompt('');
         setLastGuardEvent(null);
         setMessageFeedback({});
+        setCallReview(null);
+        setCallReviewError(null);
+        setCallReviewLoading(false);
         setConversationId(createConversationId());
         setHasEvaluatedSession(false);
         setTestResult(null);
@@ -1678,10 +1998,14 @@ const TrainingHub: React.FC = () => {
     }
 
     setConversation([]);
+    setQualityReviewHistory({});
     setRuntimeAttestation(null);
     setEffectivePrompt('');
     setLastGuardEvent(null);
     setMessageFeedback({});
+    setCallReview(null);
+    setCallReviewError(null);
+    setCallReviewLoading(false);
     setConversationId(createConversationId());
     setHasEvaluatedSession(false);
     setTestResult(null);
@@ -1724,6 +2048,21 @@ const TrainingHub: React.FC = () => {
       idx === editingMessageIndex ? { ...msg, text: editedText } : msg
     );
     setConversation(updatedConversation);
+    if (originalMessage.role === 'agent') {
+      setQualityReviewHistory((prev) => {
+        if (!originalMessage.id || !prev[originalMessage.id]) {
+          return prev;
+        }
+        return {
+          ...prev,
+          [originalMessage.id]: {
+            ...prev[originalMessage.id],
+            finalResponse: editedText,
+            correctedManually: true,
+          },
+        };
+      });
+    }
 
     // CRITICAL FIX: Ensure session exists before applying corrections
     try {
@@ -2458,15 +2797,352 @@ const TrainingHub: React.FC = () => {
       </div>
 
       {/* Inline Testing Panel */}
-      <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="card p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold">Health & Connectivity</h2>
-            <Button variant="outline" size="sm" onClick={handleHealthCheck} disabled={healthLoading} loading={healthLoading}>
-              <RefreshCw className="w-4 h-4 mr-1" /> Check Health
-            </Button>
+      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[360px_1fr]">
+        <div className="space-y-4">
+          {/* Master AI Controls */}
+          <div className="p-4 rounded-2xl border border-primary/30 bg-gradient-to-br from-purple-50/50 to-blue-50/50 dark:from-purple-900/10 dark:to-blue-900/10 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className={`w-5 h-5 ${enableMasterAI ? 'text-primary animate-pulse' : 'text-muted-foreground'}`} />
+                <span className="font-semibold text-foreground">Master AI Orchestration</span>
+                {enableMasterAI && (
+                  <span className="px-2 py-0.5 rounded-full text-xs bg-primary/10 text-primary font-medium">
+                    ACTIVE
+                  </span>
+                )}
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={enableMasterAI}
+                  onChange={(e) => setEnableMasterAI(e.target.checked)}
+                  className="rounded"
+                />
+                <span className="text-sm text-foreground">Enable</span>
+              </label>
+            </div>
+            
+            {enableMasterAI && (
+              <div className="space-y-2 pl-7 animate-fade-in">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={enablePreTurnGuidance}
+                    onChange={(e) => {
+                      const next = e.target.checked;
+                      setEnablePreTurnGuidance(next);
+                      if (next) triggerHaptic('guidance-expand');
+                    }}
+                    className="rounded"
+                  />
+                  <span className="text-sm text-muted-foreground">Pre-Turn Guidance</span>
+                  <span className="text-xs text-muted-foreground italic">(shows recommended responses)</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={enableQualityGates}
+                    onChange={(e) => {
+                      const next = e.target.checked;
+                      setEnableQualityGates(next);
+                      if (next) triggerHaptic('gate-flip');
+                    }}
+                    className="rounded"
+                  />
+                  <span className="text-sm text-muted-foreground">Quality Gates</span>
+                  <span className="text-xs text-muted-foreground italic">(blocks/fixes low-quality responses)</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showObservability}
+                    onChange={(e) => {
+                      const next = e.target.checked;
+                      setShowObservability(next);
+                      if (next) triggerHaptic('observability-expand');
+                    }}
+                    className="rounded"
+                  />
+                  <span className="text-sm text-muted-foreground">Show Observability</span>
+                  <span className="text-xs text-muted-foreground italic">(audit logs, tokens, costs)</span>
+                </label>
+              </div>
+            )}
           </div>
-          <pre className="text-xs bg-muted/30 p-3 rounded overflow-auto max-h-48">{healthResult ? JSON.stringify(healthResult, null, 2) : 'No results yet.'}</pre>
+
+          {/* Pre-Turn Guidance Panel */}
+          {enableMasterAI && enablePreTurnGuidance && masterAI.guidance && (
+            expandedSections.preTurnGuidance ? (
+              <PreTurnGuidance
+                guidance={masterAI.guidance}
+                onUseResponse={(response) => {
+                  void handleApplyAgentResponse(response);
+                  // Auto-hide guidance after using suggested response
+                  setExpandedSections(prev => ({ ...prev, preTurnGuidance: false }));
+                }}
+              />
+            ) : (
+              <div
+                className="mb-4 p-3 border border-primary/30 rounded-lg bg-primary/5 cursor-pointer hover:bg-primary/10 transition-all"
+                onClick={() => toggleSection('preTurnGuidance')}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-primary" />
+                    <span className="text-sm font-medium text-foreground">Master AI Guidance Available</span>
+                    <span className="text-xs text-muted-foreground">
+                      (Confidence: {masterAI.guidance.confidence}%)
+                    </span>
+                  </div>
+                  <span className="text-xs text-primary">Click to expand</span>
+                </div>
+              </div>
+            )
+          )}
+
+          {/* Runtime Attestation & Controls */}
+          <div className="p-4 rounded-2xl border border-border bg-muted/30">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Runtime Context</p>
+                <p className="text-sm font-semibold text-foreground">
+                  {runtimeAttestation ? runtimeAttestation.scopeId : 'No sandbox run yet'}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (!effectivePrompt) return;
+                    navigator.clipboard.writeText(effectivePrompt);
+                    toast.success('Effective prompt copied');
+                  }}
+                  disabled={!effectivePrompt}
+                >
+                  <Copy className="w-3 h-3 mr-1" />
+                  Copy Effective Prompt
+                </Button>
+              </div>
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={useLearnedSnippets}
+                  onChange={(e) => setUseLearnedSnippets(e.target.checked)}
+                  className="rounded"
+                />
+                <span className="text-sm text-foreground">Use Learned Snippets</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Prompt Hash</span>
+                <select
+                  value={snippetScopeHashOverride}
+                  onChange={(e) => setSnippetScopeHashOverride(e.target.value)}
+                  className="px-2 py-1 rounded border border-border bg-input text-sm"
+                >
+                  <option value="">{promptHash ? `Current (${promptHash})` : 'Current draft'}</option>
+                  {agentSpecHistory.map((entry) => (
+                    <option key={entry.id} value={entry.promptHash}>
+                      {entry.promptHash} • {formatRelative(entry.savedAt)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {runtimeAttestation ? (
+              <div className="mt-4 space-y-3 text-xs text-muted-foreground">
+                <div className="grid gap-2 md:grid-cols-2">
+                  <div>
+                    Scope:&nbsp;
+                    <span className="text-foreground">{runtimeAttestation.scopeId}</span>
+                  </div>
+                  <div>
+                    Snippet Scope:&nbsp;
+                    <span className="text-foreground">
+                      {runtimeAttestation.snippetScopeId || runtimeAttestation.scopeId}
+                    </span>
+                  </div>
+                  <div>
+                    Prompt Hash:&nbsp;
+                    <span className="text-foreground">{runtimeAttestation.promptHash}</span>
+                  </div>
+                  <div>
+                    Spec Hash:&nbsp;
+                    <span className="text-foreground">{runtimeAttestation.specHash}</span>
+                  </div>
+                </div>
+
+                <div className="grid gap-2 md:grid-cols-2">
+                  <div>
+                    Prompt Tokens:&nbsp;
+                    <span className="text-foreground">
+                      {runtimeAttestation.tokenBudget.systemPrompt + runtimeAttestation.tokenBudget.spec}
+                    </span>
+                  </div>
+                  <div>
+                    Learned Tokens:&nbsp;
+                    <span className="text-foreground">{runtimeAttestation.tokenBudget.snippets}</span>
+                  </div>
+                  <div>
+                    Diagnostics:&nbsp;
+                    <span className="text-foreground">{runtimeAttestation.diagnostics.length}</span>
+                  </div>
+                  <div>
+                    Snippets Applied:&nbsp;
+                    <span className="text-foreground">{runtimeAttestation.snippetsApplied.length}</span>
+                  </div>
+                </div>
+
+                {lastGuardEvent && (
+                  <div>
+                    Guard:&nbsp;
+                    <span
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded ${
+                        lastGuardEvent.status === 'blocked'
+                          ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-200'
+                          : lastGuardEvent.status === 'modified'
+                          ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200'
+                          : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200'
+                      }`}
+                    >
+                      {lastGuardEvent.status.toUpperCase()}
+                      {lastGuardEvent.message && <span className="text-[11px]">{lastGuardEvent.message}</span>}
+                    </span>
+                  </div>
+                )}
+
+                {runtimeAttestation.snippetsApplied.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground">Applied Snippets</p>
+                    <ul className="mt-1 space-y-1">
+                      {runtimeAttestation.snippetsApplied.map((snippet) => (
+                        <li
+                          key={snippet.id}
+                          className="rounded bg-muted/40 px-2 py-1 text-foreground"
+                        >
+                          <span className="font-medium">Q:</span> {snippet.trigger}{' '}
+                          <span className="font-medium">→</span> {snippet.content}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="mt-3 text-xs text-muted-foreground">
+                Run the sandbox simulator to generate an attestation receipt.
+              </p>
+            )}
+          </div>
+
+          {/* Observability Dashboard */}
+          {enableMasterAI && showObservability && masterAI.observabilityEvents.length > 0 && observabilitySummary && (
+            <ObservabilityDashboard
+              events={masterAI.observabilityEvents}
+              summary={observabilitySummary}
+            />
+          )}
+
+          {/* Confidence Gate Warning */}
+          {masterAI.confidenceGateActive && (
+            <div className="rounded-2xl border border-red-500/40 bg-red-500/10 p-5 shadow-sm animate-pulse">
+              <div className="flex items-center gap-2 text-red-600 dark:text-red-300">
+                <AlertTriangle className="w-5 h-5" />
+                <span className="font-semibold">Confidence Gate Active</span>
+              </div>
+              <p className="mt-1 text-sm text-red-600/90 dark:text-red-300">
+                Agent performance is below the configured threshold. Review the latest interactions or override to continue testing.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  masterAI.clearConfidenceGate();
+                  triggerHaptic('confidence-cleared');
+                }}
+                className="mt-3 border-red-500/40 text-red-600 hover:bg-red-500/10"
+              >
+                Clear Gate (Sandbox Only)
+              </Button>
+            </div>
+          )}
+
+          <div className={`p-3 rounded-2xl border ${gateCardClasses} transition-colors`}>
+            {selectedAgentId ? (
+              <>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-3 text-sm">
+                    <span className="flex items-center gap-2 font-semibold">
+                      {gateSnapshot?.isGated ? (
+                        <>
+                          <AlertTriangle className="w-4 h-4 text-amber-600" />
+                          <span>Confidence gate active</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle className="w-4 h-4 text-emerald-600" />
+                          <span>Confidence gate clear</span>
+                        </>
+                      )}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      Mode: {gateModeLabel}
+                    </span>
+                    {gateSnapshot?.lastConfidence != null && (
+                      <span className="text-xs text-muted-foreground">
+                        Last confidence: {gateSnapshot.lastConfidence}%
+                      </span>
+                    )}
+                    <span className="text-xs text-muted-foreground">
+                      Threshold: {gateSnapshot?.confidenceThreshold ?? '--'}%
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={ignoreConfidenceGate}
+                        onChange={(e) => setIgnoreConfidenceGate(e.target.checked)}
+                        className="rounded"
+                      />
+                      <span>Bypass for sandbox</span>
+                    </label>
+                    {gateSnapshot?.isGated && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (!selectedAgentId) return;
+                          clearAgentGate(selectedAgentId);
+                          triggerHaptic('confidence-cleared');
+                          toast.success('Confidence gate reset for testing');
+                        }}
+                      >
+                        Reset Gate
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                {(gateSnapshot?.gateReason || gateResumeAt) && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground pt-2">
+                    <Layers className="w-3 h-3" />
+                    <span>
+                      {gateSnapshot?.gateReason || 'No active gate reason'}
+                      {gateResumeAt ? ` • auto-resumes ${gateResumeAt}` : ''}
+                    </span>
+                  </div>
+                )}
+              </>
+            ) : (
+              <span className="text-xs text-muted-foreground">
+                Select an agent to view confidence gate status.
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="card p-4">
@@ -2723,352 +3399,222 @@ const TrainingHub: React.FC = () => {
             </div>
           )}
 
-          {/* Master AI Controls */}
-          <div className="mb-4 p-4 rounded-lg border border-primary/30 bg-gradient-to-br from-purple-50/50 to-blue-50/50 dark:from-purple-900/10 dark:to-blue-900/10">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <Sparkles className={`w-5 h-5 ${enableMasterAI ? 'text-primary animate-pulse' : 'text-muted-foreground'}`} />
-                <span className="font-semibold text-foreground">Master AI Orchestration</span>
-                {enableMasterAI && (
-                  <span className="px-2 py-0.5 rounded-full text-xs bg-primary/10 text-primary font-medium">
-                    ACTIVE
-                  </span>
-                )}
-              </div>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={enableMasterAI}
-                  onChange={(e) => setEnableMasterAI(e.target.checked)}
-                  className="rounded"
-                />
-                <span className="text-sm text-foreground">Enable</span>
-              </label>
-            </div>
-            
-            {enableMasterAI && (
-              <div className="space-y-2 pl-7 animate-fade-in">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={enablePreTurnGuidance}
-                    onChange={(e) => {
-                      const next = e.target.checked;
-                      setEnablePreTurnGuidance(next);
-                      if (next) triggerHaptic('guidance-expand');
-                    }}
-                    className="rounded"
-                  />
-                  <span className="text-sm text-muted-foreground">Pre-Turn Guidance</span>
-                  <span className="text-xs text-muted-foreground italic">(shows recommended responses)</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={enableQualityGates}
-                    onChange={(e) => {
-                      const next = e.target.checked;
-                      setEnableQualityGates(next);
-                      if (next) triggerHaptic('gate-flip');
-                    }}
-                    className="rounded"
-                  />
-                  <span className="text-sm text-muted-foreground">Quality Gates</span>
-                  <span className="text-xs text-muted-foreground italic">(blocks/fixes low-quality responses)</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={showObservability}
-                    onChange={(e) => {
-                      const next = e.target.checked;
-                      setShowObservability(next);
-                      if (next) triggerHaptic('observability-expand');
-                    }}
-                    className="rounded"
-                  />
-                  <span className="text-sm text-muted-foreground">Show Observability</span>
-                  <span className="text-xs text-muted-foreground italic">(audit logs, tokens, costs)</span>
-                </label>
-              </div>
-            )}
-          </div>
-
-          {/* Pre-Turn Guidance Panel */}
-          {enableMasterAI && enablePreTurnGuidance && masterAI.guidance && (
-            <div className="mb-4">
-              <PreTurnGuidance 
-                guidance={masterAI.guidance}
-                onUseResponse={(response) => {
-                  setTestMessage(response);
-                  toast.success('Using Master AI recommendation');
-                  triggerHaptic('guidance-apply');
-                }}
-              />
-            </div>
-          )}
-
-          {/* Runtime Attestation & Controls */}
-          <div className="mb-4 p-4 rounded-lg border border-border bg-muted/30">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">Runtime Context</p>
-                <p className="text-sm font-semibold text-foreground">
-                  {runtimeAttestation ? runtimeAttestation.scopeId : 'No sandbox run yet'}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    if (!effectivePrompt) return;
-                    navigator.clipboard.writeText(effectivePrompt);
-                    toast.success('Effective prompt copied');
-                  }}
-                  disabled={!effectivePrompt}
-                >
-                  <Copy className="w-3 h-3 mr-1" />
-                  Copy Effective Prompt
-                </Button>
-              </div>
-            </div>
-
-            <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={useLearnedSnippets}
-                  onChange={(e) => setUseLearnedSnippets(e.target.checked)}
-                  className="rounded"
-                />
-                <span className="text-sm text-foreground">Use Learned Snippets</span>
-              </label>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">Prompt Hash</span>
-                <select
-                  value={snippetScopeHashOverride}
-                  onChange={(e) => setSnippetScopeHashOverride(e.target.value)}
-                  className="px-2 py-1 rounded border border-border bg-input text-sm"
-                >
-                  <option value="">{promptHash ? `Current (${promptHash})` : 'Current draft'}</option>
-                  {agentSpecHistory.map((entry) => (
-                    <option key={entry.id} value={entry.promptHash}>
-                      {entry.promptHash} • {formatRelative(entry.savedAt)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {runtimeAttestation ? (
-              <div className="mt-4 space-y-3 text-xs text-muted-foreground">
-                <div className="grid gap-2 md:grid-cols-2">
-                  <div>
-                    Scope:&nbsp;
-                    <span className="text-foreground">{runtimeAttestation.scopeId}</span>
-                  </div>
-                  <div>
-                    Snippet Scope:&nbsp;
-                    <span className="text-foreground">
-                      {runtimeAttestation.snippetScopeId || runtimeAttestation.scopeId}
-                    </span>
-                  </div>
-                  <div>
-                    Prompt Hash:&nbsp;
-                    <span className="text-foreground">{runtimeAttestation.promptHash}</span>
-                  </div>
-                  <div>
-                    Spec Hash:&nbsp;
-                    <span className="text-foreground">{runtimeAttestation.specHash}</span>
-                  </div>
-                </div>
-
-                <div className="grid gap-2 md:grid-cols-2">
-                  <div>
-                    Prompt Tokens:&nbsp;
-                    <span className="text-foreground">
-                      {runtimeAttestation.tokenBudget.systemPrompt + runtimeAttestation.tokenBudget.spec}
-                    </span>
-                  </div>
-                  <div>
-                    Learned Tokens:&nbsp;
-                    <span className="text-foreground">{runtimeAttestation.tokenBudget.snippets}</span>
-                  </div>
-                  <div>
-                    Diagnostics:&nbsp;
-                    <span className="text-foreground">{runtimeAttestation.diagnostics.length}</span>
-                  </div>
-                  <div>
-                    Snippets Applied:&nbsp;
-                    <span className="text-foreground">{runtimeAttestation.snippetsApplied.length}</span>
-                  </div>
-                </div>
-
-                {lastGuardEvent && (
-                  <div>
-                    Guard:&nbsp;
-                    <span
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded ${
-                        lastGuardEvent.status === 'blocked'
-                          ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-200'
-                          : lastGuardEvent.status === 'modified'
-                          ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200'
-                          : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200'
-                      }`}
-                    >
-                      {lastGuardEvent.status.toUpperCase()}
-                      {lastGuardEvent.message && <span className="text-[11px]">{lastGuardEvent.message}</span>}
-                    </span>
-                  </div>
-                )}
-
-                {runtimeAttestation.snippetsApplied.length > 0 && (
-                  <div>
-                    <p className="text-xs font-semibold text-muted-foreground">Applied Snippets</p>
-                    <ul className="mt-1 space-y-1">
-                      {runtimeAttestation.snippetsApplied.map((snippet) => (
-                        <li
-                          key={snippet.id}
-                          className="rounded bg-muted/40 px-2 py-1 text-foreground"
+          {/* Post-call Review */}
+          {showEvaluation &&
+            evaluationMode === 'postCall' &&
+            (callReviewLoading || callReview || callReviewError) && (
+              <div className="mb-3 rounded border border-border bg-muted/10 p-3">
+                <div className="flex items-start justify-between gap-3 mb-2">
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Post-call Review
+                      </span>
+                      {callReview && (
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                            callReview.approved
+                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200'
+                              : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200'
+                          }`}
                         >
-                          <span className="font-medium">Q:</span> {snippet.trigger}{' '}
-                          <span className="font-medium">→</span> {snippet.content}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <p className="mt-3 text-xs text-muted-foreground">
-                Run the sandbox simulator to generate an attestation receipt.
-              </p>
-            )}
-          </div>
-
-          {/* Quality Gate Review */}
-          {enableMasterAI && enableQualityGates && masterAI.qualityReview && !masterAI.qualityReview.approved && (
-            <div className="mb-4">
-              <QualityGate
-                review={masterAI.qualityReview}
-                originalResponse={conversation[conversation.length - 1]?.text || ''}
-                onUseSuggestion={() => {
-                  if (masterAI.qualityReview?.suggestedResponse) {
-                    // Already applied in handleDryRun
-                    toast.success('Suggestion applied');
-                  }
-                }}
-              />
-            </div>
-          )}
-
-          {/* Observability Dashboard */}
-          {enableMasterAI && showObservability && masterAI.observabilityEvents.length > 0 && (
-            <div className="mb-4">
-              <ObservabilityDashboard
-                events={masterAI.observabilityEvents}
-                summary={masterAI.getObservabilitySummary()}
-              />
-            </div>
-          )}
-
-          {/* Confidence Gate Warning */}
-          {masterAI.confidenceGateActive && (
-            <div className="mb-4 rounded-2xl border border-red-500/40 bg-red-500/10 p-5 shadow-sm animate-pulse">
-              <div className="flex items-center gap-2 text-red-600 dark:text-red-300">
-                <AlertTriangle className="w-5 h-5" />
-                <span className="font-semibold">Confidence Gate Active</span>
-              </div>
-              <p className="mt-1 text-sm text-red-600/90 dark:text-red-300">
-                Agent performance is below the configured threshold. Review the latest interactions or override to continue testing.
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  masterAI.clearConfidenceGate();
-                  triggerHaptic('confidence-cleared');
-                }}
-                className="mt-3 border-red-500/40 text-red-600 hover:bg-red-500/10"
-              >
-                Clear Gate (Sandbox Only)
-              </Button>
-            </div>
-          )}
-
-          <div className={`mb-4 p-3 rounded-lg border ${gateCardClasses} transition-colors`}>
-            {selectedAgentId ? (
-              <>
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex flex-wrap items-center gap-3 text-sm">
-                    <span className="flex items-center gap-2 font-semibold">
-                      {gateSnapshot?.isGated ? (
-                        <>
-                          <AlertTriangle className="w-4 h-4 text-amber-600" />
-                          <span>Confidence gate active</span>
-                        </>
-                      ) : (
-                        <>
-                          <CheckCircle className="w-4 h-4 text-emerald-600" />
-                          <span>Confidence gate clear</span>
-                        </>
+                          {callReview.approved ? 'Approved' : 'Needs attention'}
+                        </span>
                       )}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      Mode: {gateModeLabel}
-                    </span>
-                    {gateSnapshot?.lastConfidence != null && (
-                      <span className="text-xs text-muted-foreground">
-                        Last confidence: {gateSnapshot.lastConfidence}%
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      {callReview?.summary ||
+                        (callReviewLoading
+                          ? 'Running transcript review…'
+                          : 'Run a call to generate a transcript review.')}
+                    </p>
+                  </div>
+                  <div className="text-right text-xs text-muted-foreground min-w-[80px]">
+                    {callReviewLoading && (
+                      <span className="inline-flex items-center gap-1 text-xs">
+                        <RefreshCw className="w-3 h-3 animate-spin" />
+                        Reviewing…
                       </span>
                     )}
-                    <span className="text-xs text-muted-foreground">
-                      Threshold: {gateSnapshot?.confidenceThreshold ?? '--'}%
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={ignoreConfidenceGate}
-                        onChange={(e) => setIgnoreConfidenceGate(e.target.checked)}
-                        className="rounded"
-                      />
-                      <span>Bypass for sandbox</span>
-                    </label>
-                    {gateSnapshot?.isGated && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          if (!selectedAgentId) return;
-                          clearAgentGate(selectedAgentId);
-                          triggerHaptic('confidence-cleared');
-                          toast.success('Confidence gate reset for testing');
-                        }}
-                      >
-                        Reset Gate
-                      </Button>
+                    {callReview && !callReviewLoading && (
+                      <>
+                        <span className="block text-lg font-bold text-foreground">
+                          {Math.round(callReview.score)}
+                          <span className="text-xs text-muted-foreground">/100</span>
+                        </span>
+                        <span className="block text-[10px] tracking-wide">
+                          Confidence {Math.round(callReview.confidenceScore)}%
+                        </span>
+                      </>
                     )}
                   </div>
                 </div>
-                {(gateSnapshot?.gateReason || gateResumeAt) && (
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground pt-2">
-                    <Layers className="w-3 h-3" />
-                    <span>
-                      {gateSnapshot?.gateReason || 'No active gate reason'}
-                      {gateResumeAt ? ` • auto-resumes ${gateResumeAt}` : ''}
-                    </span>
+
+                {callReviewError && (
+                  <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>{callReviewError}</span>
                   </div>
                 )}
-              </>
-            ) : (
-              <span className="text-xs text-muted-foreground">
-                Select an agent to view confidence gate status.
-              </span>
+
+                {callReview && (
+                  <div className="space-y-3 mt-2">
+                    {callReview.keyMoments.length > 0 && (
+                      <div>
+                        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          Key Moments
+                        </span>
+                        <ul className="mt-1 space-y-1">
+                          {callReview.keyMoments.slice(0, 3).map((moment, idx) => (
+                            <li
+                              key={idx}
+                              className="flex items-start gap-2 text-xs text-foreground"
+                            >
+                              <History className="mt-0.5 h-3 w-3 text-primary" />
+                              <span>{moment}</span>
+                            </li>
+                          ))}
+                        </ul>
+                        {callReview.keyMoments.length > 3 && (
+                          <p className="mt-1 text-[10px] text-muted-foreground">
+                            +{callReview.keyMoments.length - 3} more moments captured
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {callReview.issues.length > 0 && (
+                      <div>
+                        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          Issues
+                        </span>
+                        <ul className="mt-1 space-y-1">
+                          {callReview.issues.slice(0, 4).map((issue, idx) => (
+                            <li
+                              key={`${issue}-${idx}`}
+                              className="flex items-start gap-2 text-xs text-amber-700 dark:text-amber-300"
+                            >
+                              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                              <span>{issue}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {callReview.suggestions.length > 0 && (
+                      <div>
+                        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          Suggestions
+                        </span>
+                        <ul className="mt-1 space-y-1">
+                          {callReview.suggestions.slice(0, 4).map((suggestion, idx) => (
+                            <li
+                              key={`${suggestion}-${idx}`}
+                              className="flex items-start gap-2 text-xs text-foreground"
+                            >
+                              <ThumbsUp className="mt-0.5 h-3 w-3 text-emerald-500 dark:text-emerald-300" />
+                              <span>{suggestion}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {callReview.blockedReasons.length > 0 && (
+                      <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2">
+                        <div className="flex items-center gap-2 text-xs font-semibold text-amber-700 dark:text-amber-300">
+                          <Shield className="h-3 w-3" />
+                          Gate Reasons
+                        </div>
+                        <ul className="mt-1 space-y-1 text-xs text-amber-700 dark:text-amber-200">
+                          {callReview.blockedReasons.map((reason, idx) => (
+                            <li key={`${reason}-${idx}`}>{reason}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {callReview.handoffRecommended && (
+                      <div className="flex items-center gap-2 rounded border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-xs text-sky-700 dark:text-sky-300">
+                        <Link2 className="h-3 w-3" />
+                        Escalation recommended for this call.
+                      </div>
+                    )}
+
+                    {callReview.suggestedTranscript && (
+                      <details className="rounded border border-border/40 bg-muted/30 px-3 py-2 text-xs">
+                        <summary className="cursor-pointer text-muted-foreground">
+                          Suggested transcript fix
+                        </summary>
+                        <pre className="mt-2 whitespace-pre-wrap text-foreground">
+                          {callReview.suggestedTranscript}
+                        </pre>
+                      </details>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
-          </div>
+
+          {/* Quality Gate Review */}
+          {enableMasterAI && enableQualityGates && masterAI.qualityReview && !masterAI.qualityReview.approved && latestAgentTurn && (
+            <div className="mb-4 rounded-lg border border-orange-500/50 bg-background/95 shadow-sm overflow-hidden transition-all duration-200">
+              {/* ALWAYS: Minimal alert */}
+              <div className="bg-orange-50 dark:bg-orange-950/20 p-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-orange-600" />
+                  <span className="text-sm font-medium text-orange-900 dark:text-orange-200">
+                    Response {masterAI.qualityReview.score < 50 ? 'blocked' : 'needs review'} — Score: {masterAI.qualityReview.score}/100
+                  </span>
+                </div>
+                <button
+                  onClick={() => toggleSection('qualityGate')}
+                  className="text-xs font-medium text-orange-700 dark:text-orange-300 hover:text-orange-900 dark:hover:text-orange-100 transition-colors px-3 py-1 rounded hover:bg-orange-100 dark:hover:bg-orange-900/30"
+                >
+                  {expandedSections.qualityGate ? 'Hide Details' : 'View Details'}
+                </button>
+              </div>
+
+              {/* EXPANDABLE: Full review details */}
+              {expandedSections.qualityGate && (
+                <div className="p-4 border-t border-orange-200/50 dark:border-orange-800/50">
+                  <QualityGate
+                    review={masterAI.qualityReview}
+                    originalResponse={latestAgentTurn?.text || ''}
+                    onUseSuggestion={() => {
+                      if (masterAI.qualityReview?.suggestedResponse) {
+                        void handleApplyAgentResponse(masterAI.qualityReview.suggestedResponse);
+                        // Auto-dismiss quality gate after using suggestion
+                        setExpandedSections(prev => ({ ...prev, qualityGate: false }));
+                      }
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Guidance/Gate Mismatch Banner */}
+          {guidanceMismatch && (
+            <div className="mb-4 rounded-lg border border-yellow-500/50 bg-yellow-50 dark:bg-yellow-950/20 p-4 shadow-sm animate-fade-in">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <h4 className="text-sm font-semibold text-yellow-900 dark:text-yellow-200 mb-1">
+                    ⚠️ Spec Drift Detected
+                  </h4>
+                  <p className="text-sm text-yellow-800 dark:text-yellow-300 mb-2">
+                    Pre-Turn Guidance recommended a response that Quality Gate blocked. This may indicate conflicting rules in your system prompt.
+                  </p>
+                  <div className="text-xs text-yellow-700 dark:text-yellow-400 space-y-1">
+                    <p><strong>Recommended Action:</strong> Review the blocked reasons in the Quality Gate above and ensure your system prompt has consistent rules.</p>
+                    <p><strong>Common Causes:</strong> Different temperature settings (Guidance: 0.3, Review: 0.2) or ambiguous prompt wording.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Message Input */}
           <div className="flex gap-2 mb-3">
@@ -3168,7 +3714,262 @@ const TrainingHub: React.FC = () => {
               </div>
             </div>
           )}
+
+          {showEvaluation &&
+            evaluationMode === 'postCall' &&
+            conversation.length > 0 && (
+              <div className="mt-3 rounded-lg border border-border/40 bg-background/95 shadow-sm overflow-hidden transition-all duration-200">
+                {/* ALWAYS VISIBLE: Summary Strip */}
+                <button
+                  onClick={() => toggleSection('transcript')}
+                  className="w-full p-4 flex items-center justify-between hover:bg-muted/30 transition-all duration-200"
+                >
+                  <div className="flex items-center gap-3">
+                    <FileText className="w-4 h-4 text-primary" />
+                    <div className="text-left">
+                      <h3 className="text-sm font-semibold text-foreground">Post-Call Transcript</h3>
+                      <p className="text-xs text-muted-foreground">
+                        {conversation.length} turns · {Object.keys(qualityReviewHistory).length} reviews
+                        {(() => {
+                          const reviews = Object.values(qualityReviewHistory);
+                          if (reviews.length > 0) {
+                            const avgConfidence = Math.round(
+                              reviews.reduce((sum, r) => sum + r.review.confidenceScore, 0) / reviews.length
+                            );
+                            return ` · Avg confidence: ${avgConfidence}%`;
+                          }
+                          return '';
+                        })()}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {hasAgentReviewData ? (
+                      <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                        {Object.keys(qualityReviewHistory).length} reviews
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                        Pending
+                      </span>
+                    )}
+                    <ChevronDown
+                      className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${
+                        expandedSections.transcript ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </div>
+                </button>
+
+                {/* EXPANDABLE: Full transcript */}
+                {expandedSections.transcript && (
+                  <div className="border-t border-border/40 p-5 space-y-3 max-h-[600px] overflow-y-auto bg-muted/5">
+                  {conversation.map((turn, index) => {
+                    const isAgent = turn.role === 'agent';
+                    const snapshot = isAgent ? qualityReviewHistory[turn.id] : null;
+                    const statusConfig = snapshot
+                      ? snapshot.review.approved
+                        ? {
+                            label: 'Approved',
+                            className:
+                              'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200',
+                          }
+                        : {
+                            label: 'Blocked',
+                            className: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200',
+                          }
+                      : {
+                          label: 'Review pending',
+                          className: 'bg-muted text-muted-foreground',
+                        };
+
+                    return (
+                      <div
+                        key={turn.id || `${turn.role}-${index}`}
+                        className="rounded-lg border border-border/60 bg-muted/10 p-3"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div
+                            className={`mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                              isAgent
+                                ? 'bg-primary text-primary-foreground'
+                                : 'bg-muted text-muted-foreground'
+                            }`}
+                          >
+                            {isAgent ? 'A' : 'C'}
+                          </div>
+                          <div className="flex-1 space-y-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                {isAgent ? 'Agent' : 'Caller'}
+                              </span>
+                              {turn.edited && (
+                                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-200">
+                                  Edited
+                                </span>
+                              )}
+                            </div>
+                            <div className="rounded-lg border border-border/40 bg-background/80 px-3 py-2 text-sm text-foreground whitespace-pre-wrap">
+                              {turn.text}
+                            </div>
+                            {isAgent && (
+                              snapshot ? (
+                                <div className="rounded-lg border border-border/50 bg-background/95 p-3 text-xs shadow-inner space-y-2">
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2">
+                                      <Shield className="h-3.5 w-3.5 text-muted-foreground" />
+                                      <span className="font-semibold text-foreground">Master AI Review</span>
+                                    </div>
+                                    <span
+                                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${statusConfig.className}`}
+                                    >
+                                      {statusConfig.label}
+                                    </span>
+                                  </div>
+
+                                  <div className="flex flex-wrap gap-3 text-[11px] text-muted-foreground">
+                                    <span>Score {snapshot.review.score}/100</span>
+                                    <span>Confidence {snapshot.review.confidenceScore}/100</span>
+                                    <span>
+                                      Rules checked: {snapshot.review.observability?.rulesChecked?.length ?? 0}
+                                    </span>
+                                  </div>
+
+                                  <div className="grid gap-2">
+                                    <div>
+                                      <span className="text-[11px] font-semibold text-muted-foreground">
+                                        Original response
+                                      </span>
+                                      <div className="mt-1 rounded border border-border/40 bg-muted/20 px-3 py-2 text-foreground whitespace-pre-wrap">
+                                        {snapshot.originalResponse}
+                                      </div>
+                                    </div>
+
+                                    <div>
+                                      <span className="text-[11px] font-semibold text-muted-foreground">
+                                        Final sent to caller
+                                      </span>
+                                      <div className="mt-1 rounded border border-border/40 bg-muted/20 px-3 py-2 text-foreground whitespace-pre-wrap">
+                                        {snapshot.finalResponse}
+                                      </div>
+                                      <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
+                                        {snapshot.correctedManually && (
+                                          <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-300">
+                                            <Edit2 className="h-3 w-3" />
+                                            Manually corrected
+                                          </span>
+                                        )}
+                                        {!snapshot.correctedManually && snapshot.suggestionApplied && (
+                                          <span className="inline-flex items-center gap-1 text-primary">
+                                            <Sparkles className="h-3 w-3" />
+                                            Master AI applied fix
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {snapshot.review.suggestedResponse &&
+                                      snapshot.review.suggestedResponse !== snapshot.finalResponse && (
+                                        <div>
+                                          <span className="text-[11px] font-semibold text-muted-foreground">
+                                            Suggested fix
+                                          </span>
+                                          <div className="mt-1 rounded border border-primary/30 bg-primary/10 px-3 py-2 text-foreground whitespace-pre-wrap">
+                                            {snapshot.review.suggestedResponse}
+                                          </div>
+                                        </div>
+                                      )}
+
+                                    {snapshot.review.issues.length > 0 && (
+                                      <div>
+                                        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                          Issues noted
+                                        </span>
+                                        <ul className="mt-1 space-y-1">
+                                          {snapshot.review.issues.map((issue, idxIssue) => (
+                                            <li
+                                              key={`${turn.id}-issue-${idxIssue}`}
+                                              className="flex items-start gap-2 text-xs text-rose-600 dark:text-rose-300"
+                                            >
+                                              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                                              <span>{issue}</span>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+
+                                    {snapshot.review.suggestions.length > 0 && (
+                                      <div>
+                                        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                          Coaching
+                                        </span>
+                                        <ul className="mt-1 space-y-1">
+                                          {snapshot.review.suggestions.map((suggestion, idxSuggestion) => (
+                                            <li
+                                              key={`${turn.id}-suggestion-${idxSuggestion}`}
+                                              className="flex items-start gap-2 text-xs text-foreground"
+                                            >
+                                              <ThumbsUp className="mt-0.5 h-3 w-3 text-emerald-500 dark:text-emerald-300" />
+                                              <span>{suggestion}</span>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+
+                                    {snapshot.review.blockedReasons.length > 0 && (
+                                      <div className="rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2">
+                                        <div className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-200">
+                                          <Shield className="h-3 w-3" />
+                                          Blocked because
+                                        </div>
+                                        <ul className="mt-1 space-y-1 text-xs text-amber-800 dark:text-amber-200">
+                                          {snapshot.review.blockedReasons.map((reason, idxReason) => (
+                                            <li key={`${turn.id}-blocked-${idxReason}`}>{reason}</li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="rounded-lg border border-dashed border-border/60 bg-muted/5 px-3 py-2 text-[11px] text-muted-foreground">
+                                  Master AI review not captured for this response.
+                                </div>
+                              )
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  </div>
+                )}
+              </div>
+            )}
         </div>
+      </div>
+
+      <div className="mt-6 max-w-3xl rounded-2xl border border-border bg-background/95 p-4 shadow-sm">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h2 className="font-semibold text-sm">Health &amp; Connectivity</h2>
+            <p className="text-xs text-muted-foreground">Run quick diagnostics on database + API availability.</p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleHealthCheck}
+            disabled={healthLoading}
+            loading={healthLoading}
+          >
+            <RefreshCw className="w-4 h-4 mr-1" /> Check Health
+          </Button>
+        </div>
+        <pre className="text-xs bg-muted/30 p-3 rounded-lg overflow-auto max-h-40">
+          {healthResult ? JSON.stringify(healthResult, null, 2) : 'No results yet.'}
+        </pre>
       </div>
 
       <div className="mt-6 text-xs text-muted-foreground flex items-center gap-2">

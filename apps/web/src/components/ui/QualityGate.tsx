@@ -160,9 +160,32 @@ const QualityGate: React.FC<QualityGateProps> = ({
 
   const StatusIcon = status.icon;
 
+  // Show minimal banner for approved responses
   if (!isBlocked && !isLowQuality) {
-    // Don't show gate for approved responses
-    return null;
+    return (
+      <div
+        className={`rounded-lg border ${status.containerBorder} bg-background/95 shadow-sm`}
+      >
+        <div className={`flex items-center justify-between px-4 py-2.5 ${status.headerBg}`}>
+          <div className="flex items-center gap-2.5">
+            <StatusIcon className={`w-4 h-4 ${status.iconClass}`} />
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-foreground">
+                Response Approved
+              </span>
+              <span
+                className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${status.badgeClass}`}
+              >
+                ✓ {review.score}/100
+              </span>
+            </div>
+          </div>
+          <div className="text-xs text-muted-foreground">
+            Confidence {review.confidenceScore}/100
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (

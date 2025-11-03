@@ -15,7 +15,14 @@ export default defineConfig(({ mode }) => {
     ],
     server: {
       port: 3000,
-      open: true
+      open: true,
+      proxy: {
+        '/api': {
+          target: 'http://localhost:10000',
+          changeOrigin: true,
+          secure: false,
+        }
+      }
     },
     build: {
       outDir: 'dist',
@@ -33,7 +40,9 @@ export default defineConfig(({ mode }) => {
       'import.meta.env.VITE_GHL_SHARED_SECRET': JSON.stringify(env.VITE_GHL_SHARED_SECRET || env.GHL_SHARED_SECRET || ''),
       'import.meta.env.VITE_ELEVENLABS_API_KEY': JSON.stringify(env.VITE_ELEVENLABS_API_KEY || env.ELEVENLABS_API_KEY || ''),
       'import.meta.env.VITE_OPENAI_API_KEY': JSON.stringify(env.VITE_OPENAI_API_KEY || env.OPENAI_API_KEY || ''),
-      'import.meta.env.VITE_API_BASE_URL': JSON.stringify(env.VITE_API_BASE_URL || 'https://ghlvoiceai.captureclient.com'),
+      // Local dev: empty string = use relative URLs (Vite proxy handles routing to localhost:10000)
+      // Production: set VITE_API_BASE_URL in Render dashboard to your production domain
+      'import.meta.env.VITE_API_BASE_URL': JSON.stringify(env.VITE_API_BASE_URL || ''),
     }
   }
 })

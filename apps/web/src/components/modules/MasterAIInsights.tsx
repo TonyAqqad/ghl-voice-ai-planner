@@ -161,31 +161,7 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSe
         ];
   }, [latest, previous]);
 
-  if (!latest) {
-    return (
-      <div className="card p-6 border-dashed border-border/60 bg-muted/10 text-sm text-muted-foreground flex flex-col gap-2">
-        <div className="flex items-center gap-2">
-          <Brain className="w-5 h-5" />
-          <span>Run Evaluate Now or finish a call to see Master AI insights.</span>
-        </div>
-      </div>
-    );
-  }
-
-  const performanceTimeline = orderedSessions.slice(0, 5);
-
-  // Debug logging for corrections counter
-  React.useEffect(() => {
-    if (latest) {
-      console.log(`🔄 MasterAIInsights re-rendered`);
-      console.log(`   • Conversation ID: ${latest.conversationId}`);
-      console.log(`   • Corrections Applied: ${latest.correctionsApplied ?? 0}`);
-      console.log(`   • Fields Collected: ${latest.collectedFields.length}`);
-      console.log(`   • Confidence: ${latest.confidence}%`);
-    }
-  }, [latest?.correctionsApplied, latest?.conversationId]);
-
-  // State for editing field chips
+  // State for editing field chips (must be before early returns)
   const [editingFieldIndex, setEditingFieldIndex] = React.useState<number | null>(null);
   const [editedFieldValue, setEditedFieldValue] = React.useState('');
   const [editedFieldKey, setEditedFieldKey] = React.useState<ContactFieldKey | ''>('');
@@ -199,6 +175,34 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSe
   const [transcriptFeedback, setTranscriptFeedback] = React.useState<Record<string, 'up' | 'down' | null>>({});
   const [editingTurnId, setEditingTurnId] = React.useState<string | null>(null);
   const [editedTurnText, setEditedTurnText] = React.useState('');
+  
+  // State for collapsible details
+  const [showDetails, setShowDetails] = React.useState(false);
+
+  // Debug logging for corrections counter (must be before early returns)
+  React.useEffect(() => {
+    if (latest) {
+      console.log(`🔄 MasterAIInsights re-rendered`);
+      console.log(`   • Conversation ID: ${latest.conversationId}`);
+      console.log(`   • Corrections Applied: ${latest.correctionsApplied ?? 0}`);
+      console.log(`   • Fields Collected: ${latest.collectedFields.length}`);
+      console.log(`   • Confidence: ${latest.confidence}%`);
+    }
+  }, [latest?.correctionsApplied, latest?.conversationId]);
+
+  const performanceTimeline = orderedSessions.slice(0, 5);
+
+  // Early return if no data (after all hooks)
+  if (!latest) {
+    return (
+      <div className="card p-6 border-dashed border-border/60 bg-muted/10 text-sm text-muted-foreground flex flex-col gap-2">
+        <div className="flex items-center gap-2">
+          <Brain className="w-5 h-5" />
+          <span>Run Evaluate Now or finish a call to see Master AI insights.</span>
+        </div>
+      </div>
+    );
+  }
 
   const handleFieldEdit = (field: FieldCapture, idx: number) => {
     setEditingFieldIndex(idx);
@@ -451,8 +455,8 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSe
   );
 
   return (
-    <div className="card p-6">
-      <div className="flex items-center justify-between mb-4">
+    <div className="card p-6 rounded-lg border border-border/40 bg-background/95 shadow-sm transition-all duration-200">
+      <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-2">
           <Brain className="w-5 h-5 text-primary" />
           <h2 className="text-lg font-semibold">Master AI Insights</h2>
@@ -461,8 +465,8 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSe
         <Sparkles className="w-5 h-5 text-amber-500" />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="p-4 rounded-lg border border-border/60 bg-muted/10">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        <div className="p-5 rounded-lg border border-border/40 bg-muted/10 transition-all duration-200 hover:shadow-md">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-medium text-muted-foreground">Current Confidence</span>
             <BarChart3 className="w-4 h-4 text-blue-500" />
@@ -473,7 +477,7 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSe
           </p>
         </div>
 
-        <div className="p-4 rounded-lg border border-border/60 bg-muted/10">
+        <div className="p-5 rounded-lg border border-border/40 bg-muted/10 transition-all duration-200 hover:shadow-md">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-medium text-muted-foreground">Fields Captured</span>
             <CheckCircle2 className="w-4 h-4 text-green-500" />
@@ -484,7 +488,7 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSe
           </p>
         </div>
 
-        <div className="p-4 rounded-lg border border-border/60 bg-muted/10">
+        <div className="p-5 rounded-lg border border-border/40 bg-muted/10 transition-all duration-200 hover:shadow-md">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-medium text-muted-foreground">Corrections Applied</span>
             <TrendingUp className="w-4 h-4 text-purple-500" />
@@ -500,7 +504,7 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSe
         </div>
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-4">
         <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-amber-500" />
           What the Master AI Sees:
@@ -545,7 +549,19 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSe
         })}
       </div>
 
-      <div className="mt-6 pt-6 border-t border-border/60 space-y-4">
+      {/* Toggle Button for Details */}
+      <div className="mt-6 flex justify-center">
+        <button
+          onClick={() => setShowDetails(!showDetails)}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary border border-primary/50 rounded-lg hover:bg-primary/10 transition-all duration-200"
+        >
+          <BarChart3 className="w-4 h-4" />
+          {showDetails ? 'Hide Full Analysis' : 'View Full Analysis'}
+        </button>
+      </div>
+
+      {showDetails && (
+        <div className="mt-6 pt-6 border-t border-border/60 space-y-4">
         <div>
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-foreground">Field Collection</h3>
@@ -775,7 +791,8 @@ const MasterAIInsights: React.FC<MasterAIInsightsProps> = ({ sessions, currentSe
             </div>
           </div>
         )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };

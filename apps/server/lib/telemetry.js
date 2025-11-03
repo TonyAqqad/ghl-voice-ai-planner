@@ -94,7 +94,7 @@ function logSyncOperation(details) {
     synced,
     total,
     errors,
-    duration Ms,
+    durationMs,
   } = details;
   
   const logEntry = {

@@ -1,6 +1,6 @@
 /**
  * Master AI Manager - Server Endpoints
- * 
+ *
  * Provides Master AI orchestration with:
  * - Pre-turn guidance
  * - Quality review and gating
@@ -9,9 +9,18 @@
  * - Full observability
  */
 
+const crypto = require('crypto');
 const { runLLM } = require('../providers/llm-utils');
 
 const DATE_RULE_REGEX = /specific\s+(?:date|time)|date\/time/i;
+
+/**
+ * Generate a short hash of a prompt for tracking/comparison
+ */
+const generatePromptHash = (prompt) => {
+  if (!prompt) return 'none';
+  return crypto.createHash('sha256').update(prompt).digest('hex').substring(0, 8);
+};
 
 const normalizeWhitespace = (value = '') =>
   value.replace(/\s+/g, ' ').trim();
@@ -59,7 +68,21 @@ async function preTurnGuidance(req, res) {
       traceId,
     } = req.body;
 
+    const promptHash = generatePromptHash(systemPrompt);
+
     console.log(`🎯 Pre-turn guidance for agent ${agentId} [${traceId}]`);
+    console.log(`🔍 DIAGNOSTIC: Pre-Turn Guidance Request`, {
+      traceId,
+      agentId,
+      niche,
+      temperature: 0.3,
+      llmProvider: req.body.llmProvider || 'openai',
+      systemPromptHash: promptHash,
+      systemPromptLength: systemPrompt?.length || 0,
+      conversationTurns: conversation.length,
+      fieldsCollected: fieldsCollected.length,
+      goldenDatasetMode,
+    });
 
     const conversationContext = conversation
       .map(turn => `${turn.role === 'caller' ? 'Caller' : 'Agent'}: ${turn.text}`)
@@ -113,6 +136,20 @@ Return ONLY the JSON object.`;
         guidance.recommendedResponse.substring(0, 50)
       }..."`
     );
+    console.log(`🔍 DIAGNOSTIC: Pre-Turn Guidance Response`, {
+      traceId,
+      model: usedModel,
+      temperature: 0.3,
+      tokensIn: usage?.prompt_tokens || 0,
+      tokensOut: usage?.completion_tokens || 0,
+      tokensTotal: usage?.total_tokens || 0,
+      confidence: guidance.confidence,
+      fieldToCollect: guidance.fieldToCollect || 'none',
+      recommendedResponseLength: guidance.recommendedResponse?.length || 0,
+      recommendedResponsePreview: guidance.recommendedResponse?.substring(0, 100),
+      reasoning: guidance.reasoning,
+      alternativeCount: guidance.alternativeResponses?.length || 0,
+    });
 
     return res.json({
       ok: true,
@@ -154,7 +191,24 @@ async function reviewResponse(req, res) {
       traceId,
     } = req.body;
 
+    const promptHash = generatePromptHash(systemPrompt);
+
     console.log(`🔍 Reviewing response for agent ${agentId} [${traceId}]`);
+    console.log(`🔍 DIAGNOSTIC: Quality Review Request`, {
+      traceId,
+      agentId,
+      niche,
+      temperature: 0.2,
+      llmProvider: req.body.llmProvider || 'openai',
+      systemPromptHash: promptHash,
+      systemPromptLength: systemPrompt?.length || 0,
+      conversationTurns: conversation.length,
+      responseLength: response?.length || 0,
+      responsePreview: response?.substring(0, 100),
+      qualityThreshold,
+      confidenceThreshold,
+      goldenDatasetMode,
+    });
 
     const conversationContext = conversation
       .map(turn => `${turn.role === 'caller' ? 'Caller' : 'Agent'}: ${turn.text}`)
@@ -302,6 +356,26 @@ Return ONLY the JSON object.`;
     console.log(
       `✅ Review complete [${traceId}] via ${usedModel}: ${review.approved ? 'APPROVED' : 'BLOCKED'} (score: ${review.score})`
     );
+    console.log(`🔍 DIAGNOSTIC: Quality Review Response`, {
+      traceId,
+      model: usedModel,
+      temperature: 0.2,
+      tokensIn: usage?.prompt_tokens || 0,
+      tokensOut: usage?.completion_tokens || 0,
+      tokensTotal: usage?.total_tokens || 0,
+      approved: review.approved,
+      score: review.score,
+      confidenceScore: review.confidenceScore,
+      issuesCount: review.issues?.length || 0,
+      issues: review.issues,
+      blockedReasonsCount: review.blockedReasons?.length || 0,
+      blockedReasons: review.blockedReasons,
+      warningsCount: review.warnings?.length || 0,
+      warnings: review.warnings,
+      hasSuggestedResponse: !!review.suggestedResponse,
+      suggestedResponseLength: review.suggestedResponse?.length || 0,
+      suggestionsCount: review.suggestions?.length || 0,
+    });
 
     return res.json({
       ok: true,
@@ -545,9 +619,126 @@ Return ONLY the JSON object.`;
   }
 }
 
+/**
+ * Review entire call transcript
+ * POST /api/mcp/master/reviewCall
+ */
+async function reviewCall(req, res) {
+  try {
+    const {
+      agentId,
+      niche,
+      systemPrompt,
+      conversation = [],
+      qualityThreshold = 70,
+      confidenceThreshold = 70,
+      traceId,
+    } = req.body;
+
+    console.log(`📞 Post-call review for agent ${agentId} [${traceId}] (turns: ${conversation.length})`);
+
+    if (!Array.isArray(conversation) || conversation.length === 0) {
+      return res.status(400).json({
+        ok: false,
+        error: 'Conversation transcript is required for post-call review',
+      });
+    }
+
+    const transcript = conversation
+      .map((turn, index) => {
+        const speaker = turn.role === 'caller' ? 'Caller' : 'Agent';
+        return `${index + 1}. ${speaker}: ${normalizeWhitespace(turn.text || '')}`;
+      })
+      .join('\n');
+
+    const reviewPrompt = `You are a Master AI quality reviewer for Go High Level Voice AI agents.
+
+Evaluate the ENTIRE CALL transcript. Focus STRICTLY on the system prompt rules.
+
+===== SYSTEM PROMPT (ENFORCE ONLY THESE RULES) =====
+${systemPrompt || 'N/A'}
+===== END SYSTEM PROMPT =====
+
+===== CALL TRANSCRIPT =====
+${transcript}
+===== END TRANSCRIPT =====
+
+Return JSON:
+{
+  "approved": true/false,
+  "score": 0-100,
+  "confidenceScore": 0-100,
+  "summary": "one paragraph summary of call quality",
+  "issues": ["issue tied to RULES in system prompt"],
+  "suggestions": ["actionable improvements grounded in system prompt"],
+  "blockedReasons": ["critical reasons if the call should be blocked"],
+  "keyMoments": ["significant events in the conversation"],
+  "handoffRecommended": true/false,
+  "suggestedTranscript": "optional rewritten agent response(s) if needed"
+}
+
+If no issues, return empty arrays.
+Do NOT invent new rules. Only enforce what is explicitly written in the system prompt.
+Lower scores if confirmation/order requirements are missed.`;
+
+    const { payload, usage, model: usedModel } = await runLLM(
+      req.body.llmProvider,
+      reviewPrompt,
+      {
+        temperature: 0.2,
+        maxTokens: 900,
+        responseFormat: { type: 'json_object' },
+      }
+    );
+
+    const review = {
+      approved: typeof payload.approved === 'boolean'
+        ? payload.approved
+        : (typeof payload.score === 'number' ? payload.score >= qualityThreshold : true),
+      score: typeof payload.score === 'number' ? payload.score : 100,
+      confidenceScore: typeof payload.confidenceScore === 'number'
+        ? payload.confidenceScore
+        : confidenceThreshold,
+      summary: payload.summary || '',
+      issues: Array.isArray(payload.issues) ? payload.issues : [],
+      suggestions: Array.isArray(payload.suggestions) ? payload.suggestions : [],
+      blockedReasons: Array.isArray(payload.blockedReasons) ? payload.blockedReasons : [],
+      keyMoments: Array.isArray(payload.keyMoments) ? payload.keyMoments : [],
+      handoffRecommended: Boolean(payload.handoffRecommended),
+      suggestedTranscript: payload.suggestedTranscript || null,
+    };
+
+    const promptTokens = usage?.prompt_tokens ?? Math.ceil(reviewPrompt.length / 4);
+    const completionTokens = usage?.completion_tokens ?? Math.ceil(JSON.stringify(review).length / 4);
+    const totalTokens = usage?.total_tokens ?? promptTokens + completionTokens;
+    const costUsd = (totalTokens / 1000) * 0.002;
+
+    console.log(`✅ Post-call review complete [${traceId}] via ${usedModel} • Score ${review.score}/100`);
+
+    return res.json({
+      ok: true,
+      review,
+      model: usedModel,
+      usage: {
+        prompt_tokens: promptTokens,
+        completion_tokens: completionTokens,
+        total_tokens: totalTokens,
+      },
+      costUsd,
+    });
+  } catch (error) {
+    console.error('❌ Post-call review error:', error);
+    return res.status(500).json({
+      ok: false,
+      error: error.message || 'Failed to review call',
+    });
+  }
+}
+
 module.exports = {
   preTurnGuidance,
   reviewResponse,
+  reviewCall,
   intervene,
   learnPattern,
 };
