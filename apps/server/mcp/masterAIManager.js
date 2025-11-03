@@ -11,6 +11,38 @@
 
 const { runLLM } = require('../providers/llm-utils');
 
+const DATE_RULE_REGEX = /specific\s+(?:date|time)|date\/time/i;
+
+const normalizeWhitespace = (value = '') =>
+  value.replace(/\s+/g, ' ').trim();
+
+const hasLikelyDate = (text = '') => {
+  const dayPattern =
+    /\b(?:mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?)\b/i;
+  const monthPattern =
+    /\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b/i;
+  const slashDatePattern =
+    /\b(?:0?[1-9]|1[0-2])[\/-](?:0?[1-9]|[12][0-9]|3[01])[\/-](?:\d{2}|\d{4})\b/;
+
+  return (
+    dayPattern.test(text) ||
+    monthPattern.test(text) ||
+    slashDatePattern.test(text)
+  );
+};
+
+const hasLikelyTime = (text = '') => {
+  const twelveHourPattern =
+    /\b(?:[01]?\d|2[0-3])(?::[0-5]\d)?\s?(?:am|pm)\b/i;
+  const twentyFourHourPattern = /\b(?:[01]\d|2[0-3]):[0-5]\d\b/;
+  return (
+    twelveHourPattern.test(text) ||
+    twentyFourHourPattern.test(text) ||
+    /\bnoon\b/i.test(text) ||
+    /\bmidnight\b/i.test(text)
+  );
+};
+
 /**
  * Generate pre-turn guidance
  * POST /api/mcp/master/preTurnGuidance
@@ -168,6 +200,74 @@ Return ONLY the JSON object.`;
       maxTokens: 600,
       responseFormat: { type: 'json_object' },
     });
+
+    // Normalise response collections for downstream logic
+    review.issues = Array.isArray(review.issues)
+      ? review.issues
+      : review.issues
+      ? [String(review.issues)]
+      : [];
+    review.suggestions = Array.isArray(review.suggestions)
+      ? review.suggestions
+      : review.suggestions
+      ? [String(review.suggestions)]
+      : [];
+    review.blockedReasons = Array.isArray(review.blockedReasons)
+      ? review.blockedReasons
+      : review.blockedReasons
+      ? [String(review.blockedReasons)]
+      : [];
+
+    const normalizedOriginal = normalizeWhitespace(response);
+    const normalizedSuggestion = normalizeWhitespace(review.suggestedResponse || '');
+    const suggestionMatchesOriginal =
+      normalizedOriginal.length > 0 &&
+      normalizedSuggestion.length > 0 &&
+      normalizedOriginal === normalizedSuggestion;
+
+    const autopassReasons = [];
+
+    if (
+      review.issues.some(issue => DATE_RULE_REGEX.test(issue)) &&
+      hasLikelyDate(response) &&
+      hasLikelyTime(response)
+    ) {
+      review.issues = review.issues.filter(issue => !DATE_RULE_REGEX.test(issue));
+      review.blockedReasons = review.blockedReasons.filter(
+        reason => !DATE_RULE_REGEX.test(reason)
+      );
+      review.suggestions = review.suggestions.filter(
+        suggestion => !DATE_RULE_REGEX.test(suggestion)
+      );
+      autopassReasons.push('date_time_present');
+    }
+
+    if (suggestionMatchesOriginal) {
+      autopassReasons.push('identical_suggestion');
+    }
+
+    const autoCleared =
+      autopassReasons.length > 0 &&
+      review.issues.length === 0 &&
+      review.blockedReasons.length === 0;
+
+    if (autoCleared) {
+      review.approved = true;
+      review.blockedReasons = [];
+      review.score = Math.max(review.score, qualityThreshold);
+      review.warnings = [
+        ...(review.warnings || []),
+        `Auto-cleared quality gate (${autopassReasons.join(', ')})`,
+      ];
+      console.log(
+        `🟢 Quality gate auto-cleared [${traceId}] due to ${autopassReasons.join(', ')}`
+      );
+    } else if (suggestionMatchesOriginal) {
+      review.warnings = [
+        ...(review.warnings || []),
+        'Suggested fix matches the original response—verify prompt alignment.',
+      ];
+    }
 
     // Enforce quality threshold (but be lenient in training mode)
     // Only block on CRITICAL violations, not low scores during training

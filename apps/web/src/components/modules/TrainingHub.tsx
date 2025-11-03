@@ -1440,6 +1440,7 @@ const TrainingHub: React.FC = () => {
         
         // Reset conversation after successful save
         setConversation([]);
+        setMessageFeedback({});
         setConversationId(createConversationId());
         setHasEvaluatedSession(false);
         setTestResult(null);
@@ -1469,6 +1470,7 @@ const TrainingHub: React.FC = () => {
     }
 
     setConversation([]);
+    setMessageFeedback({});
     setConversationId(createConversationId());
     setHasEvaluatedSession(false);
     setTestResult(null);

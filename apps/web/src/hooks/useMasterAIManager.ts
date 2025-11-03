@@ -36,6 +36,7 @@ export interface QualityReview {
   score: number; // 0-100
   issues: string[];
   suggestions: string[];
+  warnings?: string[];
   confidenceScore: number; // Master AI confidence in this response
   blockedReasons?: string[];
   suggestedResponse?: string;
