@@ -17,6 +17,7 @@ import type {
   AttestationDiagnostic,
 } from '../../lib/verification/attestationTypes';
 import { Button } from './Button';
+import { getCachedConfig } from '../../lib/config/appConfig';
 
 interface AttestationPanelProps {
   attestation: TurnAttestation | null;
@@ -101,6 +102,17 @@ export function AttestationPanel({
             value={attestation.specHash}
             mono
             tooltip="Hash of embedded SPEC JSON"
+          />
+          <SummaryItem
+            label="Memory Backend"
+            value={attestation.memorySource || 'localStorage'}
+            badge
+            badgeColor={
+              attestation.memorySource === 'context7' ? 'green' :
+              attestation.memorySource === 'hybrid' ? 'blue' : 
+              'gray'
+            }
+            tooltip={`Snippet storage: ${attestation.memorySource || 'localStorage'} (config: ${getCachedConfig()?.enableContext7Memory ? 'enabled' : 'disabled'})`}
           />
           <SummaryItem
             label="Snippets Applied"

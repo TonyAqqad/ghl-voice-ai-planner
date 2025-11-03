@@ -119,6 +119,8 @@ export interface TurnAttestation {
   snippetsEnabled: boolean;
   /** Whether response guard is active */
   guardEnabled: boolean;
+  /** Memory source used for snippet retrieval */
+  memorySource?: 'localStorage' | 'context7' | 'hybrid';
 }
 
 /**

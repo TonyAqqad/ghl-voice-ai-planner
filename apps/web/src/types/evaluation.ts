@@ -41,6 +41,7 @@ export interface ManualCorrectionPayload {
   correctedResponse: string;
   storeIn: 'prompt' | 'kb';
   reason?: string;
+  turnId?: string; // Added to support persisting turn-level corrections to master store
 }
 
 export interface EvaluationScorecardProps {

@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { BookOpen, Save, Upload, RefreshCw, Database, Sparkles, CheckCircle, Link2, Copy, Edit2, X, Check, AlertTriangle, ThumbsUp, ThumbsDown, History, BarChart3, Award, Layers } from 'lucide-react';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { BookOpen, Save, Upload, RefreshCw, Database, Sparkles, CheckCircle, Link2, Copy, Edit2, X, Check, AlertTriangle, ThumbsUp, ThumbsDown, History, BarChart3, Award, Layers, Shield } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { toast } from 'react-hot-toast';
 import { useMCP } from '../../hooks/useMCP';
@@ -16,6 +16,7 @@ import {
 } from '../../lib/evaluation/types';
 import { analyzeTurnWithAPI, TurnAnalysis } from '../../lib/evaluation/turnAnalyzer';
 import { useMasterAIManager } from '../../hooks/useMasterAIManager';
+import { useHaptics } from '../../hooks/useHaptics';
 import PreTurnGuidance from '../ui/PreTurnGuidance';
 import QualityGate from '../ui/QualityGate';
 import ObservabilityDashboard from '../ui/ObservabilityDashboard';
@@ -38,7 +39,7 @@ import {
   applyScopedCorrections,
 } from '../../lib/evaluation/masterStore';
 import { extractSpecFromPrompt, embedSpecInPrompt } from '../../lib/spec/specExtract';
-import { PromptSpec } from '../../lib/spec/specTypes';
+import { PromptSpec, DEFAULT_SPEC } from '../../lib/spec/specTypes';
 import { generateRollingSummary, getRecentTurns, truncateContext } from '../../lib/runtime/memory';
 import type { TurnAttestation } from '../../lib/verification/attestationTypes';
 import { 
@@ -198,6 +199,10 @@ const TrainingHub: React.FC = () => {
   const [availableNiches, setAvailableNiches] = useState<Array<{ value: string; label: string }>>(fallbackNiches);
   const [composedPrompt, setComposedPrompt] = useState<any>(null);
   const [showPreview, setShowPreview] = useState(false);
+  const { trigger: triggerHaptic } = useHaptics();
+  const previousQualityBlocked = useRef<boolean | null>(null);
+  const previousConfidenceGate = useRef<boolean | null>(null);
+  const previousGateState = useRef<boolean | null>(null);
 
   // Master AI Manager state
   const [enableMasterAI, setEnableMasterAI] = useState(false);
@@ -284,6 +289,31 @@ const TrainingHub: React.FC = () => {
   const gateResumeAt = gateSnapshot?.autoResumeAt
     ? new Date(gateSnapshot.autoResumeAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     : null;
+  const gateStatusChipClass = gateSnapshot?.isGated
+    ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200'
+    : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200';
+  const gateStatusLabel = gateSnapshot?.isGated ? 'Gate Active' : 'Gate Clear';
+  const gateStatusMeta =
+    gateSnapshot?.isGated && gateSnapshot?.gateReason
+      ? gateSnapshot.gateReason
+      : gateSnapshot?.isGated
+      ? 'Manual review required'
+      : 'Sandbox ready';
+  const gateConfidence = gateSnapshot?.lastConfidence;
+  const statusTokenSummary = tokenStats
+    ? `~${tokenStats.totalTokens.toLocaleString()}t`
+    : observabilitySummary
+    ? `~${Math.round(observabilitySummary.totalTokens).toLocaleString()}t`
+    : '—';
+  const statusCostSummary = observabilitySummary
+    ? `$${observabilitySummary.totalCost.toFixed(3)}`
+    : tokenStats
+    ? `$${tokenStats.costEstimate.toFixed(3)}`
+    : '—';
+  const statusLatencySummary =
+    observabilitySummary && observabilitySummary.avgLatency > 0
+      ? `${Math.round(observabilitySummary.avgLatency)}ms`
+      : '—';
   
   // Master AI Manager Hook (initialized after selectedAgent is defined)
   const masterAI = useMasterAIManager({
@@ -345,6 +375,53 @@ const TrainingHub: React.FC = () => {
       costEstimate,
     };
   }, [runtimeAttestation]);
+  const observabilitySummary = useMemo(() => {
+    if (!enableMasterAI || !showObservability || !masterAI.getObservabilitySummary) {
+      return null;
+    }
+    try {
+      return masterAI.getObservabilitySummary();
+    } catch (error) {
+      console.warn('Failed to read observability summary', error);
+      return null;
+    }
+  }, [enableMasterAI, masterAI, showObservability]);
+
+  useEffect(() => {
+    const qualityBlocked = Boolean(masterAI.qualityReview && !masterAI.qualityReview.approved);
+    if (previousQualityBlocked.current === null) {
+      previousQualityBlocked.current = qualityBlocked;
+      return;
+    }
+    if (previousQualityBlocked.current !== qualityBlocked) {
+      triggerHaptic(qualityBlocked ? 'quality-blocked' : 'quality-approved');
+    }
+    previousQualityBlocked.current = qualityBlocked;
+  }, [masterAI.qualityReview, triggerHaptic]);
+
+  useEffect(() => {
+    if (gateSnapshot?.isGated == null) return;
+    if (previousGateState.current === null) {
+      previousGateState.current = gateSnapshot.isGated;
+      return;
+    }
+    if (previousGateState.current !== gateSnapshot.isGated) {
+      triggerHaptic('gate-flip');
+    }
+    previousGateState.current = gateSnapshot.isGated;
+  }, [gateSnapshot?.isGated, triggerHaptic]);
+
+  useEffect(() => {
+    if (typeof masterAI.confidenceGateActive === 'undefined') return;
+    if (previousConfidenceGate.current === null) {
+      previousConfidenceGate.current = masterAI.confidenceGateActive;
+      return;
+    }
+    if (previousConfidenceGate.current !== masterAI.confidenceGateActive) {
+      triggerHaptic(masterAI.confidenceGateActive ? 'confidence-armed' : 'confidence-cleared');
+    }
+    previousConfidenceGate.current = masterAI.confidenceGateActive;
+  }, [masterAI.confidenceGateActive, triggerHaptic]);
 
   const runSessionEvaluation = useCallback(() => {
     if (conversation.length === 0) return null;
@@ -686,14 +763,14 @@ const TrainingHub: React.FC = () => {
     let cancelled = false;
 
     if (!systemPrompt) {
-      setActiveSpec(null);
+      setActiveSpec(DEFAULT_SPEC); // Always use DEFAULT_SPEC instead of null
       setSpecLintIssues([]);
       setPromptHash('');
       return;
     }
 
     const draftSpec = extractSpecFromPrompt(systemPrompt);
-    setActiveSpec(draftSpec);
+    setActiveSpec(draftSpec); // extractSpecFromPrompt returns DEFAULT_SPEC if no markers found
     setSpecLintIssues(lintSpec(draftSpec, systemPrompt));
 
     const computeHash = async () => {
@@ -1005,6 +1082,11 @@ const TrainingHub: React.FC = () => {
     if (hasEvaluatedSession) {
       setHasEvaluatedSession(false);
     }
+
+    // Snapshot conversation state before mutation (for rollback on error)
+    const previousConversation = [...conversation];
+    const previousTotalTokens = totalTokens;
+    const previousLastCallTokens = lastCallTokens;
 
     const callerTs = Date.now();
     const callerTurn: SimulatorTurn = {
@@ -1374,6 +1456,15 @@ const TrainingHub: React.FC = () => {
     } catch (e: any) {
       console.error('Call simulator error:', e);
       toast.error(e.message || 'Dry-run failed');
+      
+      // ROLLBACK: Restore conversation state on error
+      console.log('🔄 Rolling back conversation state due to error');
+      setConversation(previousConversation);
+      setTotalTokens(previousTotalTokens);
+      setLastCallTokens(previousLastCallTokens);
+      setRuntimeAttestation(null);
+      setEffectivePrompt('');
+      setLastGuardEvent(null);
     } finally {
       setSyncing(false);
     }
@@ -1481,11 +1572,20 @@ const TrainingHub: React.FC = () => {
       setCorrectionConfirmation(confirmationMessage);
       toast.success(confirmationMessage);
 
+      // FIX: Persist turn-level correction to master store with turnId
       if (latestSession && latestSession.conversationId === conversationId) {
+        // Find the turn ID from the conversation
+        const correctedTurn = conversation[payload.messageIndex];
+        const turnId = payload.turnId || correctedTurn?.id;
+        
         const updated = applyManualCorrections(conversationId, {
           fields: latestSession.collectedFields,
+          turnId: turnId,
+          correctedResponse: payload.correctedResponse,
         });
+        
         if (updated) {
+          console.log(`✅ Manual correction persisted to master store (turnId: ${turnId})`);
           setLatestSession(updated);
           setSessions(prev => [updated, ...prev.filter(s => s.conversationId !== updated.conversationId)]);
         }
@@ -1812,59 +1912,108 @@ const TrainingHub: React.FC = () => {
   };
 
   return (
-    <div className="p-6 bg-background min-h-screen text-foreground">
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold gradient-text">Training Hub</h1>
-          <p className="text-muted-foreground">Craft prompts, knowledge, and Q&A (Sandboxed - No GHL API calls)</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={handleLocalSave} disabled={saving} loading={saving}>
-            <Save className="w-4 h-4 mr-2" /> Save Local
-          </Button>
-          <Button variant="outline" onClick={handleGeneratePrompt} disabled={genLoading} loading={genLoading}>
-            <Sparkles className="w-4 h-4 mr-2" /> Generate Prompt
-          </Button>
-          <Button variant="outline" onClick={handleSaveState} disabled={saving || !payload}>
-            <Database className="w-4 h-4 mr-2" /> Save State
-          </Button>
-          <Button
-            onClick={handleDeploy}
-            disabled={syncing || !payload || (specValidation && specValidation.status !== 'ok')}
-            loading={syncing}
-            title={specValidation && specValidation.status !== 'ok' ? 'Resolve spec drift before deploying' : undefined}
-          >
-            <Upload className="w-4 h-4 mr-2" /> Deploy Agent
-          </Button>
-        </div>
-      </div>
+    <div className="bg-background text-foreground">
+      <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 px-6 py-8 lg:px-10">
+        <header className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div className="space-y-1">
+            <h1 className="text-3xl font-bold gradient-text">Training Hub</h1>
+            <p className="text-sm text-muted-foreground">
+              Craft prompts, knowledge, and Q&amp;A (Sandboxed – no GHL API calls)
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" onClick={handleLocalSave} disabled={saving} loading={saving}>
+              <Save className="w-4 h-4 mr-2" /> Save Local
+            </Button>
+            <Button variant="outline" onClick={handleGeneratePrompt} disabled={genLoading} loading={genLoading}>
+              <Sparkles className="w-4 h-4 mr-2" /> Generate Prompt
+            </Button>
+            <Button variant="outline" onClick={handleSaveState} disabled={saving || !payload}>
+              <Database className="w-4 h-4 mr-2" /> Save State
+            </Button>
+            <Button
+              onClick={handleDeploy}
+              disabled={syncing || !payload || (specValidation && specValidation.status !== 'ok')}
+              loading={syncing}
+              title={specValidation && specValidation.status !== 'ok' ? 'Resolve spec drift before deploying' : undefined}
+            >
+              <Upload className="w-4 h-4 mr-2" /> Deploy Agent
+            </Button>
+          </div>
+        </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="card p-4 col-span-1">
-          <label className="text-sm mb-2 block">Select Agent</label>
-          <select value={selectedId} onChange={(e) => setSelectedId(e.target.value)} className="w-full px-3 py-2 border border-border rounded-md bg-input">
-            {voiceAgents.map(a => (
-              <option key={a.id} value={a.id}>{a.name}</option>
-            ))}
-          </select>
-
-          <label className="text-sm mb-2 block mt-4">Industry / Niche</label>
-          <select value={selectedNiche} onChange={(e) => setSelectedNiche(e.target.value)} className="w-full px-3 py-2 border border-border rounded-md bg-input">
-            <option value="generic">Generic</option>
-            {availableNiches.map(n => (
-              <option key={n.value} value={n.value}>{n.label}</option>
-            ))}
-          </select>
-
-          <div className="mt-4 p-3 rounded bg-muted/30 text-sm">
-            <div className="flex items-center gap-2">
-              <Database className="w-4 h-4" />
-              <span>Sandboxed Mode: All data stored locally in database</span>
+        <section className="rounded-2xl border border-border/60 bg-muted/10 p-5 shadow-sm backdrop-blur-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-1 flex-col gap-4 sm:flex-row sm:items-end sm:gap-6">
+              <div className="flex min-w-[220px] flex-col gap-1">
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Active Agent</span>
+                <select
+                  value={selectedId}
+                  onChange={(e) => {
+                    setSelectedId(e.target.value);
+                    triggerHaptic('agent-switch');
+                  }}
+                  className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm shadow-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
+                >
+                  {voiceAgents.map((agent) => (
+                    <option key={agent.id} value={agent.id}>
+                      {agent.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex min-w-[200px] flex-col gap-1">
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Industry / Niche</span>
+                <select
+                  value={selectedNiche}
+                  onChange={(e) => setSelectedNiche(e.target.value)}
+                  className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm shadow-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
+                >
+                  <option value="generic">Generic</option>
+                  {availableNiches.map((n) => (
+                    <option key={n.value} value={n.value}>
+                      {n.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span className="inline-flex items-center gap-2 rounded-full bg-background/80 px-3 py-1 font-medium text-foreground shadow-sm">
+                <BarChart3 className="h-3.5 w-3.5 text-primary" />
+                {statusTokenSummary}
+              </span>
+              <span className="inline-flex items-center gap-2 rounded-full bg-background/80 px-3 py-1 font-medium text-foreground shadow-sm">
+                <RefreshCw className="h-3.5 w-3.5 text-primary" />
+                {statusLatencySummary}
+              </span>
+              <span className="inline-flex items-center gap-2 rounded-full bg-background/80 px-3 py-1 font-medium text-foreground shadow-sm">
+                <Database className="h-3.5 w-3.5 text-primary" />
+                {statusCostSummary}
+              </span>
             </div>
           </div>
-        </div>
+          <div className="mt-4 flex flex-col gap-3 text-xs text-muted-foreground md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 font-medium ${gateStatusChipClass}`}>
+                <Shield className="h-3.5 w-3.5" />
+                {gateStatusLabel}
+              </span>
+              {gateConfidence != null && (
+                <span className="text-[11px] text-muted-foreground">
+                  Last confidence {gateConfidence}%
+                </span>
+              )}
+              {gateStatusMeta && <span className="text-[11px] text-muted-foreground">{gateStatusMeta}</span>}
+            </div>
+            <div className="flex items-center gap-2">
+              <Database className="h-3 w-3 text-muted-foreground" />
+              <span>Sandboxed mode · data stored locally</span>
+            </div>
+          </div>
+        </section>
 
-        <div className="card p-4 col-span-2">
+        <div className="rounded-2xl border border-border/60 bg-background/95 p-6 shadow-sm">
           <div className="mb-4">
             <div className="flex items-center justify-between mb-2">
               <label className="block text-sm font-medium">System Prompt</label>
@@ -2201,9 +2350,8 @@ const TrainingHub: React.FC = () => {
             <span>Supports GHL Voice AI Custom Actions via webhook URLs</span>
           </div>
         </div>
-      </div>
 
-      <div className="mt-6 card p-4">
+      <div className="rounded-2xl border border-border/60 bg-background/95 p-6 shadow-sm">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <BookOpen className="w-4 h-4" />
@@ -2604,7 +2752,11 @@ const TrainingHub: React.FC = () => {
                   <input
                     type="checkbox"
                     checked={enablePreTurnGuidance}
-                    onChange={(e) => setEnablePreTurnGuidance(e.target.checked)}
+                    onChange={(e) => {
+                      const next = e.target.checked;
+                      setEnablePreTurnGuidance(next);
+                      if (next) triggerHaptic('guidance-expand');
+                    }}
                     className="rounded"
                   />
                   <span className="text-sm text-muted-foreground">Pre-Turn Guidance</span>
@@ -2614,7 +2766,11 @@ const TrainingHub: React.FC = () => {
                   <input
                     type="checkbox"
                     checked={enableQualityGates}
-                    onChange={(e) => setEnableQualityGates(e.target.checked)}
+                    onChange={(e) => {
+                      const next = e.target.checked;
+                      setEnableQualityGates(next);
+                      if (next) triggerHaptic('gate-flip');
+                    }}
                     className="rounded"
                   />
                   <span className="text-sm text-muted-foreground">Quality Gates</span>
@@ -2624,7 +2780,11 @@ const TrainingHub: React.FC = () => {
                   <input
                     type="checkbox"
                     checked={showObservability}
-                    onChange={(e) => setShowObservability(e.target.checked)}
+                    onChange={(e) => {
+                      const next = e.target.checked;
+                      setShowObservability(next);
+                      if (next) triggerHaptic('observability-expand');
+                    }}
                     className="rounded"
                   />
                   <span className="text-sm text-muted-foreground">Show Observability</span>
@@ -2642,6 +2802,7 @@ const TrainingHub: React.FC = () => {
                 onUseResponse={(response) => {
                   setTestMessage(response);
                   toast.success('Using Master AI recommendation');
+                  triggerHaptic('guidance-apply');
                 }}
               />
             </div>
@@ -2814,20 +2975,25 @@ const TrainingHub: React.FC = () => {
 
           {/* Confidence Gate Warning */}
           {masterAI.confidenceGateActive && (
-            <div className="mb-4 p-4 rounded-lg border-2 border-red-500 bg-red-50 dark:bg-red-900/20 animate-pulse">
-              <div className="flex items-center gap-2 text-red-700 dark:text-red-300">
+            <div className="mb-4 rounded-2xl border border-red-500/40 bg-red-500/10 p-5 shadow-sm animate-pulse">
+              <div className="flex items-center gap-2 text-red-600 dark:text-red-300">
                 <AlertTriangle className="w-5 h-5" />
                 <span className="font-semibold">Confidence Gate Active</span>
               </div>
-              <p className="text-sm text-red-600 dark:text-red-400 mt-1">
-                Agent performance below threshold. Manual review required.
+              <p className="mt-1 text-sm text-red-600/90 dark:text-red-300">
+                Agent performance is below the configured threshold. Review the latest interactions or override to continue testing.
               </p>
-              <button
-                onClick={() => masterAI.clearConfidenceGate()}
-                className="mt-2 px-3 py-1 text-sm rounded bg-red-600 text-white hover:bg-red-700"
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  masterAI.clearConfidenceGate();
+                  triggerHaptic('confidence-cleared');
+                }}
+                className="mt-3 border-red-500/40 text-red-600 hover:bg-red-500/10"
               >
-                Clear Gate (Testing Only)
-              </button>
+                Clear Gate (Sandbox Only)
+              </Button>
             </div>
           )}
 
@@ -2878,6 +3044,7 @@ const TrainingHub: React.FC = () => {
                         onClick={() => {
                           if (!selectedAgentId) return;
                           clearAgentGate(selectedAgentId);
+                          triggerHaptic('confidence-cleared');
                           toast.success('Confidence gate reset for testing');
                         }}
                       >
@@ -3022,6 +3189,7 @@ const TrainingHub: React.FC = () => {
         savingCorrection={savingCorrection}
         correctionConfirmation={correctionConfirmation}
       />
+      </main>
     </div>
   );
 };

@@ -480,6 +480,53 @@ Return ONLY the JSON object.`;
 
     console.log(`✅ Learned ${patterns.length} patterns [${traceId}] via ${usedModel}`);
 
+    // Save patterns to memory (hybrid: database + Context7)
+    try {
+      const MemoryAdapterServer = require('../lib/memoryAdapterServer');
+      const { generateScopeId } = require('../lib/scopeUtils');
+      const memoryAdapter = new MemoryAdapterServer();
+      
+      // CRITICAL: Generate proper scopeId with SHA-256 hash of system prompt
+      const systemPrompt = req.body.systemPrompt || req.body.prompt || '';
+      if (!systemPrompt) {
+        throw new Error('System prompt required for scopeId generation');
+      }
+      
+      const scopeId = await generateScopeId({
+        locationId: req.body.locationId || 'default',
+        agentId,
+        promptText: systemPrompt,
+      });
+      
+      console.log(`📊 Using scopeId: ${scopeId}`);
+      
+      let savedCount = 0;
+      let savedSources = [];
+      
+      for (const pattern of patterns) {
+        const snippet = {
+          id: pattern.id,
+          scopeId,
+          trigger: pattern.trigger || 'general',
+          content: pattern.example || pattern.guidance || pattern.pattern,
+          appliedAt: Date.now(),
+          source: 'post-call',
+          charLength: (pattern.example || pattern.guidance || pattern.pattern).length,
+        };
+        
+        const result = await memoryAdapter.saveSnippet(snippet);
+        savedCount++;
+        if (result.source && !savedSources.includes(result.source)) {
+          savedSources.push(result.source);
+        }
+      }
+      
+      console.log(`💾 Saved ${savedCount} patterns to memory (${savedSources.join(', ')})`);
+    } catch (memoryError) {
+      console.error('Failed to save patterns to memory:', memoryError);
+      // Don't fail the request - patterns are still returned
+    }
+
     return res.json({
       ok: true,
       patterns,

@@ -308,6 +308,61 @@ if (app.locals.__routesInitialized) {
 } else {
   app.locals.__routesInitialized = true;
 
+// Config endpoint for client-side hydration
+app.get('/api/config', (req, res) => {
+  res.json({
+    enableContext7Memory: process.env.ENABLE_CONTEXT7_MEMORY === 'true',
+    context7Available: !!process.env.CONTEXT7_API_KEY,
+    environment: process.env.NODE_ENV || 'development',
+  });
+});
+
+// Admin endpoint for manual Context7 sync
+app.post('/api/admin/sync-context7', async (req, res) => {
+  try {
+    const { syncAllScopes, syncScope } = require('./jobs/syncContext7');
+    
+    const { scopeId } = req.body;
+    
+    if (scopeId) {
+      // Sync specific scope
+      console.log(`[ADMIN] Manual sync requested for scope: ${scopeId}`);
+      const result = await syncScope(scopeId);
+      res.json({ message: 'Scope sync completed', result });
+    } else {
+      // Sync all scopes (async)
+      console.log('[ADMIN] Manual full sync requested');
+      
+      // Run async - don't wait
+      syncAllScopes().catch(console.error);
+      
+      res.json({ message: 'Full sync started (running async)' });
+    }
+  } catch (error) {
+    console.error('[ADMIN] Sync trigger failed:', error);
+    res.status(500).json({ error: 'Sync failed', message: error.message });
+  }
+});
+
+// Metrics endpoint for observability
+app.get('/api/metrics/memory', (req, res) => {
+  try {
+    const metrics = require('./lib/metrics');
+    const memoryCache = require('./lib/memoryCache');
+    
+    const snapshot = metrics.getSnapshot();
+    const cacheStats = memoryCache.getStats();
+    
+    res.json({
+      ...snapshot,
+      cache: cacheStats,
+    });
+  } catch (error) {
+    console.error('[METRICS] Failed to get metrics:', error);
+    res.status(500).json({ error: 'Failed to retrieve metrics' });
+  }
+});
+
 // MCP Server Routes (optional - won't crash if MCP not available)
 let mcpEnabled = false;
 try {
@@ -320,6 +375,35 @@ try {
     app.use('/api/mcp', mcpServer);
     mcpEnabled = true;
     console.log('✅ MCP Server routes enabled');
+    
+    // Memory API routes (Context7 integration - optional)
+    try {
+      const memoryRouter = require('./routes/memory');
+      app.use('/api/memory', memoryRouter);
+      console.log('✅ Memory API routes enabled (Context7 integration)');
+    } catch (memoryError) {
+      console.log('ℹ️  Memory API routes not loaded (optional)');
+    }
+    
+    // Initialize Context7 sync job (if enabled)
+    if (process.env.ENABLE_CONTEXT7_MEMORY === 'true') {
+      try {
+        require('./jobs/syncContext7'); // Registers cron job
+        console.log('✅ Context7 sync job initialized');
+      } catch (syncError) {
+        console.log('ℹ️  Context7 sync job not initialized:', syncError.message);
+      }
+      
+      // Initialize alert system (production only)
+      if (process.env.NODE_ENV === 'production') {
+        try {
+          require('./lib/alerts'); // Starts monitoring
+          console.log('✅ Context7 alert system initialized');
+        } catch (alertError) {
+          console.log('ℹ️  Alert system not initialized:', alertError.message);
+        }
+      }
+    }
   } else {
     console.log('⚠️  MCP Server not found - MCP endpoints disabled');
     console.log('   Expected path:', mcpServerPath);

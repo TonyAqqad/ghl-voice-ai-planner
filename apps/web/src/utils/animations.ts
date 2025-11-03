@@ -9,6 +9,15 @@ export const easings = {
   easeOut: 'cubic-bezier(0, 0, 0.2, 1)',
   easeInOut: 'cubic-bezier(0.4, 0, 0.2, 1)',
   spring: 'cubic-bezier(0.68, -0.55, 0.265, 1.55)',
+  appleEnter: 'cubic-bezier(0.4, 0.0, 0.2, 1)',
+  appleExit: 'cubic-bezier(0.2, 0.8, 0.4, 1)',
+};
+
+export const microTimings = {
+  quick: 160,
+  cardEnter: 220,
+  cardExit: 180,
+  stagger: 120,
 };
 
 export function animateHeight(element: HTMLElement, targetHeight: number, duration = 300) {
@@ -118,18 +127,24 @@ export function setupGlobalAnimations() {
     }
 
     .animate-fade-in {
-      animation: fadeIn 0.3s ease-out;
+      animation: fadeIn 0.18s ${easings.appleEnter};
+    }
+
+    .animate-fade-in-delayed {
+      animation: fadeIn 0.18s ${easings.appleEnter};
+      animation-delay: 60ms;
+      animation-fill-mode: both;
     }
 
     .animate-slide-in {
-      animation: slideIn 0.3s ease-out;
+      animation: slideIn 0.22s ${easings.appleEnter};
     }
 
     .animate-scale-in {
-      animation: scaleIn 0.2s ease-out;
+      animation: scaleIn 0.22s ${easings.appleEnter};
     }
   `;
-  
+
   document.head.appendChild(style);
 }
 

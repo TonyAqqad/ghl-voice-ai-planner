@@ -67,8 +67,18 @@ function coerceJsonPayload(result) {
   const messageContent = extractFromChoices(result) || extractFromChoices(result.raw);
   if (messageContent) {
     try {
+      // Try parsing directly first
       return { payload: JSON.parse(messageContent), usage };
     } catch (error) {
+      // If that fails, try to extract JSON from markdown code blocks
+      const jsonMatch = messageContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+      if (jsonMatch && jsonMatch[1]) {
+        try {
+          return { payload: JSON.parse(jsonMatch[1]), usage };
+        } catch (innerError) {
+          throw new Error(`Failed to parse JSON from markdown: ${jsonMatch[1].slice(0, 200)}`);
+        }
+      }
       throw new Error(`Failed to parse JSON from LLM response: ${messageContent.slice(0, 200)}`);
     }
   }

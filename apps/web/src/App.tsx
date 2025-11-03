@@ -73,9 +73,18 @@ import './styles/globals.css';
 import './styles/theme.css';
 import './styles/haptics.css';
 import NavBar from './components/ui/NavBar';
+import { getAppConfig } from './lib/config/appConfig';
 
 function App() {
   const { darkMode, sidebarOpen } = useStore();
+
+  // Load app configuration on mount
+  useEffect(() => {
+    getAppConfig().catch((error) => {
+      console.error('Failed to load app config:', error);
+      // App continues with fallback defaults
+    });
+  }, []);
 
   // Enable DB sync for manual corrections (works with ENABLE_CORRECTION_SYNC=true on server)
   useEffect(() => {

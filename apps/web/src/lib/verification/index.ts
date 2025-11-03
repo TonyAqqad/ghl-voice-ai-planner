@@ -73,6 +73,19 @@ export type {
   CompiledRuntimeContext,
 } from '../prompt/masterOrchestrator';
 
+// === Memory Adapter (Context7 + localStorage hybrid) ===
+export {
+  getMemoryAdapter,
+  resetMemoryAdapter,
+  MemoryAdapter,
+} from './memoryAdapter';
+export type {
+  MemorySource,
+  MemorySnippet,
+  MemoryAdapterConfig,
+  MemoryResult,
+} from './memoryAdapter';
+
 /**
  * Quick Start Guide:
  * 

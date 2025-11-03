@@ -17,6 +17,8 @@ import { extractSpecFromPrompt } from '../spec/specExtract';
 import { TurnAttestation, AppliedSnippet } from '../verification/attestationTypes';
 import { generateTurnAttestation, AssembledContext, AttestationConfig } from '../verification/attestationGenerator';
 import { attestationStore } from '../verification/attestationStore';
+import { getMemoryAdapter, type MemorySource } from '../verification/memoryAdapter';
+import { useStore } from '../../store/useStore';
 
 const SPEC_BLOCK_REGEX = /<!--\s*SPEC_JSON_START\s*-->[\s\S]*?<!--\s*SPEC_JSON_END\s*-->/gi;
 
@@ -378,22 +380,45 @@ export async function compileRuntimeContext(
   console.log(`📊 specHash=${specHash}, niche=${spec.niche}`);
   
   // Step 3: Load learned snippets for this scope (if enabled)
+  // Uses hybrid approach: tries Context7 first, falls back to localStorage
   const learnedSnippets: AppliedSnippet[] = [];
-  if (snippetsEnabled) {
-    const rawSnippets = getScopedLearnedSnippets(snippetScopeId, 5); // Max 5 snippets
-    
-    for (const raw of rawSnippets) {
-      learnedSnippets.push({
-        id: `snippet-${raw.appliedAt}`,
-        trigger: raw.originalQuestion,
-        content: raw.correctedResponse,
-        charLength: raw.correctedResponse.length,
-        appliedAt: raw.appliedAt,
-        source: 'voice-agent', // Default source
-      });
+  let memorySource: MemorySource = 'localStorage';
+  
+  // Check both request flag and global store flag
+  const storeSnippetsEnabled = useStore.getState().snippetsEnabled;
+  const effectiveSnippetsEnabled = snippetsEnabled && storeSnippetsEnabled;
+  
+  if (effectiveSnippetsEnabled) {
+    try {
+      // Use memory adapter (Context7 + localStorage hybrid)
+      const memoryAdapter = getMemoryAdapter();
+      const result = await memoryAdapter.getSnippets(snippetScopeId, 5);
+      
+      memorySource = result.source;
+      const rawSnippets = result.data;
+      
+      for (const raw of rawSnippets) {
+        learnedSnippets.push({
+          id: `snippet-${raw.appliedAt}`,
+          trigger: raw.originalQuestion,
+          content: raw.correctedResponse,
+          charLength: raw.correctedResponse.length,
+          appliedAt: raw.appliedAt,
+          source: 'voice-agent', // Default source
+        });
+      }
+      
+      console.log(`📊 Loaded ${learnedSnippets.length} learned snippets from ${snippetScopeId}`);
+      console.log(`   • Memory source: ${memorySource}`);
+      
+      if (result.error) {
+        console.warn(`   ⚠️ Memory warning: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Failed to load snippets from memory adapter:', error);
+      // Gracefully degrade - continue without snippets
+      console.log('   • Continuing without snippets (safe degradation)');
     }
-    
-    console.log(`📊 Loaded ${learnedSnippets.length} learned snippets from ${snippetScopeId}`);
   }
   
   // Step 4: Assemble messages in STRICT ORDER
@@ -485,6 +510,7 @@ export async function compileRuntimeContext(
   
   // Step 6: Store attestation for audit
   attestation.snippetScopeId = snippetScopeId;
+  attestation.memorySource = memorySource; // Track where snippets came from
   attestationStore.saveTurnAttestation(attestation);
   
   console.log(`✅ Attestation generated and stored for turn ${turnId}`);
@@ -520,17 +546,35 @@ export async function compileRuntimeContext(
  * 2. Block booking until all required fields collected & confirmed
  * 3. No AI self-reference ("I'm an AI")
  * 4. No backend mentions ("GHL", "CRM")
+ * 5. Optional: Require Context7 memory for specific scopes
  */
+export interface GuardOptions {
+  memorySource?: MemorySource;
+  requireContext7?: boolean;
+  scopeId?: string;
+}
+
 export function guardResponse(
   spec: PromptSpec,
   collectedFields: Array<{ key: string; value: string; valid: boolean }>,
-  candidateResponse: string
+  candidateResponse: string,
+  options?: GuardOptions
 ): {
   approved: boolean;
   reason?: string;
   blockedViolation?: string;
   modifiedResponse?: string;
+  fixedResponse?: string;
 } {
+  // Guard 0: Context7 memory requirement (opt-in per scope)
+  if (options?.requireContext7 && options?.memorySource !== 'context7') {
+    return {
+      approved: false,
+      reason: 'Context7 memory required but unavailable for this scope',
+      blockedViolation: 'CONTEXT7_REQUIRED',
+      fixedResponse: "I'm currently undergoing maintenance to improve my responses. Please try again in a few minutes.",
+    };
+  }
   // Guard 1: Check for AI self-reference (CRITICAL VIOLATION)
   const aiSelfRefPattern = /(i'm an ai|i am an ai|as an ai|as a language model)/i;
   if (aiSelfRefPattern.test(candidateResponse)) {

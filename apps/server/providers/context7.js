@@ -12,7 +12,7 @@ const DEFAULT_MODEL = 'context7-ultra';
 class Context7Provider {
   constructor(apiKey, baseUrl) {
     this.apiKey = apiKey;
-    this.baseUrl = baseUrl || process.env.CONTEXT7_BASE_URL || 'https://api.context7.ai';
+    this.baseUrl = baseUrl || process.env.CONTEXT7_BASE_URL || 'https://context7.com/api';
   }
 
   getHeaders() {

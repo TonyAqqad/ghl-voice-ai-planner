@@ -158,11 +158,13 @@ interface GHLStore {
   darkMode: boolean;
   sidebarOpen: boolean;
   notifications: Notification[];
+  snippetsEnabled: boolean;
   
   // Actions
   setCurrentModule: (module: string) => void;
   toggleDarkMode: () => void;
   toggleSidebar: () => void;
+  toggleSnippets: () => void;
   addNotification: (notification: Omit<Notification, 'id' | 'timestamp'>) => void;
   removeNotification: (id: string) => void;
   markNotificationRead: (id: string) => void;
@@ -712,6 +714,7 @@ export const useStore = create<GHLStore>()(
       darkMode: false,
       sidebarOpen: true,
       notifications: [],
+      snippetsEnabled: true, // Enabled by default
       
       // Actions
       setCurrentModule: (module) => set({ currentModule: module }),
@@ -722,6 +725,9 @@ export const useStore = create<GHLStore>()(
       toggleSidebar: () => set((state) => ({ 
         sidebarOpen: !state.sidebarOpen,
         appState: { ...state.appState, sidebarOpen: !state.sidebarOpen }
+      })),
+      toggleSnippets: () => set((state) => ({
+        snippetsEnabled: !state.snippetsEnabled
       })),
       
       addNotification: (notification) => {
