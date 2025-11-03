@@ -1505,20 +1505,87 @@ const TrainingHub: React.FC = () => {
             },
           });
 
-          // Check for guidance/gate mismatch
+          // Check for system prompt hash mismatch (critical)
+          const guidanceHash = masterAI.guidance?.observability?.systemPromptHash;
+          const reviewHash = review.observability?.systemPromptHash;
+
+          if (guidanceHash && reviewHash && guidanceHash !== reviewHash) {
+            console.error('❌ CRITICAL: System prompt changed between guidance and review!');
+            console.error('  Guidance hash:', guidanceHash);
+            console.error('  Review hash:', reviewHash);
+            console.error('  This guarantees mismatched results. Review your prompt management.');
+            setGuidanceMismatch(true);
+          } else if (guidanceHash && reviewHash) {
+            console.log('✅ System prompt hash verified:', guidanceHash, '===', reviewHash);
+          }
+
+          // Calculate similarity between guidance and actual response
+          const calculateSimilarity = (str1: string, str2: string): number => {
+            const s1 = str1.toLowerCase().trim();
+            const s2 = str2.toLowerCase().trim();
+
+            // Levenshtein distance
+            const matrix: number[][] = [];
+            for (let i = 0; i <= s1.length; i++) {
+              matrix[i] = [i];
+            }
+            for (let j = 0; j <= s2.length; j++) {
+              matrix[0][j] = j;
+            }
+
+            for (let i = 1; i <= s1.length; i++) {
+              for (let j = 1; j <= s2.length; j++) {
+                if (s1[i - 1] === s2[j - 1]) {
+                  matrix[i][j] = matrix[i - 1][j - 1];
+                } else {
+                  matrix[i][j] = Math.min(
+                    matrix[i - 1][j - 1] + 1, // substitution
+                    matrix[i][j - 1] + 1,     // insertion
+                    matrix[i - 1][j] + 1      // deletion
+                  );
+                }
+              }
+            }
+
+            const distance = matrix[s1.length][s2.length];
+            const maxLen = Math.max(s1.length, s2.length);
+            return maxLen === 0 ? 1 : 1 - (distance / maxLen);
+          };
+
+          // Check for guidance/gate mismatch using semantic similarity
+          const similarity = masterAI.guidance?.recommendedResponse
+            ? calculateSimilarity(agentResponseText, masterAI.guidance.recommendedResponse)
+            : 0;
+
+          const SIMILARITY_THRESHOLD = 0.7; // 70% similarity threshold
+
           if (
-            !review.approved && 
+            !review.approved &&
             masterAI.guidance?.recommendedResponse &&
-            agentResponseText.toLowerCase().includes(masterAI.guidance.recommendedResponse.toLowerCase().substring(0, 20))
+            similarity > SIMILARITY_THRESHOLD
           ) {
             setGuidanceMismatch(true);
             console.warn('⚠️ MISMATCH DETECTED: Guidance approved, but gate blocked!');
             console.warn('  Guidance recommended:', masterAI.guidance.recommendedResponse.substring(0, 100));
-            console.warn('  Gate blocked:', agentResponseText.substring(0, 100));
+            console.warn('  Agent responded:', agentResponseText.substring(0, 100));
+            console.warn('  Similarity score:', (similarity * 100).toFixed(1) + '%', '(threshold: 70%)');
             console.warn('  Blocked reasons:', review.blockedReasons);
             console.warn('  This may indicate spec drift or conflicting rules in your system prompt');
-          } else {
+            if (guidanceHash && reviewHash) {
+              console.warn('  System prompt hashes:', { guidanceHash, reviewHash, match: guidanceHash === reviewHash });
+            }
+          } else if (!guidanceHash || !reviewHash || guidanceHash === reviewHash) {
             setGuidanceMismatch(false);
+          }
+
+          // Log similarity for debugging (when guidance exists)
+          if (masterAI.guidance?.recommendedResponse && similarity > 0.3) {
+            console.log('📊 Response similarity:', (similarity * 100).toFixed(1) + '%', {
+              guidance: masterAI.guidance.recommendedResponse.substring(0, 50) + '...',
+              actual: agentResponseText.substring(0, 50) + '...',
+              threshold: '70%',
+              wouldTriggerMismatch: similarity > SIMILARITY_THRESHOLD && !review.approved,
+            });
           }
 
           if (!review.approved && review.suggestedResponse) {
@@ -3605,11 +3672,12 @@ const TrainingHub: React.FC = () => {
                     ⚠️ Spec Drift Detected
                   </h4>
                   <p className="text-sm text-yellow-800 dark:text-yellow-300 mb-2">
-                    Pre-Turn Guidance recommended a response that Quality Gate blocked. This may indicate conflicting rules in your system prompt.
+                    Pre-Turn Guidance recommended a response that Quality Gate blocked. Check console for diagnostic logs including system prompt hash verification.
                   </p>
                   <div className="text-xs text-yellow-700 dark:text-yellow-400 space-y-1">
-                    <p><strong>Recommended Action:</strong> Review the blocked reasons in the Quality Gate above and ensure your system prompt has consistent rules.</p>
-                    <p><strong>Common Causes:</strong> Different temperature settings (Guidance: 0.3, Review: 0.2) or ambiguous prompt wording.</p>
+                    <p><strong>Recommended Action:</strong> Review the blocked reasons in the Quality Gate above. Check browser console for hash mismatch errors.</p>
+                    <p><strong>Common Causes:</strong> System prompt changed between calls (hash mismatch), different temperature settings (Guidance: 0.3, Review: 0.2), or ambiguous prompt wording.</p>
+                    <p><strong>Diagnostics:</strong> Open browser console and look for "✅ System prompt hash verified" (good) or "❌ CRITICAL: System prompt changed" (bad).</p>
                   </div>
                 </div>
               </div>

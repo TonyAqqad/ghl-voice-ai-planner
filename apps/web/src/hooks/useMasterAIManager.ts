@@ -28,6 +28,7 @@ export interface PreTurnGuidance {
     model: string;
     latencyMs: number;
     rulesChecked: string[];
+    systemPromptHash?: string; // For verification against review
   };
 }
 
@@ -47,6 +48,7 @@ export interface QualityReview {
     model: string;
     latencyMs: number;
     rulesChecked: string[];
+    systemPromptHash?: string; // For verification against guidance
   };
 }
 
@@ -199,6 +201,7 @@ export function useMasterAIManager(config: MasterAIConfig) {
           model: data.model || 'gpt-4o-mini',
           latencyMs,
           rulesChecked: data.rulesChecked || [],
+          systemPromptHash: data.systemPromptHash, // For verification
         },
       };
 
@@ -298,6 +301,7 @@ export function useMasterAIManager(config: MasterAIConfig) {
           model: data.model || 'gpt-4o-mini',
           latencyMs,
           rulesChecked: data.rulesChecked || [],
+          systemPromptHash: data.systemPromptHash, // For verification against guidance
         },
       };
 

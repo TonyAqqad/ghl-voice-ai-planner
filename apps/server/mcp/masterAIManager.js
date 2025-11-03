@@ -15,6 +15,26 @@ const { runLLM } = require('../providers/llm-utils');
 const DATE_RULE_REGEX = /specific\s+(?:date|time)|date\/time/i;
 
 /**
+ * Master AI temperature configuration
+ * Lower values (0.1-0.3) = more conservative/strict
+ * Higher values (0.4-0.7) = more creative/flexible
+ *
+ * Separate temperatures for guidance vs review allows fine-tuning:
+ * - Use higher guidance temp to explore creative responses
+ * - Use lower review temp for stricter quality gates
+ *
+ * Set to same value (e.g., 0.25) to eliminate temperature-based drift
+ */
+const MASTER_AI_TEMPERATURE_GUIDANCE = parseFloat(process.env.MASTER_AI_TEMPERATURE_GUIDANCE || '0.3');
+const MASTER_AI_TEMPERATURE_REVIEW = parseFloat(process.env.MASTER_AI_TEMPERATURE_REVIEW || '0.2');
+
+console.log('🌡️ Master AI Temperature Config:', {
+  guidance: MASTER_AI_TEMPERATURE_GUIDANCE,
+  review: MASTER_AI_TEMPERATURE_REVIEW,
+  aligned: MASTER_AI_TEMPERATURE_GUIDANCE === MASTER_AI_TEMPERATURE_REVIEW,
+});
+
+/**
  * Generate a short hash of a prompt for tracking/comparison
  */
 const generatePromptHash = (prompt) => {
@@ -75,7 +95,7 @@ async function preTurnGuidance(req, res) {
       traceId,
       agentId,
       niche,
-      temperature: 0.3,
+      temperature: MASTER_AI_TEMPERATURE_GUIDANCE,
       llmProvider: req.body.llmProvider || 'openai',
       systemPromptHash: promptHash,
       systemPromptLength: systemPrompt?.length || 0,
@@ -118,7 +138,7 @@ CRITICAL: Do not invent rules. Only follow what's written in the system prompt a
 Return ONLY the JSON object.`;
 
     const { payload: guidance, usage, model: usedModel } = await runLLM(req.body.llmProvider, guidancePrompt, {
-      temperature: 0.3,
+      temperature: MASTER_AI_TEMPERATURE_GUIDANCE,
       maxTokens: 500,
       responseFormat: { type: 'json_object' },
     });
@@ -139,7 +159,7 @@ Return ONLY the JSON object.`;
     console.log(`🔍 DIAGNOSTIC: Pre-Turn Guidance Response`, {
       traceId,
       model: usedModel,
-      temperature: 0.3,
+      temperature: MASTER_AI_TEMPERATURE_GUIDANCE,
       tokensIn: usage?.prompt_tokens || 0,
       tokensOut: usage?.completion_tokens || 0,
       tokensTotal: usage?.total_tokens || 0,
@@ -157,6 +177,7 @@ Return ONLY the JSON object.`;
       model: usedModel,
       rulesChecked,
       usage,
+      systemPromptHash: promptHash, // For verification against review
     });
   } catch (error) {
     console.error('❌ Pre-turn guidance error:', error);
@@ -198,7 +219,7 @@ async function reviewResponse(req, res) {
       traceId,
       agentId,
       niche,
-      temperature: 0.2,
+      temperature: MASTER_AI_TEMPERATURE_REVIEW,
       llmProvider: req.body.llmProvider || 'openai',
       systemPromptHash: promptHash,
       systemPromptLength: systemPrompt?.length || 0,
@@ -250,7 +271,7 @@ If in training/testing mode, be MORE LENIENT with scores (minimum 60 unless crit
 Return ONLY the JSON object.`;
 
     const { payload: review, usage, model: usedModel } = await runLLM(req.body.llmProvider, reviewPrompt, {
-      temperature: 0.2,
+      temperature: MASTER_AI_TEMPERATURE_REVIEW,
       maxTokens: 600,
       responseFormat: { type: 'json_object' },
     });
@@ -359,7 +380,7 @@ Return ONLY the JSON object.`;
     console.log(`🔍 DIAGNOSTIC: Quality Review Response`, {
       traceId,
       model: usedModel,
-      temperature: 0.2,
+      temperature: MASTER_AI_TEMPERATURE_REVIEW,
       tokensIn: usage?.prompt_tokens || 0,
       tokensOut: usage?.completion_tokens || 0,
       tokensTotal: usage?.total_tokens || 0,
@@ -383,6 +404,7 @@ Return ONLY the JSON object.`;
       model: usedModel,
       rulesChecked,
       usage,
+      systemPromptHash: promptHash, // For verification against guidance
     });
   } catch (error) {
     console.error('❌ Review error:', error);
